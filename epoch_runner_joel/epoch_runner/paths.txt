@@ -1,0 +1,3 @@
+/home/era536/Documents/Epoch/epoch_runner_joel/example_campaign/run_0_1000000/run_0_10000/run_0_100/run_0
+/home/era536/Documents/Epoch/epoch_runner_joel/example_campaign/run_0_1000000/run_0_10000/run_0_100/run_1
+/home/era536/Documents/Epoch/epoch_runner_joel/example_campaign/run_0_1000000/run_0_10000/run_0_100/run_2

@@ -1,0 +1,289 @@
+begin:constant
+
+  # IMPORTANT: EPOCH expects everything to be in SI base units so the below blocks
+  # need to be in /m^2 and W/m^2. They are defined here in /cc which is
+  # converted to SI base units /mm by multiplying by "cc" and W/cm^2 which is
+  # multiplied by 1e4 in the laser block below
+
+  # This constant block specifies the electron number density of the target
+  # and laser intensity
+  nel = 1.0e22
+  intens = 1.0e23
+
+end:constant
+
+
+begin:control
+
+  # global number of gridpoints
+  nx = 128 # in x
+  ny = 128
+  nparticles = nx * ny * 64
+
+  # maximum number of iterations
+  # set to -1 to run until finished
+  nsteps = -1
+
+  # final time of simulation
+  t_end = 300e-15
+
+  # size of domain
+  x_min = -3e-6
+  x_max =  15e-6
+  y_min = -10e-6
+  y_max = -y_min
+
+  dt_multiplier = 0.8
+
+end:control
+
+
+begin:qed
+
+  # These are the parts that control the QED sections of EPOCH
+  use_qed = T # Turn on or off QED. If you're normally running without QED then
+              # don't compile with -DPHOTONS
+
+  qed_start_time = 0 # Time after which QED effects should start.
+
+  produce_photons = T # Should the code actually produce and track photons.
+                      # If F then the code calculates the recoil due to emitting
+                      # photons, but the photon is not tracked. qed must be on
+                      # to Ever produce photons
+
+  photon_energy_min = 50 * kev # Minimum energy for a tracked photon. Photons
+                               # emitted with lower energy still cause electron
+                               # recoil but are not tracked
+
+  produce_pairs = F # Whether or not to activate the module for pair production
+                    # by the Breit-Wheeler process. Both qed and
+                    # produce_photons must be on to produce pairs
+
+  photon_dynamics = T # Quite often you're more interested in where photons are
+                      # generated than where they propagate to. This option
+                      # stops the core code from moving the photons.
+                      # This is also much faster.
+
+end:qed
+
+
+begin:collisions
+
+  use_collisions = T
+  coulomb_log = auto
+  collide = all
+
+end:collisions
+
+
+begin:boundaries
+
+  bc_x_min = simple_laser
+  bc_x_max = simple_laser
+
+  bc_y_max = periodic
+  bc_y_min = periodic
+
+end:boundaries
+
+begin:species
+  name = Electron
+  charge = -1
+  mass = 1
+  fraction = 0.5
+  dump = T
+
+  temperature = 0
+  number_density_min = 1
+  # If the x coordinate is less than 0 then the number density is 0
+  # If the x coordinate is greater than 0 and less than 10e-6 then the number density is Carbon + Hydrogen * 1e1
+  # If the x coordinate is greater than 10e-6 and less than 15e-6 then the number density is Gold * 1e2
+  number_density = if((x lt 0), 0, \
+                      if ((x gt 0) and (x lt 10e-6), \
+                        ((nel * 1e6) * 1.0e1), \
+                        if ((x gt 10e-6) and (x lt 15e-6), \
+                          ((nel * 1e6) * 1.0e2), 0)))
+
+  identify:electron
+
+end:species
+
+
+#begin:species
+  #name = Ion_Carbon
+  #charge = 6
+  #mass = 12 * 1822 # Multiply by atomic mass unit
+  #fraction = 0.17
+  #dump = T
+
+  #temperature = 0
+  #temperature = temperature_x(Electron)
+  #number_density = if ((x gt 0) and (x lt 10e-6), ((nel * 1e6) * 1.0e1), 0)
+  #number_density_min = 1
+
+ # identify:proton
+
+#end:species
+
+
+#begin:species
+  #name = Ion_Hydrogen
+  #charge = 1
+  #mass = 1 * 1822
+  #fraction = 0.17
+  #dump = T
+
+  #temperature = 0
+  #temperature = temperature_x(Electron)
+  #number_density = if ((x gt 0) and (x lt 10e-6), ((nel * 1e6) * 1.0e1), 0)
+  #number_density_min = 1
+
+ # identify:proton
+
+#end:species
+
+
+#begin:species
+  #name = Ion_Gold
+  #charge = 79
+  #mass = 197 * 1822
+  #fraction = 0.17
+  #dump = T
+
+  #emperature = 0
+  #temperature = temperature_x(Electron)
+  #number_density = if ((x gt 10e-6) and (x lt 15e-6), ((nel * 1e6) * 1.0e2), 0)
+  #number_density_min = 1
+
+ # identify:proton
+
+#end:species
+
+
+begin:species
+
+  name = Photon
+  nparticles = 0
+  dump = T
+
+  identify:photon
+
+end:species
+
+
+begin:species
+
+  name = Positron
+  nparticles = 0
+  dump = T
+
+  identify:positron
+
+end:species
+
+
+begin:output_global
+
+  force_final_to_be_restartable = T
+
+end:output_global
+
+
+begin:output
+
+  name = normal
+
+  # If use_offset_grid is true then the code dumps a grid which displays
+  # positions relative to the left hand edge of the window
+  use_offset_grid = F
+
+  # number of timesteps between output dumps
+  dt_snapshot = 100.0e-15 / 100.0
+
+  # Properties at particle positions
+  particles = never
+  px = never
+  py = never
+  pz = never
+  vx = never
+  vy = never
+  vz = never
+  charge = never
+  mass = never
+  particle_weight = never
+  species_id = never
+
+  # Properties on grid
+  grid = always
+  ex = always
+  ey = always
+  ez = always
+  bx = always
+  by = always
+  bz = always
+  jx = always
+  jy = always
+  jz = never
+  average_particle_energy = always + species
+  mass_density = never + species
+  charge_density = never
+  number_density = always + species
+  temperature = never + species
+
+  # extended io
+  distribution_functions = always
+  particle_probes = never
+
+end:output
+
+
+begin:constant
+
+  omega = 2.0 * pi * c / (1.0e-6)
+  den_crit = critical(omega) # per cubic metre
+  scale = 3.5e-6 # microns
+  den_max = 5.0 * den_crit
+  den_maxpoint = 40.0e-6 # microns
+  den_contrast = 1.0
+
+  amax = 1.0
+
+end:constant
+
+
+begin:laser
+
+  boundary = x_min
+  intensity = intens * 1.0e4
+  omega = omega  # red
+  polarisation = 0.0
+  phase = 0.0
+  t_profile = gauss(time, 40e-15, 30e-15)  # semigauss(time, amax, 0.1 * amax, t_wid)
+  t_start = 0.0
+  t_end = end
+  profile = gauss(y, 0, 2.0 * micron)
+
+end:laser
+
+
+begin:dist_fn
+
+  name = px_py
+  ndims = 2
+  dumpmask = always
+
+  direction1 = dir_px
+  direction2 = dir_py
+
+  # range is ignored for spatial coordinates
+  range1 = (-1.5e-21, 1.5e-21)
+  range2 = (-1.5e-21, 1.5e-21)
+
+  # resolution is ignored for spatial coordinates
+  resolution1 = 200
+  resolution2 = 200
+
+  include_species:Photon
+  # include_species:Electron
+
+end:dist_fn
