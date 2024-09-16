@@ -19,10 +19,11 @@ begin:constant
   x_length = nxgrid * grid_spacing
 
   b_strength = 1.0
+  # Angle between B and x (predominantly in Z)
   b_angle = 90
   ion_gyroperiod = (2 * pi * mass_ion) / (qe * b_strength)
-  simtime = 10 * ion_gyroperiod
-  diagtime = simtime * 0.01
+  simtime = 20 * ion_gyroperiod
+  diagtime = simtime * 0.005
 
   # simtime_ij = x_length / vel_ion
   # simtime_od = 1e-12
@@ -47,8 +48,8 @@ end:boundaries
 
 begin:fields
   bx = b_strength * cos(b_angle * pi/180)
-  by = b_strength * sin(b_angle * pi/180)
-  bz = 0.0
+  by = 0.0
+  bz = b_strength * sin(b_angle * pi/180)
 end:fields
 
 begin:species
@@ -76,7 +77,6 @@ begin:species
   number_density = background_density * (1.0 - frac_beam)
   temp = background_temp
 end:species
-
 
 begin:species
   name = electron
@@ -110,33 +110,12 @@ begin:output
   by = always
   bz = always
   ekbar = always
-  charge_density = full
+  charge_density = always + species + no_sum
   number_density = always + species
 
   #Extended IO
-  distribution_functions = always
+  distribution_functions = full
 end:output
-
-
-begin:dist_fn
-  name = py_pz
-  ndims = 2
-
-  direction1 = dir_py
-  direction2 = dir_pz
-
-  # range is ignored for spatial coordinates
-  range1 = (1, 1)
-  range2 = (-3.0e-22, 3.0e-22)
-
-  # resolution is ignored for spatial coordinates
-  resolution1 = 100
-  resolution2 = 100
-
-  include_species:electron
-  include_species:proton
-  include_species:ion_ring_beam
-end:dist_fn
 
 begin:dist_fn
   name = px_py

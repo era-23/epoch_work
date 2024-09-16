@@ -1,9 +1,12 @@
 import numpy as np
 from scipy import constants
 
+#Conversions
+kb = constants.physical_constants["Boltzmann constant in eV/K"][0]
+
 ##### Constants block
 background_density = 1e20
-background_temp = 1e8
+background_temp = 1e8 # K not eV
 frac_beam = 1e-3
 ion_mass_e = 1836.2
 mass_ion = constants.electron_mass * ion_mass_e
@@ -24,12 +27,19 @@ grid_spacing = lambda_db * 0.5
 nxgrid = 100
 x_length = nxgrid * grid_spacing
 
+CPDR_bkgd_temp = 1.16e7
+CPDR_bkgd_dens = 1e19
+CPDR_lambda_db = np.sqrt(constants.epsilon_0 * constants.k * CPDR_bkgd_temp / CPDR_bkgd_dens / constants.elementary_charge**2.0)
+CPDR_grid_spac = CPDR_lambda_db * 0.95
+CPDR_nxgrid = 28500
+CPDR_x_length = CPDR_grid_spac * CPDR_nxgrid
+
 b_strength = 1.0
 b_angle = 100
 
 ion_gyroperiod = (2 * np.pi * mass_ion) / (constants.elementary_charge * b_strength)
 
-#simtime = 10 * grid_spacing * 9.0 / vel_ion
+simtime_orig = 10 * grid_spacing * 9.0 / vel_ion
 simtime = 10 * ion_gyroperiod
 diagtime = simtime * 0.01
 
