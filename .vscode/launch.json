@@ -4,14 +4,14 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-
         {
             "name": "Python Debugger: Current File",
             "type": "debugpy",
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "args": ["--dir", "/home/era536/Documents/Epoch/Data/test_batch_2/run_0_1000000/run_0_10000/run_0_100/run_4"]
+            "args": ["--dir", "/home/era536/Documents/Epoch/Data/test_batch_2/run_0_1000000/run_0_10000/run_0_100/run_4",
+                    "--fft", "Magnetic Field/bz", "--maxK", "125.0"]
         },
         {
             "name": "Python Debugger: Dispersion Relation Test",
@@ -19,7 +19,8 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "args": ["--dir", "/home/era536/Documents/Epoch/Data/dispersion_relation"]
+            //"args": ["--dir", "/home/era536/Documents/Epoch/Data/disp_rel_parallel"]
+            "args": ["--dir", "/home/era536/Documents/Epoch/Data/dispersion_relation_2"]
         },
         {
             "name": "Python Debugger: Characterise Runs",
@@ -28,6 +29,19 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "args": ["--dir", "/home/era536/Documents/Epoch/Data/test_batch_2/run_0_1000000/run_0_10000/run_0_100"]
-        }
+        },
+        {
+            "name": "Python Debugger: Growth Rate Analysis",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["--dir", "/home/era536/Documents/Epoch/Data/test_batch_2/run_0_1000000/run_0_10000/run_0_100/run_4",
+                    "--field", "Magnetic Field/Bz",
+                    //"--maxK", "300.0",
+                    "--numKs", "10",
+                    // "--log"
+                ]
+        },
     ]
 }

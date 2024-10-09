@@ -5,7 +5,7 @@ from scipy import constants
 kb = constants.physical_constants["Boltzmann constant in eV/K"][0]
 
 ##### Constants block
-background_density = 1e20
+background_density = 1e19
 background_temp = 1e8 # K not eV
 frac_beam = 1e-3
 ion_mass_e = 1836.2
@@ -22,10 +22,6 @@ px_min_limit = np.max([pring - 6.0*p_ring_th, 0]) * (pring - 6.0*p_ring_th)
 px_peak = pring / 2.0 * (1.0 + np.sqrt(1.0 + (2.0*p_ring_th/pring)**2.0))
 
 vel_ion = np.sqrt(2.0 * constants.k * background_temp / mass_ion)
-lambda_db = np.sqrt(constants.epsilon_0 * constants.k * background_temp / background_density / constants.elementary_charge**2.0)
-grid_spacing = lambda_db * 0.5
-nxgrid = 100
-x_length = nxgrid * grid_spacing
 
 CPDR_bkgd_temp = 1.16e7
 CPDR_bkgd_dens = 1e19
@@ -34,35 +30,53 @@ CPDR_grid_spac = CPDR_lambda_db * 0.95
 CPDR_nxgrid = 28500
 CPDR_x_length = CPDR_grid_spac * CPDR_nxgrid
 
-b_strength = 1.0
-b_angle = 100
+b0_strength = 3.0
+# Angle between B and x (predominantly in Z)
+b0_angle = 90
 
-ion_gyroperiod = (2 * np.pi * mass_ion) / (constants.elementary_charge * b_strength)
+# Check resolutions:
+lambda_db = np.sqrt((constants.epsilon_0 * constants.k * background_temp) / (background_density * constants.elementary_charge**2)) # 0.000218
+grid_spacing = lambda_db * 0.5 # 0.000109
 
-simtime_orig = 10 * grid_spacing * 9.0 / vel_ion
-simtime = 10 * ion_gyroperiod
-diagtime = simtime * 0.01
+ion_gyrofrequency = (constants.elementary_charge * b0_strength) / (2.0 * np.pi * mass_ion) # 45734380.5778
+ion_gyroperiod = 1.0 / ion_gyrofrequency # 2.186538851878323e-08
+bkgd_mass_density = mass_ion * background_density * (1.0 - frac_beam) # 1.6709923702341605e-08
+alfven_velo = b0_strength / np.sqrt(constants.mu_0 * bkgd_mass_density) # 20702800.119
 
-simtime_ij = x_length / vel_ion
-simtime_od = 1e-12
-diagtimeq = grid_spacing * 10 / vel_ion
+#    Space
+resolution_pixels = 10
+minimum_num_cells_for_resolution = 2.0 * np.pi * resolution_pixels * (alfven_velo / (lambda_db * ion_gyrofrequency)) # 130334.846
+minimum_nyquist_k = 40.0 * (ion_gyrofrequency / alfven_velo) # 88.36
+nyquist_k = 1.0 / lambda_db # 4582.414
+# Check nyquist_k > minimum_nyquist_k
+print(nyquist_k > minimum_nyquist_k) # True
+num_cells = np.ceil(minimum_num_cells_for_resolution) # 130335
+domain_length = num_cells * grid_spacing # 14.2212
+
+#    Time
+simtime = 20.0 * ion_gyroperiod # 4.373077703756646e-07
+minimum_timepoints_for_resolution = resolution_pixels * (simtime / ion_gyroperiod) # 200.0
+nyquist_omega = 40.0 * ion_gyrofrequency # 1829375223.1129313
+minimum_timepoints_for_nyquist = 2.0 * nyquist_omega * simtime # 1600.0
+num_time_samples = np.ceil(np.max([minimum_timepoints_for_resolution, minimum_timepoints_for_nyquist])) # 1600.0
+
+diagtime = simtime / num_time_samples # 2.733173564847904e-10
 
 ##### Control block
-nx = nxgrid
-ny = nxgrid
-npart = 100 * nx * ny
+nx = num_cells
+npart = 100 * nx
 
 # final time of simulation
 t_end = simtime
 
 # size of domain
 x_min = 0.0
-x_max = nx * grid_spacing
+x_max = domain_length
 
 ##### Fields block
-bx = b_strength * np.cos(b_angle * np.pi/180)
-by = b_strength * np.sin(b_angle * np.pi/180)
-bz = 0.0
+bx = b0_strength * np.cos(b0_angle * np.pi/180)
+by = 0.0
+bz = b0_strength * np.sin(b0_angle * np.pi/180)
 
 ##### Species: proton
 p_name = "proton"
@@ -183,4 +197,5 @@ force_final_to_be_restartable = True
 # include_species:ion_ring_beam
 
 for v in dir():
-    if not v.startswith("__"): print(f"{v}: {eval(v)}")
+    if not v.startswith("__"): 
+        print(f"{v}: {eval(v)}")

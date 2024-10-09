@@ -1,15 +1,13 @@
-import dask.array
-import dask.array.rechunk
-from sdf_xarray import sdf, SDFPreprocess
+from sdf_xarray import SDFPreprocess
 from pathlib import Path
-from scipy import fftpack, constants
+from scipy import constants
 from matplotlib import colors
-import dask
 import numpy as np
 import matplotlib.pyplot as plt
 import xarray as xr
 import argparse
 import xrft
+import epydeck
 
 class MySdfPreprocess(SDFPreprocess):
     def __init__(self):
@@ -38,6 +36,8 @@ class MySdfPreprocess(SDFPreprocess):
 
         return new_ds.drop_dims([c for c in new_ds.coords if ("px" in c or "py" in c or "pz" in c)])
 
+#def calculate_CPDR_perp():
+
 
 if __name__ == "__main__":
 
@@ -49,17 +49,29 @@ if __name__ == "__main__":
         required = True,
         type=Path
     )
+    parser.add_argument(
+        "--maxK",
+        action="store",
+        help="Max value of k to plot on the x-axis.",
+        required = True,
+        type=float
+    )
     args = parser.parse_args()
 
     directory = args.dir
 
     ds = xr.open_mfdataset(
-        str(directory / "0[0123456]*.sdf"),
+        str(directory / "*.sdf"),
         data_vars='minimal', 
         coords='minimal', 
         compat='override', 
         preprocess=MySdfPreprocess()
     )
+
+    # Load input.deck content
+    deck = dict()
+    with open(args.dir / "input.deck") as inputDeck:
+        deck = epydeck.load(inputDeck)
 
     data_to_plot = []
     # electric_field_ex : xr.DataArray = ds["Electric Field/Ex"]
@@ -94,14 +106,30 @@ if __name__ == "__main__":
 
     #magnetic_field_by_c = magnetic_field_by.chunk({'time': magnetic_field_by.sizes['time']})
     data_load = magnetic_field_bz.load()
-    B0 = 2.0
-    bkgd_density = 1e19
-    proton_mass = 1836.2 * constants.electron_mass
-    proton_charge = constants.elementary_charge
-    mass_density = (bkgd_density * proton_mass) + (bkgd_density * constants.electron_mass)
+    
+    B0 = 0.0
+    for direction in deck["fields"]:
+        B0 += deck["fields"][direction]**2
+    B0 = np.sqrt(B0)
+
+    bkgd_density = deck["constant"]["background_density"]
+    bkgd_temp = deck["constant"]["background_temp"]
+    ion_mass = constants.proton_mass
+    ion_charge = constants.elementary_charge
+
+    if "deuteron" in deck["species"]:
+        ion_mass = constants.proton_mass + constants.neutron_mass
+        ion_charge *= deck["species"]["deuteron"]["charge"]
+    
+    mass_density = (bkgd_density * ion_mass) + (bkgd_density * constants.electron_mass)
     alfven_velo = B0 / (np.sqrt(constants.mu_0 * mass_density))
+    thermal_velo = np.sqrt((2.0 * constants.k * bkgd_temp) / ion_mass)
+    
+    omega_pe_squared = (bkgd_density * constants.elementary_charge**2)/(constants.electron_mass * constants.epsilon_0)
+    omega_pi_squared = (bkgd_density * constants.elementary_charge**2)/(ion_mass * constants.epsilon_0)
+    omega_p_squared = omega_pe_squared + omega_pi_squared
     TWO_PI = 2.0 * np.pi
-    ion_gyroperiod = (TWO_PI * proton_mass) / (proton_charge * B0)
+    ion_gyroperiod = (TWO_PI * ion_mass) / (ion_charge * B0)
     Tci = data_load.coords["time"] / ion_gyroperiod
     vA_Tci = data_load.coords["X_Grid_mid"] / (ion_gyroperiod * alfven_velo)
     #vTh_over_Wci = ds.coords["X_Grid_mid"] * (TWO_PI / B0)
@@ -112,9 +140,21 @@ if __name__ == "__main__":
     spec = spec.sel(freq_time=spec.freq_time>=0.0)
     #spec = spec.sel(freq_time=spec.freq_time<=30.0)
     spec = spec.sel(freq_X_Grid_mid=spec.freq_X_Grid_mid>=0.0)
-    spec = spec.sel(freq_X_Grid_mid=spec.freq_X_Grid_mid<=120.0)
+    spec = spec.sel(freq_X_Grid_mid=spec.freq_X_Grid_mid<=args.maxK)
+    print(f"Max: {np.max(spec)}")
+    print(f"Min: {np.min(spec)}")
     spec.plot(norm=colors.LogNorm())
+    #spec.plot()
+    omega_A = spec.freq_X_Grid_mid
+
+    # Broken, fix
+    #omega_magnetosonic = ((spec.freq_X_Grid_mid * (ion_gyroperiod * alfven_velo))**2 * constants.speed_of_light**2 * ((thermal_velo**2 + alfven_velo**2)/(constants.speed_of_light**2 + alfven_velo**2))) / ion_gyroperiod
+    cVa = constants.speed_of_light / alfven_velo
+    plt.plot(spec.freq_X_Grid_mid, omega_A, "k--", label="w = kVa")
+    plt.plot(spec.freq_X_Grid_mid, spec.freq_X_Grid_mid * cVa, "r--", label="w = kc")
+    # plt.plot(spec.freq_X_Grid_mid, omega_magnetosonic, "k:")
     plt.xlabel("Wavenumber [Wcp/Va]")
     plt.ylabel("Frequency [Wcp]")
     plt.title("Warm plasma dispersion relation")
+    plt.legend()
     plt.show()

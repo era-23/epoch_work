@@ -1,9 +1,6 @@
-import dask.array
-import dask.array.rechunk
-from sdf_xarray import sdf, SDFPreprocess
+from sdf_xarray import SDFPreprocess
 from pathlib import Path
-from scipy import fftpack, constants
-import dask
+from scipy import constants
 import epydeck
 import numpy as np
 import matplotlib.pyplot as plt
@@ -68,6 +65,13 @@ if __name__ == "__main__":
         action="store_true",
         help="Log plot",
         required = False
+    )
+    parser.add_argument(
+        "--maxK",
+        action="store",
+        help="Max value of k to plot on the x-axis.",
+        required = True,
+        type=float
     )
     args = parser.parse_args()
 
@@ -150,9 +154,9 @@ if __name__ == "__main__":
     
     # Positive times
     spec = spec.sel(freq_time=spec.freq_time>=0.0)
-
     # Positive wavenumbers
-    # spec = spec.sel(freq_X_Grid_mid=spec.freq_X_Grid_mid>=0.0)
+    spec = spec.sel(freq_X_Grid_mid=spec.freq_X_Grid_mid>=0.0)
+    spec = spec.sel(freq_X_Grid_mid=spec.freq_X_Grid_mid<=args.maxK)
     if logplot:
         spec.plot(norm=colors.LogNorm())
     else:
