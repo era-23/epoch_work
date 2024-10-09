@@ -9,7 +9,7 @@ import xarray as xr
 import argparse
 import xrft
 
-def calculate_all_growth_rates_in_run(directory : Path, field : str, normalise : bool = False, maxK = None, numKs = 5, log = False, window : str = None):
+def calculate_all_growth_rates_in_run(directory : Path, field : str, normalise : bool = False, plotTk : bool = True, maxK = None, numKs = 5, log = False, window : str = None):
 
     # Read dataset
     ds = xr.open_mfdataset(
@@ -83,15 +83,18 @@ def calculate_all_growth_rates_in_run(directory : Path, field : str, normalise :
     # spec_cellSpace = spec_cellSpace.assign_coords(k_perp=("freq_X_Grid_mid", vA_Tci))
 
     # Plot t-k
-    # spec_tk_plot = spec_tk
-    # if args.maxK is not None:
-    #     spec_tk_plot = spec_tk.sel(freq_X_Grid_mid=spec_tk.freq_X_Grid_mid<=maxK)
-    #     spec_tk_plot = spec_tk_plot.sel(freq_X_Grid_mid=spec_tk_plot.freq_X_Grid_mid>=maxK)
-    # if log:
-    #     spec_tk_plot.plot(size=9, x = "freq_X_Grid_mid", y = "time", norm=colors.LogNorm())
-    # else:
-    #     spec_tk_plot.plot(size=9, x = "freq_X_Grid_mid", y = "time")
-    # plt.show()
+    if plotTk:
+        spec_tk_plot = spec_tk
+        if args.maxK is not None:
+            spec_tk_plot = spec_tk.sel(freq_X_Grid_mid=spec_tk.freq_X_Grid_mid<=maxK)
+            spec_tk_plot = spec_tk_plot.sel(freq_X_Grid_mid=spec_tk_plot.freq_X_Grid_mid>=maxK)
+        if log:
+            spec_tk_plot.plot(size=9, x = "freq_X_Grid_mid", y = "time", norm=colors.LogNorm())
+        else:
+            spec_tk_plot.plot(size=9, x = "freq_X_Grid_mid", y = "time")
+        plt.xlabel("Wavenumber [Wci/VA]")
+        plt.ylabel("Time [Wci^-1]")
+        plt.show()
 
     sum_over_all_t = np.sum(spec_tk, axis=0)
     max_power_ks = np.argpartition(sum_over_all_t, -numKs)[-numKs:]
@@ -100,7 +103,7 @@ def calculate_all_growth_rates_in_run(directory : Path, field : str, normalise :
     for i in max_power_ks:
         plt.plot(spec_tk.coords["time"], spec_tk[:,i], label = f"k = {float(spec_tk.coords['freq_X_Grid_mid'][i])}")
     #plt.yscale("log")
-    plt.xlabel("Time/Wci")
+    plt.xlabel("Time/Wci^-1")
     plt.ylabel(f"Spectral power [{field_data_array.units}]")
     plt.title(f"Time evolution of {numKs} highest power wavenumbers in {field}")
     plt.legend()
@@ -131,6 +134,12 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
+        "--plotTk",
+        action="store_true",
+        help="Switch to normalise data before plotting.",
+        required = False
+    )
+    parser.add_argument(
         "--maxK",
         action="store",
         help="Max value of k for plotting. Growth rates of all k will still be calculated. Defaults to all k.",
@@ -155,4 +164,4 @@ if __name__ == "__main__":
     defaultNumK = 5
     numKs = args.numKs if not None else defaultNumK
 
-    calculate_all_growth_rates_in_run(args.dir, args.field, args.norm, args.maxK, numKs, args.log)
+    calculate_all_growth_rates_in_run(args.dir, args.field, args.norm, args.plotTk, args.maxK, numKs, args.log)

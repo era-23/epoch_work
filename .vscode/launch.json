@@ -38,6 +38,7 @@
             "console": "integratedTerminal",
             "args": ["--dir", "/home/era536/Documents/Epoch/Data/test_batch_2/run_0_1000000/run_0_10000/run_0_100/run_4",
                     "--field", "Magnetic Field/Bz",
+                    "--plotTk",
                     //"--maxK", "300.0",
                     "--numKs", "10",
                     // "--log"
