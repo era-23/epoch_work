@@ -87,7 +87,7 @@ def calculate_all_growth_rates_in_run(directory : Path, field : str, normalise :
         spec_tk_plot = spec_tk
         if args.maxK is not None:
             spec_tk_plot = spec_tk.sel(freq_X_Grid_mid=spec_tk.freq_X_Grid_mid<=maxK)
-            spec_tk_plot = spec_tk_plot.sel(freq_X_Grid_mid=spec_tk_plot.freq_X_Grid_mid>=maxK)
+            spec_tk_plot = spec_tk_plot.sel(freq_X_Grid_mid=spec_tk_plot.freq_X_Grid_mid>=-maxK)
         if log:
             spec_tk_plot.plot(size=9, x = "freq_X_Grid_mid", y = "time", norm=colors.LogNorm())
         else:
