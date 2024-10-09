@@ -92,6 +92,7 @@ def calculate_all_growth_rates_in_run(directory : Path, field : str, normalise :
             spec_tk_plot.plot(size=9, x = "freq_X_Grid_mid", y = "time", norm=colors.LogNorm())
         else:
             spec_tk_plot.plot(size=9, x = "freq_X_Grid_mid", y = "time")
+        plt.title(f"Time evolution of spectral power in {field}")
         plt.xlabel("Wavenumber [Wci/VA]")
         plt.ylabel("Time [Wci^-1]")
         plt.show()
