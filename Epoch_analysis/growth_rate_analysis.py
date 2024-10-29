@@ -9,7 +9,7 @@ import xarray as xr
 import argparse
 import xrft
 
-def calculate_all_growth_rates_in_run(directory : Path, field : str, normalise : bool = False, plotTk : bool = True, maxK = None, numKs = 5, log = False, window : str = None):
+def calculate_all_growth_rates_in_run(directory : Path, field : str, normalise : bool = False, plotOmegaK : bool = True, plotTk : bool = True, maxK = None, numKs = 5, log = False, deltaField = False, window : str = None):
 
     # Read dataset
     ds = xr.open_mfdataset(
@@ -44,7 +44,7 @@ def calculate_all_growth_rates_in_run(directory : Path, field : str, normalise :
     print(f"Nyquist frequency: {num_cells/(2.0 *sim_L)}m^-1")
 
     TWO_PI = 2.0 * np.pi
-    B0 = input['constant']['b_strength']
+    B0 = input['constant']['b0_strength']
 
     electron_mass = input['species']['electron']['mass'] * constants.electron_mass
     ion_bkgd_mass = input['constant']['ion_mass_e'] * constants.electron_mass 
@@ -71,8 +71,32 @@ def calculate_all_growth_rates_in_run(directory : Path, field : str, normalise :
     print(f"NORMALISED: Nyquist frequency in Wci/vA: {num_cells/(2.0 *simL_vATci)}Wci/vA")
 
     # Clean data and take FFT
+    print(f"deltaField == {deltaField}")
+    if deltaField:
+        #field_data = (field_data - B0) / B0
+        vals = field_data.copy()
+        field_data[1:,:] = field_data[1:,:] - vals[:-1,:].data
+    print(f"Normalise == {normalise}")
     data = xr.DataArray(field_data if not normalise else field_data - abs(np.mean(field_data)), coords=[Tci, vA_Tci], dims=["time", "X_Grid_mid"])
     orig_spec : xr.DataArray = xrft.xrft.fft(data, true_amplitude=True, true_phase=True, window=None)
+    orig_spec = orig_spec.where(orig_spec.freq_X_Grid_mid!=0.0, None)
+
+    # Plot omega-k
+    if plotOmegaK:
+        spec = abs(orig_spec)
+        spec = spec.sel(freq_time=spec.freq_time>=0.0)
+        if maxK is not None:
+            spec = spec.sel(freq_X_Grid_mid=spec.freq_X_Grid_mid<=maxK)
+            spec = spec.sel(freq_X_Grid_mid=spec.freq_X_Grid_mid>=-maxK)
+        print(f"Log == {log}")
+        if log:
+            spec.plot(size=9, norm=colors.LogNorm())
+        else:
+            spec.plot(size=9)
+        plt.title(f"Dispersion relation of {field}")
+        #plt.ylabel("Frequency [Wci]")
+        #plt.xlabel("Wavenumber [Wci/VA]")
+        plt.show()
 
     # Create t-k spectrum
     zeroed_spec = orig_spec.where(orig_spec.freq_time>0.0, 0.0)
@@ -93,8 +117,8 @@ def calculate_all_growth_rates_in_run(directory : Path, field : str, normalise :
         else:
             spec_tk_plot.plot(size=9, x = "freq_X_Grid_mid", y = "time")
         plt.title(f"Time evolution of spectral power in {field}")
-        plt.xlabel("Wavenumber [Wci/VA]")
-        plt.ylabel("Time [Wci^-1]")
+        #plt.xlabel("Wavenumber [Wci/VA]")
+        #plt.ylabel("Time [Wci^-1]")
         plt.show()
 
     sum_over_all_t = np.sum(spec_tk, axis=0)
@@ -135,9 +159,15 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
+        "--plotOmegaK",
+        action="store_true",
+        help="Plot dispersion relation (frequency-wavenumber).",
+        required = False
+    )
+    parser.add_argument(
         "--plotTk",
         action="store_true",
-        help="Switch to normalise data before plotting.",
+        help="Plot power in wavenumber vs time.",
         required = False
     )
     parser.add_argument(
@@ -160,9 +190,15 @@ if __name__ == "__main__":
         help="Plot FFT with log of spectral power.",
         required = False
     )
+    parser.add_argument(
+        "--deltaField",
+        action="store_true",
+        help="Use the change in field value.",
+        required = False
+    )
     args = parser.parse_args()
 
     defaultNumK = 5
-    numKs = args.numKs if not None else defaultNumK
+    numKs = defaultNumK if args.numKs is None else args.numKs
 
-    calculate_all_growth_rates_in_run(args.dir, args.field, args.norm, args.plotTk, args.maxK, numKs, args.log)
+    calculate_all_growth_rates_in_run(args.dir, args.field, args.norm, args.plotOmegaK, args.plotTk, args.maxK, numKs, args.log, args.deltaField)
