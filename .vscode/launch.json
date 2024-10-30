@@ -36,13 +36,16 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "args": ["--dir", "/users/era536/scratch/epoch/irb_max_settings",
+            "args": [
+                    "--dir", "/users/era536/scratch/epoch/irb_max_highres",
+                    //"--dir", "/users/era536/scratch/epoch/null_max_settings",
                     "--field", "Magnetic Field/Bz",
                     "--plotTk",
                     "--maxK", "100.0",
-                    "--numKs", "3",
+                    "--numKs", "5",
                     "--plotOmega",
-                    //"--deltaField"
+                    "--deltaField",
+                    "--savePath", "/users/era536/figures/epoch"
                     // "--log"
                 ]
         },
