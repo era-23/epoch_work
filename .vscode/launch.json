@@ -49,5 +49,17 @@
                     // "--log"
                 ]
         },
+        {
+            "name": "Python Debugger: Energy Analysis",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": [
+                    "--dir", "/users/era536/scratch/epoch/irb_max_highres",
+                    //"--savePath", "/users/era536/figures/epoch"
+                    // "--log"
+                ]
+        },
     ]
 }

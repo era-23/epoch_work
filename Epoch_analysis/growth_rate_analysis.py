@@ -26,7 +26,7 @@ def calculate_all_growth_rates_in_run(
 
     # Read dataset
     ds = xr.open_mfdataset(
-        str(directory / "*.sdf"),
+        str(directory / "0010.sdf"),
         data_vars='minimal', 
         coords='minimal', 
         compat='override', 
