@@ -40,12 +40,13 @@
                     "--dir", "/users/era536/scratch/epoch/irb_max_highres",
                     //"--dir", "/users/era536/scratch/epoch/null_max_settings",
                     "--field", "Magnetic Field/Bz",
-                    "--plotTk",
-                    "--maxK", "100.0",
+                    //"--plotTk",
+                    "--plotGrowth",
+                    //"--maxK", "100.0",
                     "--numKs", "5",
-                    "--plotOmega",
-                    "--deltaField",
-                    "--savePath", "/users/era536/figures/epoch"
+                    //"--plotOmega",
+                    //"--deltaField",
+                    //"--savePath", "/users/era536/figures/epoch"
                     // "--log"
                 ]
         },

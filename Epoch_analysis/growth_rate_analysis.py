@@ -2,6 +2,7 @@ from sdf_xarray import SDFPreprocess
 from pathlib import Path
 from scipy import constants
 from matplotlib import colors
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import epydeck
 import numpy as np
@@ -13,8 +14,9 @@ def calculate_all_growth_rates_in_run(
         directory : Path, 
         field : str, 
         normalise : bool = False, 
-        plotOmegaK : bool = True, 
-        plotTk : bool = True, 
+        plotOmegaK : bool = False, 
+        plotTk : bool = False, 
+        plotGrowth : bool = True, 
         maxK = None, 
         maxW = None,
         numKs = 5, 
@@ -26,7 +28,7 @@ def calculate_all_growth_rates_in_run(
 
     # Read dataset
     ds = xr.open_mfdataset(
-        str(directory / "0010.sdf"),
+        str(directory / "*.sdf"),
         data_vars='minimal', 
         coords='minimal', 
         compat='override', 
@@ -150,20 +152,94 @@ def calculate_all_growth_rates_in_run(
         plt.ylabel("Time [Wci^-1]")
         plt.show()
 
-    sum_over_all_t = np.sum(spec_tk, axis=0)
-    max_power_ks = np.argpartition(sum_over_all_t, -numKs)[-numKs:]
+    #sum_over_all_t = np.sum(spec_tk, axis=0)
+    peak_powers = spec_tk.max(axis=0)
+
+    # Was highest total power sums, now ks with highest peaks
+    peak_power_k_indices = np.argpartition(peak_powers, -numKs)[-numKs:]
+    peak_power_t_index = np.argmax(spec_tk[:,peak_power_k_indices[0]].data)
+    # print(f"i: {peak_power_k_indices[0]}: {peak_powers[peak_power_k_indices[0]]}")
+    # print(f"i: {peak_power_k_indices[1]}: {peak_powers[peak_power_k_indices[1]]}")
+    # print(f"i: {peak_power_k_indices[2]}: {peak_powers[peak_power_k_indices[2]]}")
+    # print(f"i: {peak_power_k_indices[3]}: {peak_powers[peak_power_k_indices[3]]}")
+    # print(f"i: {peak_power_k_indices[4]}: {peak_powers[peak_power_k_indices[4]]}")
 
     # Calculate growth rates by k
-    for i in max_power_ks:
-        plt.plot(spec_tk.coords["time"], spec_tk[:,i], label = f"k = {float(spec_tk.coords['wavenumber'][i])}")
-    #plt.yscale("log")
-    plt.xlabel("Time/Wci^-1")
-    plt.ylabel(f"Spectral power [{field_data_array.units}]")
-    plt.title(f"{directory.name}: Time evolution of {numKs} highest power wavenumbers in {field}")
-    plt.legend()
-    if savePath is not None:
-        plt.savefig(savePath / f'{directory.name}_growthRates_dField-{deltaField}_log-{log}_numK-{numKs if numKs is not None else "all"}.png')
-    plt.show()
+    if plotGrowth:
+        for i in peak_power_k_indices:
+            plt.plot(spec_tk.coords["time"], spec_tk[:,i], label = f"k = {float(spec_tk.coords['wavenumber'][i])}")
+        plt.xlabel("Time [Wci^-1]")
+        plt.ylabel(f"Spectral power [{field_data_array.units}]")
+        plt.title(f"{directory.name}: Time evolution of {numKs} highest power wavenumbers in {field}")
+        plt.legend()
+        if savePath is not None:
+            plt.savefig(savePath / f'{directory.name}_growthRates_dField-{deltaField}_log-{log}_numK-{numKs if numKs is not None else "all"}.png')
+        plt.show()
+
+        print(f"Max power at index {peak_power_t_index}, t = {spec_tk.coords['time'][peak_power_t_index]}")
+        for i in peak_power_k_indices:
+            plt.plot(spec_tk.coords["time"][:peak_power_t_index], spec_tk[:peak_power_t_index,i], label = f"k = {float(spec_tk.coords['wavenumber'][i])}")
+        plt.xlabel("Time [Wci^-1]")
+        plt.ylabel(f"Spectral power [{field_data_array.units}]")
+        plt.title(f"{directory.name}: Time evolution of {numKs} highest power wavenumbers in {field} up to time of max power")
+        plt.legend()
+        if savePath is not None:
+            plt.savefig(savePath / f'{directory.name}_growthRates_earlyTime_dField-{deltaField}_log-{log}_numK-{numKs if numKs is not None else "all"}.png')
+        plt.show()
+
+        for i in peak_power_k_indices:
+            plt.plot(spec_tk.coords["time"][:peak_power_t_index], spec_tk[:peak_power_t_index,i], label = f"k = {float(spec_tk.coords['wavenumber'][i])}")
+        plt.yscale("log")
+        plt.xlabel("Time [Wci^-1]")
+        plt.ylabel(f"Log of spectral power [{field_data_array.units}]")
+        plt.title(f"{directory.name}: Time evolution of {numKs} highest power wavenumbers in {field} up to time of max power (log scale)")
+        plt.legend()
+        if savePath is not None:
+            plt.savefig(savePath / f'{directory.name}_LogGrowthRates_earlyTime_dField-{deltaField}_log-{log}_numK-{numKs if numKs is not None else "all"}.png')
+        plt.show()
+
+        plt.plot(spec_tk.coords["time"][:peak_power_t_index], spec_tk[:peak_power_t_index,peak_power_k_indices[0]], label = f"k = {float(spec_tk.coords['wavenumber'][peak_power_k_indices[0]])}")
+        plt.yscale("log")
+        fit = np.polyfit(x = spec_tk.coords["time"][:peak_power_t_index], y = np.log(spec_tk[:peak_power_t_index,peak_power_k_indices[0]]), deg = 1)
+        plt.title(f"{directory.name}: Linear fit of highest power wavenumber in {field} up to time of max power (log scale)")
+        plt.xlabel("Time [Wci^-1]")
+        plt.ylabel(f"Log of spectral power [au]")
+        plt.plot(spec_tk.coords["time"][:peak_power_t_index], np.exp(np.polyval(fit, spec_tk.coords["time"][:peak_power_t_index])), label = f"gamma = {np.exp(fit[1]):.3f}")
+        plt.legend()
+        plt.show()
+
+    # Calculate this gamma for all k and plot
+    # growth_phase_gammas = []
+    # filtered_spec_tk = spec_tk.sel(wavenumber=spec_tk.wavenumber<=maxK)
+    # filtered_spec_tk = filtered_spec_tk.sel(wavenumber=filtered_spec_tk.wavenumber>=-maxK)
+    # for k in range(len(filtered_spec_tk.coords['wavenumber'])):
+    #     fit = np.polyfit(x = filtered_spec_tk.coords["time"][:peak_power_t_index], y = np.log(filtered_spec_tk[:peak_power_t_index,k]), deg = 1)
+    #     growth_phase_gammas.append(np.exp(fit[1]))
+
+    # plt.plot(filtered_spec_tk.coords['wavenumber'], growth_phase_gammas)
+    # plt.title(f"{directory.name}: Gamma during initial linear growth phase, by wavenumber")
+    # plt.xlabel("Wavenumber [Wci/vA]")
+    # plt.ylabel("Gamma [au?]")
+    # plt.show()
+
+    # Calculate gamma by time for only high power ks
+    window_size = 20
+    for k in peak_power_k_indices: # For highest peak power ks
+        t_k = spec_tk[:,k]
+        gammas = []
+        time_centres = []
+        for i in range(len(t_k) - (window_size + 1)): # For each window
+            t_k_window = t_k[i:(i + window_size)]
+            time_centres.append(t_k.coords["time"][i:(i + window_size)][int(window_size/2)])
+            fit = np.polyfit(x = t_k.coords["time"][i:(i + window_size)], y = np.log(t_k_window), deg = 1)
+            gammas.append(np.exp(fit[1]))
+        plt.scatter(time_centres, gammas)
+        plt.xlabel("Time at centre of window [ion_gyroperiods]")
+        plt.ylabel("Gamma [au?]")
+        plt.yscale("log")
+        plt.title(f"{directory.name}: k = {float(spec_tk.coords['wavenumber'][k])} Growth rate within sliding window of size {window_size} ({window_size*100.0/num_t}%)")
+        plt.savefig(savePath / f'{directory.name}_k{k:.5f}_growthRateSlidingWindow.png')
+        #plt.show()
 
 
 if __name__ == "__main__":
@@ -199,6 +275,12 @@ if __name__ == "__main__":
         "--plotTk",
         action="store_true",
         help="Plot power in wavenumber vs time.",
+        required = False
+    )
+    parser.add_argument(
+        "--plotGrowth",
+        action="store_true",
+        help="Plot time evolution of field.",
         required = False
     )
     parser.add_argument(
@@ -249,12 +331,15 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
+    #mpl.use("QtAgg")
+
     calculate_all_growth_rates_in_run(
         args.dir, 
         args.field, 
         args.norm, 
         args.plotOmegaK, 
         args.plotTk, 
+        args.plotGrowth,
         args.maxK, 
         args.maxW, 
         args.numKs, 

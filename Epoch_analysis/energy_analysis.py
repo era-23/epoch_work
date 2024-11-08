@@ -38,19 +38,22 @@ def calculate_energy(directory : Path):
     proton_kE_load = proton_E_array.load()
     B_E_load = B_array.load()
 
-    # Sum over all cells
-    irb_ke_sum : xr.DataArray = np.sum(irb_kE_load, axis=1)
-    pro_ke_sum : xr.DataArray = np.sum(proton_kE_load, axis=1)
-    b_sum : xr.DataArray = np.sum(B_E_load, axis=1)
+    # Sum over all cells for particle energy, mean for field energy density
+    irb_ke_sum : xr.DataArray = irb_kE_load.sum(dim = "X_Grid_mid")
+    pro_ke_sum : xr.DataArray = proton_kE_load.sum(dim = "X_Grid_mid")
+    
+
+    b_energy : xr.DataArray = (B_E_load**2 / (2.0 * constants.mu_0))
+    b_E_mean : xr.DataArray = b_energy.mean(dim = "X_Grid_mid")
 
     cell_spacing = B_E_load.coords["X_Grid_mid"][1] - B_E_load.coords["X_Grid_mid"][0]
     simLength = B_E_load.coords["X_Grid_mid"][-1] + (0.5 * cell_spacing)
 
     # Calculate B energy and convert others to to J/m3
-    B_dE = b_sum - b_sum[0]
+    B_dE_density = b_E_mean - b_E_mean[0]
     irb_dkE = irb_ke_sum - irb_ke_sum[0]
     proton_dkE = pro_ke_sum - pro_ke_sum[0]
-    B_energy_density = (B_dE**2 / (2.0 * constants.mu_0))
+
     irb_ke_density = (irb_dkE / simLength**3) * irb_density
     proton_ke_density = (proton_dkE / simLength*3) * proton_density
 
