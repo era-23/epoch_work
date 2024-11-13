@@ -2,13 +2,54 @@ from sdf_xarray import SDFPreprocess
 from pathlib import Path
 from scipy import constants
 from matplotlib import colors
-import matplotlib as mpl
+from dataclasses import dataclass
 import matplotlib.pyplot as plt
 import epydeck
 import numpy as np
 import xarray as xr
 import argparse
 import xrft
+
+@dataclass
+class LinearGrowthRateByK:
+    wavenumber: float
+    gamma: float
+    residual: float
+
+@dataclass
+class LinearGrowthRateByT:
+    time: float
+    gamma: float
+    residual: float
+
+def trim_to_middle_pct(x, pct):
+    remove_pct = 100.0 - pct
+    remove_frac_one_tail = (remove_pct / 100.0) / 2.0
+    remove_indices_one_tail = int(remove_frac_one_tail * len(x))
+    print(f"trimmed to middle {len(x) - 2 * remove_indices_one_tail} indices")
+    return x[remove_indices_one_tail:-remove_indices_one_tail]
+
+def fit_to_middle_percentage(x, y, pct):
+    x_trim = trim_to_middle_pct(x, pct)
+    y_trim = trim_to_middle_pct(y, pct)
+    return np.polyfit(x_trim, y_trim, deg = 1, full = True)
+
+def filter_by_residuals(x, residuals, maxRes):
+    x = np.array(x)
+    min_res = np.nanmin(residuals)
+    max_res = np.nanmax(residuals)
+    range_res = max_res - min_res
+    for lgr in x:
+        lgr.residual = (lgr.residual - min_res) / range_res
+    
+    # Filter growth rates  
+    x_low_residuals = np.array([i for i in x if i.residual <= maxRes])
+
+    for i in x_low_residuals:
+        i.residual = (i.residual * range_res) + min_res
+
+    return x_low_residuals
+
 
 def calculate_all_growth_rates_in_run(
         directory : Path, 
@@ -19,7 +60,9 @@ def calculate_all_growth_rates_in_run(
         plotGrowth : bool = True, 
         maxK = None, 
         maxW = None,
-        numKs = 5, 
+        maxRes = 0.2,
+        numKs = 5,
+        gammaWindow = 20,
         log = False, 
         deltaField = False, 
         beam = True,
@@ -34,6 +77,20 @@ def calculate_all_growth_rates_in_run(
         compat='override', 
         preprocess=SDFPreprocess()
     )
+
+    # Drop initial conditions because they may not represent a solution
+    ds = ds.sel(time=ds.coords["time"]>ds.coords["time"][0])
+
+    # ts = []
+    # for t in range(1, len(ds.coords["time"])):
+    #     ts.append(ds.coords["time"][t] - ds.coords["time"][t-1])
+
+    # plt.scatter(range(len(ts)), ts)
+    # plt.xlabel("time index")
+    # plt.ylabel("Difference between t and t-1")
+    # plt.show()
+
+    #return
 
     # Read input deck
     input = {}
@@ -74,7 +131,8 @@ def calculate_all_growth_rates_in_run(
         ion_bkgd_charge = input['species']['proton']['charge'] * constants.elementary_charge
         ion_gyroperiod = (TWO_PI * ion_bkgd_mass) / (ion_bkgd_charge * B0)
 
-    Tci = ds.coords["time"] / ion_gyroperiod
+    evenly_spaced_time = np.linspace(ds.coords["time"][0].data, ds.coords["time"][-1].data, len(ds.coords["time"].data))
+    Tci = evenly_spaced_time / ion_gyroperiod
     alfven_velo = B0 / (np.sqrt(constants.mu_0 * mass_density))
     vA_Tci = ds.coords["X_Grid_mid"] / (ion_gyroperiod * alfven_velo)
 
@@ -156,13 +214,11 @@ def calculate_all_growth_rates_in_run(
     peak_powers = spec_tk.max(axis=0)
 
     # Was highest total power sums, now ks with highest peaks
+    peak_powers = np.nan_to_num(peak_powers)
     peak_power_k_indices = np.argpartition(peak_powers, -numKs)[-numKs:]
     peak_power_t_index = np.argmax(spec_tk[:,peak_power_k_indices[0]].data)
-    # print(f"i: {peak_power_k_indices[0]}: {peak_powers[peak_power_k_indices[0]]}")
-    # print(f"i: {peak_power_k_indices[1]}: {peak_powers[peak_power_k_indices[1]]}")
-    # print(f"i: {peak_power_k_indices[2]}: {peak_powers[peak_power_k_indices[2]]}")
-    # print(f"i: {peak_power_k_indices[3]}: {peak_powers[peak_power_k_indices[3]]}")
-    # print(f"i: {peak_power_k_indices[4]}: {peak_powers[peak_power_k_indices[4]]}")
+
+    fit_to_middle_pct = 60.0
 
     # Calculate growth rates by k
     if plotGrowth:
@@ -198,48 +254,94 @@ def calculate_all_growth_rates_in_run(
             plt.savefig(savePath / f'{directory.name}_LogGrowthRates_earlyTime_dField-{deltaField}_log-{log}_numK-{numKs if numKs is not None else "all"}.png')
         plt.show()
 
-        plt.plot(spec_tk.coords["time"][:peak_power_t_index], spec_tk[:peak_power_t_index,peak_power_k_indices[0]], label = f"k = {float(spec_tk.coords['wavenumber'][peak_power_k_indices[0]])}")
-        plt.yscale("log")
-        fit = np.polyfit(x = spec_tk.coords["time"][:peak_power_t_index], y = np.log(spec_tk[:peak_power_t_index,peak_power_k_indices[0]]), deg = 1)
-        plt.title(f"{directory.name}: Linear fit of highest power wavenumber in {field} up to time of max power (log scale)")
+        plt.plot(spec_tk.coords["time"][:peak_power_t_index], np.log(spec_tk[:peak_power_t_index,peak_power_k_indices[0]]), label = f"k = {float(spec_tk.coords['wavenumber'][peak_power_k_indices[0]]):.4f}")
+        #plt.yscale("log")
+        t_middle = trim_to_middle_pct(spec_tk.coords["time"][:peak_power_t_index], fit_to_middle_pct)
+        power_middle = trim_to_middle_pct(np.log(spec_tk[:peak_power_t_index,peak_power_k_indices[0]]), fit_to_middle_pct)
+        fit = np.polyfit(x = t_middle, y = power_middle, deg = 1)
+        plt.title(f"{directory.name}: Linear fit of middle {fit_to_middle_pct}% of highest log power wavenumber in {field} up to time of max power")
         plt.xlabel("Time [Wci^-1]")
-        plt.ylabel(f"Log of spectral power [au]")
-        plt.plot(spec_tk.coords["time"][:peak_power_t_index], np.exp(np.polyval(fit, spec_tk.coords["time"][:peak_power_t_index])), label = f"gamma = {np.exp(fit[1]):.3f}")
+        plt.ylabel("Log of spectral power [au]")
+        print(f"y = {float(fit[0]):.4f}x + {float(fit[1]):.4f}")
+        plt.plot(t_middle, np.polyval(fit, t_middle), label = f"gamma = {float(fit[0]):.4f}")
         plt.legend()
         plt.show()
 
     # Calculate this gamma for all k and plot
-    # growth_phase_gammas = []
-    # filtered_spec_tk = spec_tk.sel(wavenumber=spec_tk.wavenumber<=maxK)
-    # filtered_spec_tk = filtered_spec_tk.sel(wavenumber=filtered_spec_tk.wavenumber>=-maxK)
-    # for k in range(len(filtered_spec_tk.coords['wavenumber'])):
-    #     fit = np.polyfit(x = filtered_spec_tk.coords["time"][:peak_power_t_index], y = np.log(filtered_spec_tk[:peak_power_t_index,k]), deg = 1)
-    #     growth_phase_gammas.append(np.exp(fit[1]))
+    all_linear_growth_rates = []
+    all_residuals = []
+    filtered_spec_tk = spec_tk.sel(wavenumber=spec_tk.wavenumber<=maxK)
+    filtered_spec_tk = filtered_spec_tk.sel(wavenumber=filtered_spec_tk.wavenumber>=-maxK)
+    for k in range(len(filtered_spec_tk.coords['wavenumber'])):
+        fit, res, _, _, _ = np.polyfit(x = filtered_spec_tk.coords["time"][:peak_power_t_index], y = np.log(filtered_spec_tk[:peak_power_t_index,k]), deg = 1, full=True)
+        all_linear_growth_rates.append(LinearGrowthRateByK(wavenumber = float(filtered_spec_tk.coords['wavenumber'][k].data), gamma = float(fit[0]), residual = float(res[0])))
+        all_residuals.append(float(res[0]))
+    
+    # Normalise growth rates
+    lgr_low_residuals = filter_by_residuals(all_linear_growth_rates, all_residuals, maxRes = maxRes)
+    k_filtered = []
+    gamma_filtered = []
+    res_filtered = []
+    for lgr in lgr_low_residuals:
+        k_filtered.append(lgr.wavenumber)
+        gamma_filtered.append(lgr.gamma)
+        res_filtered.append(lgr.residual)
 
-    # plt.plot(filtered_spec_tk.coords['wavenumber'], growth_phase_gammas)
-    # plt.title(f"{directory.name}: Gamma during initial linear growth phase, by wavenumber")
-    # plt.xlabel("Wavenumber [Wci/vA]")
-    # plt.ylabel("Gamma [au?]")
-    # plt.show()
+    plt.scatter(k_filtered, gamma_filtered, marker='x')
+    plt.title(f"{directory.name}: Gamma during initial linear growth phase, by wavenumber")
+    plt.xlabel("Wavenumber [Wci/vA]")
+    plt.ylabel("Gamma [Wci]")
+    plt.show()
+
+    plt.scatter(k_filtered, res_filtered, marker='x')
+    plt.title(f"{directory.name}: Residuals of Gamma fit during initial linear growth phase, by wavenumber")
+    plt.xlabel("Wavenumber [Wci/vA]")
+    plt.ylabel("Sum of squared errors [au]")
+    plt.show()
+
+    plt.scatter(gamma_filtered, res_filtered, marker='x')
+    plt.title(f"{directory.name}: Residuals of Gamma fit during initial linear growth phase, by growth rate")
+    plt.xlabel("Gamma [Wci]")
+    plt.ylabel("Sum of squared errors [au]")
+    plt.show()
+
+    fit, res, _, _, _ = np.polyfit(x = gamma_filtered, y = np.log(res_filtered), deg = 1, full=True)
+    plt.scatter(gamma_filtered, res_filtered, marker='x')
+    gamma_filtered.sort()
+    plt.plot(gamma_filtered, np.exp(np.polyval(fit, gamma_filtered)), color='orange', label = f'Fit: g = {float(fit[0]):.3f}')
+    plt.title(f"{directory.name}: Residuals of Gamma fit during initial linear growth phase, by growth rate")
+    plt.xlabel("Gamma [Wci]")
+    plt.ylabel("Sum of squared errors [au]")
+    plt.legend()
+    plt.show()
 
     # Calculate gamma by time for only high power ks
-    window_size = 20
     for k in peak_power_k_indices: # For highest peak power ks
         t_k = spec_tk[:,k]
-        gammas = []
-        time_centres = []
-        for i in range(len(t_k) - (window_size + 1)): # For each window
-            t_k_window = t_k[i:(i + window_size)]
-            time_centres.append(t_k.coords["time"][i:(i + window_size)][int(window_size/2)])
-            fit = np.polyfit(x = t_k.coords["time"][i:(i + window_size)], y = np.log(t_k_window), deg = 1)
-            gammas.append(np.exp(fit[1]))
-        plt.scatter(time_centres, gammas)
+        all_gammas = []
+        all_residuals = []
+        for i in range(len(t_k) - (gammaWindow + 1)): # For each window
+            t_k_window = t_k[i:(i + gammaWindow)]
+            fit, res, _, _, _ = np.polyfit(x = t_k.coords["time"][i:(i + gammaWindow)], y = np.log(t_k_window), deg = 1, full = True)
+            all_gammas.append(LinearGrowthRateByT(time = t_k.coords["time"][i:(i + gammaWindow)][int(gammaWindow/2)], gamma = float(fit[0]), residual = float(res[0])))
+            all_residuals.append(float(res[0]))
+        
+        # Normalise residuals and filter
+        filtered = filter_by_residuals(all_gammas, all_residuals, maxRes)
+
+        filtered_times = []
+        filtered_gammas = []
+        for lgr in filtered:
+            filtered_times.append(lgr.time)
+            filtered_gammas.append(lgr.gamma)
+        
+        plt.scatter(filtered_times, filtered_gammas, marker = 'x')
         plt.xlabel("Time at centre of window [ion_gyroperiods]")
-        plt.ylabel("Gamma [au?]")
-        plt.yscale("log")
-        plt.title(f"{directory.name}: k = {float(spec_tk.coords['wavenumber'][k])} Growth rate within sliding window of size {window_size} ({window_size*100.0/num_t}%)")
-        plt.savefig(savePath / f'{directory.name}_k{k:.5f}_growthRateSlidingWindow.png')
-        #plt.show()
+        plt.ylabel("Gamma [Wci]")
+        #plt.yscale("log")
+        plt.title(f"{directory.name}: k = {float(spec_tk.coords['wavenumber'][k])} Growth rate within sliding window of size {gammaWindow} ({gammaWindow*100.0/num_t}%)")
+        #plt.savefig(savePath / f'{directory.name}_k{k:.5f}_growthRateSlidingWindow.png')
+        plt.show()
 
 
 if __name__ == "__main__":
@@ -298,9 +400,23 @@ if __name__ == "__main__":
         type=float
     )
     parser.add_argument(
+        "--maxRes",
+        action="store",
+        help="Maximum normalised residual for inclusion in plots, analysis. Defaults to 0.2 (max 1).",
+        required = False,
+        type=float
+    )
+    parser.add_argument(
         "--numKs",
         action="store",
         help="Number of wavenumbers to plot in time evolution. Defaults to 5.",
+        required = False,
+        type=int
+    )
+    parser.add_argument(
+        "--gammaWindow",
+        action="store",
+        help="Size of window in indices (time points) to use for calculating growth rates. Defaults to 20.",
         required = False,
         type=int
     )
@@ -342,7 +458,9 @@ if __name__ == "__main__":
         args.plotGrowth,
         args.maxK, 
         args.maxW, 
-        args.numKs, 
+        0.2 if args.maxRes is None else args.maxRes,
+        args.numKs,
+        20 if args.gammaWindow is None else args.gammaWindow,
         args.log, 
         args.deltaField, 
         args.beam,

@@ -11,6 +11,33 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "args": ["--dir", "/home/era536/Documents/Epoch/Data/run_23"]
+        },
+        {
+            "name": "Python Debugger: Energy Analysis",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "energy_analysis.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--dir", "/home/era536/Documents/Epoch/Data/irb_max_highres/",
+                "--irb"
+            ]
+        },
+        {
+            "name": "Python Debugger: Growth Rate Analysis",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "growth_rate_analysis.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--dir", "/home/era536/Documents/Epoch/Data/irb_max_hr_O5_smoothI/",
+                "--field", "Magnetic_Field_Bz",
+                //"--plotOmegaK",
+                //"--plotTk",
+                "--plotGrowth",
+                "--numKs", "5",
+                "--maxK", "100.0"
+            ]
         }
     ]
 }
