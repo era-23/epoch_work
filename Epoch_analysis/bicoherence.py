@@ -30,11 +30,12 @@ def my_plot_bispectrumd(
     --------
     None
     """
-    cont = plt.contourf(waxis, waxis, abs(Bspec), 100, cmap="viridis")
+    cont = plt.contourf(waxis, waxis, abs(Bspec), 100, cmap="plasma")
     plt.colorbar(cont)
-    plt.title("Bispectrum estimated via the direct (FFT) method")
+    #plt.title("Bispectrum estimated via the direct (FFT) method")
     plt.xlabel(axis_label)
     plt.ylabel(axis_label)
+    plt.tight_layout()
     if grid:
         plt.grid()
     plt.show()
@@ -110,43 +111,100 @@ def plot_bicoherence_spectra(directory : Path, field : str, time_pt : float, plo
     print(f"NORMALISED: Sampling frequency in Wci/vA: {num_cells/simL_vATci}Wci/vA")
     print(f"NORMALISED: Nyquist frequency in Wci/vA: {num_cells/(2.0 *simL_vATci)}Wci/vA")
 
+    plt.rcParams.update({'axes.labelsize': 16})
+    plt.rcParams.update({'axes.titlesize': 18})
+    plt.rcParams.update({'xtick.labelsize': 14})
+    plt.rcParams.update({'ytick.labelsize': 14})
+
     data = xr.DataArray(field_data, coords=[Tci, vA_Tci], dims=["time", "X_Grid_mid"])
     data = data.rename(X_Grid_mid="x_space")
+
+    # Create t-k spectrum
+    original_spec : xr.DataArray = xrft.xrft.fft(data, true_amplitude=True, true_phase=True, window=None)
+    #adjusted_data = xrft.xrft.ifft(original_spec)
+    original_spec = original_spec.rename(freq_time="frequency", freq_x_space="wavenumber")
+    original_spec = original_spec.where(original_spec.wavenumber!=0.0, None)
+    original_spec = original_spec.where(original_spec.frequency!=0.0, None)
+    zeroed_spec = original_spec.where(original_spec.frequency>0.0, 0.0)
+
+    # Positive ks
+    positive_k_spec = zeroed_spec.where(zeroed_spec.wavenumber>0.0, 0.0)
+    quadrupled_positive_spec = 4.0 * positive_k_spec # Double spectrum to conserve E
+    quadrupled_positive_spec.loc[dict(wavenumber=0.0)] = positive_k_spec.sel(wavenumber=0.0) # Restore original 0-freq amplitude
+    quadrupled_positive_spec.loc[dict(frequency=0.0)] = positive_k_spec.sel(frequency=0.0) # Restore original 0-freq amplitude
+    positive_data = xrft.xrft.ifft(quadrupled_positive_spec)
+    positive_data = positive_data.rename(freq_frequency = "time")
+    positive_data = positive_data.rename(freq_wavenumber = "x_space")
+
+    # Negative ks
+    negative_k_spec = zeroed_spec.where(zeroed_spec.wavenumber<0.0, 0.0)
+    quadrupled_negative_spec = 4.0 * negative_k_spec # Double spectrum to conserve E
+    quadrupled_negative_spec.loc[dict(wavenumber=0.0)] = negative_k_spec.sel(wavenumber=0.0) # Restore original 0-freq amplitude
+    quadrupled_negative_spec.loc[dict(frequency=0.0)] = negative_k_spec.sel(frequency=0.0) # Restore original 0-freq amplitude
+    negative_data = xrft.xrft.ifft(quadrupled_negative_spec)
+    negative_data = negative_data.rename(freq_frequency = "time")
+    negative_data = negative_data.rename(freq_wavenumber = "x_space")
+
     if plotTk:
-        spec_k : xr.DataArray = xrft.xrft.fft(data, dim = "x_space", true_amplitude=True, true_phase=True, window=None)
-        spec_k = abs(spec_k)
-        spec_k = spec_k.rename(freq_x_space="wavenumber")
-        spec_k = spec_k.where(spec_k.wavenumber!=0.0, None)
-        #spec_k = spec_k.sel(wavenumber=spec_k.wavenumber<=100.0)
-        #spec_k = spec_k.sel(wavenumber=spec_k.wavenumber>=-100.0)
-        spec_k.plot(size = 9, x = "wavenumber", y = "time")
+        # Create t-k spectrum
+        zero_spec = original_spec.where(original_spec.frequency>0.0, 0.0)
+        zeroed_doubled_spec = 2.0 * zero_spec # Double spectrum to conserve E
+        zeroed_doubled_spec.loc[dict(wavenumber=0.0)] = zero_spec.sel(wavenumber=0.0) # Restore original 0-freq amplitude
+        spec_tk = xrft.xrft.ifft(zeroed_doubled_spec, dim="frequency")
+        spec_tk = spec_tk.rename(freq_frequency="time")
+        spec_tk : xr.DataArray = abs(spec_tk)
+        spec_tk = xrft.xrft.ifft(zeroed_doubled_spec, dim="frequency")
+        spec_tk = spec_tk.rename(freq_frequency="time")
+        spec_tk_plot : xr.DataArray = abs(spec_tk)
+        spec_tk_plot.plot(size=9, x = "wavenumber", y = "time")
+        plt.title(f"{directory.name}: Time evolution of spectral power in {field}")
+        plt.xlabel("Wavenumber [Wci/vA]")
+        plt.ylabel("Time [Wci^-1]")
         plt.show()
-        zeroed_spec = spec_k.where(spec_k.time>0.0, 0.0)
-        zeroed_doubled_spec = 2.0 * zeroed_spec # Double spectrum to conserve E
-        zeroed_doubled_spec.loc[dict(wavenumber=0.0)] = zeroed_spec.sel(wavenumber=0.0) # Restore original 0-freq amplitude
 
     jump_factor = 8 # Sample only every this many points from bispectrum
-    Bspec, waxis = bispectrumd(data.sel(time = time_pt, method='nearest').to_numpy()[::jump_factor, None], overlap = 0, nfft = 1000)
+    Bspec, waxis = bispectrumd(positive_data.sel(time = time_pt, method='nearest').to_numpy()[::jump_factor, None], overlap = 0, nfft = 1000)
+    #Bspec, waxis = bicoherence(data.sel(time = time_pt, method='nearest').to_numpy()[::jump_factor, None], overlap = 0, nfft = 1000)
     waxis = waxis[2:]
 
     # Upper triangle mask
     upper_mask = np.tri(waxis.shape[0], waxis.shape[0], k=-1)
+    #lefty_mask = np.flip(upper_mask, axis=0)
+    #righty_mask = np.flip(upper_mask, axis=1)
 
     # Mask the upper triangle
-    Bspec_mask = np.ma.array(Bspec, mask=upper_mask)
+    Bspec_mask_pos = np.ma.array(Bspec, mask=upper_mask)
+    #Bspec_mask = np.ma.array(Bspec_mask, mask=righty_mask)
 
-    min_k = 2.0 * np.pi /simL_vATci
-    nyquist_k = min_k * num_cells / 2.0
-    new_nyquist_k = nyquist_k / jump_factor
+    # min_k = 2.0 * np.pi /simL_vATci
+    # nyquist_k = min_k * num_cells / 2.0
+    # new_nyquist_k = nyquist_k / jump_factor
     my_nyq_k = num_cells/(2.0 *simL_vATci)
     my_new_nyq_k = my_nyq_k / jump_factor
-    #plt.pcolormesh(waxis*2.0*new_nyquist_k, waxis*2.0*new_nyquist_k, abs(Bspec))
-    #plt.show()
 
     #plot_bispectrumd(Bspec, waxis*2.0*my_new_nyq_k)
-    my_plot_bispectrumd(Bspec_mask, waxis*2.0*my_new_nyq_k, "Wavenumber [Wci/vA]", True)
+    #my_plot_bispectrumd(Bspec_mask_pos, waxis*2.0*my_new_nyq_k, r"Wavenumber [$\omega_{ci}/V_A$]", True)
+    #plot_bicoherence(Bspec_mask, waxis*2.0*my_new_nyq_k)
     #bic, waxis = bicoherence(data.to_numpy())
     #plot_bicoherence(bic, waxis)
+
+    Bspec, waxis = bispectrumd(negative_data.sel(time = time_pt, method='nearest').to_numpy()[::jump_factor, None], overlap = 0, nfft = 1000)
+    #Bspec, waxis = bicoherence(data.sel(time = time_pt, method='nearest').to_numpy()[::jump_factor, None], overlap = 0, nfft = 1000)
+    waxis = waxis[2:]
+
+    # Upper triangle mask
+    #upper_mask = np.tri(waxis.shape[0], waxis.shape[0], k=-1)
+    #righty_mask = np.flip(upper_mask, axis=1)
+
+    # Mask the upper triangle
+    Bspec_mask_neg = np.ma.array(Bspec, mask=upper_mask)
+    #Bspec_mask = np.ma.array(Bspec_mask, mask=righty_mask)
+
+    #plot_bispectrumd(Bspec, waxis*2.0*my_new_nyq_k)
+    #my_plot_bispectrumd(Bspec_mask_neg, waxis*2.0*my_new_nyq_k, r"Wavenumber [$\omega_{ci}/V_A$]", True)
+
+    Bspec_all = Bspec_mask_pos + Bspec_mask_neg
+    my_plot_bispectrumd(Bspec_all, waxis*2.0*my_new_nyq_k, r"Wavenumber [$\omega_{ci}/V_A$]", True)
 
 if __name__ == "__main__":
     

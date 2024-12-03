@@ -3,6 +3,9 @@ from pathlib import Path
 from scipy import constants
 from dataclasses import dataclass
 import matplotlib.pyplot as plt
+from matplotlib import colors
+from inference.plotting import matrix_plot
+import pandas as pd
 import epydeck
 import numpy as np
 import xarray as xr
@@ -175,6 +178,10 @@ def plot_growth_rate_data(
     original_spec = original_spec.rename(freq_time="frequency", freq_x_space="wavenumber")
     original_spec = original_spec.where(original_spec.wavenumber!=0.0, None)
 
+    plt.rcParams.update({'axes.labelsize': 16})
+    plt.rcParams.update({'axes.titlesize': 18})
+    plt.rcParams.update({'xtick.labelsize': 14})
+    plt.rcParams.update({'ytick.labelsize': 14})
     # Plot omega-k
     if plotOmegaK:
         spec = abs(original_spec)
@@ -190,9 +197,9 @@ def plot_growth_rate_data(
         spec.plot(size=9)
         if savePath is not None:
             plt.savefig(savePath / f'{directory.name}_wk_dField-{deltaField}_log-{log}_maxK-{maxK if maxK is not None else "all"}_maxW-{maxK if maxK is not None else "all"}.png')
-        plt.title(f"{directory.name}: Dispersion relation of {field}")
-        plt.ylabel("Frequency [Wci]")
-        plt.xlabel("Wavenumber [Wci/vA]")
+        #plt.title(f"{directory.name}: Dispersion relation of {field}")
+        plt.ylabel(r"Frequency [$\omega_{ci}$]")
+        plt.xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
         plt.show()
 
     # Create t-k spectrum
@@ -215,9 +222,9 @@ def plot_growth_rate_data(
         spec_tk_plot.plot(size=9, x = "wavenumber", y = "time")
         if savePath is not None:
             plt.savefig(savePath / f'{directory.name}_tk_dField-{deltaField}_log-{log}_maxK-{maxK if maxK is not None else "all"}.png')
-        plt.title(f"{directory.name}: Time evolution of spectral power in {field}")
-        plt.xlabel("Wavenumber [Wci/vA]")
-        plt.ylabel("Time [Wci^-1]")
+        #plt.title(f"{directory.name}: Time evolution of spectral power in {field}")
+        plt.xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
+        plt.ylabel(r"Time [$\tau_{ci}$]")
         plt.show()
 
     #sum_over_all_t = np.sum(spec_tk, axis=0)
@@ -269,12 +276,12 @@ def plot_growth_rate_data(
         t_middle = trim_to_middle_pct(spec_tk.coords["time"][:peak_power_t_index], fit_to_middle_pct)
         power_middle = trim_to_middle_pct(np.log(spec_tk[:peak_power_t_index,peak_power_k_indices[0]]), fit_to_middle_pct)
         fit = np.polyfit(x = t_middle, y = power_middle, deg = 1)
-        plt.title(f"{directory.name}: Linear fit of middle {fit_to_middle_pct}% of highest log power wavenumber in {field} up to time of max power")
-        plt.xlabel("Time [Wci^-1]")
-        plt.ylabel("Log of spectral power [au]")
+        #plt.title(f"{directory.name}: Linear fit of middle {fit_to_middle_pct}% of highest log power wavenumber in {field} up to time of max power")
+        plt.xlabel(r"Time [$\omega_{ci}$]")
+        plt.ylabel("Log of spectral power")
         print(f"y = {float(fit[0]):.4f}x + {float(fit[1]):.4f}")
         plt.plot(t_middle, np.polyval(fit, t_middle), label = f"gamma = {float(fit[0]):.4f}")
-        plt.legend()
+        plt.legend(prop={'size': 16})
         plt.show()
 
     # Calculate this gamma for all k and plot
@@ -299,15 +306,15 @@ def plot_growth_rate_data(
 
     if plotGammas:
         plt.scatter(k_filtered, gamma_filtered, marker='x')
-        plt.title(f"{directory.name}: Gamma during initial linear growth phase, by wavenumber")
-        plt.xlabel("Wavenumber [Wci/vA]")
-        plt.ylabel("Gamma [Wci]")
+        #plt.title(f"{directory.name}: Gamma during initial linear growth phase, by wavenumber")
+        plt.xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
+        plt.ylabel(r"Gamma [$\omega_{ci}$]")
         plt.show()
 
         plt.scatter(k_filtered, res_filtered, marker='x')
         plt.title(f"{directory.name}: Residuals of Gamma fit during initial linear growth phase, by wavenumber")
-        plt.xlabel("Wavenumber [Wci/vA]")
-        plt.ylabel("Sum of squared errors [au]")
+        plt.xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
+        plt.ylabel("Sum of squared errors")
         plt.show()
 
     # plt.scatter(gamma_filtered, res_filtered, marker='x')
@@ -347,10 +354,10 @@ def plot_growth_rate_data(
             filtered_gammas.append(lgr.gamma)
         
         plt.scatter(filtered_times, filtered_gammas, marker = 'x')
-        plt.xlabel("Time at centre of window [ion_gyroperiods]")
-        plt.ylabel("Gamma [Wci]")
+        plt.xlabel(r"Time at centre of window [$\tau_{ci}$]")
+        plt.ylabel(r"Gamma [$\omega_{ci}$]")
         #plt.yscale("log")
-        plt.title(f"{directory.name}: k = {float(spec_tk.coords['wavenumber'][k]):.4f} Growth rate within sliding window of size {gammaWindow} ({gammaWindow*100.0/num_t}%)")
+        #plt.title(f"{directory.name}: k = {float(spec_tk.coords['wavenumber'][k]):.4f} Growth rate within sliding window of size {gammaWindow} ({gammaWindow*100.0/num_t}%)")
         #plt.savefig(savePath / f'{directory.name}_k{k:.5f}_growthRateSlidingWindow.png')
         plt.show()
 
@@ -494,6 +501,13 @@ def calculate_max_growth_rate_in_simulation(
         writer = csv.writer(csvOut)
         writer.writerow([simNum, background_density, ion_ring_frac, B0, B0_angle, max_gamma_in_sim.wavenumber, max_gamma_in_sim.time, max_gamma_in_sim.gamma])
 
+def analyse_growth_rates_across_simulations(csvData : str):
+
+    df = pd.read_csv(csvData, header=0)
+    
+    #matrix_plot([np.log(df.background_density.to_numpy()), np.log(df.frac_beam.to_numpy()), df.b0_strength.to_numpy(), df.b0_angle.to_numpy(), df.maxGamma.to_numpy()], labels = ["Log(Density)", "Log(Beam Fraction)", r"B0 [$T$]", r"B0 Angle $[^\circ]$", r"Max Gamma [$\omega_{ci}$]"])
+    matrix_plot([np.log(df.background_density.to_numpy()), np.log(df.frac_beam.to_numpy()), df.b0_strength.to_numpy(), df.b0_angle.to_numpy(), df.time.to_numpy()], labels = ["Log(Density)", "Log(Beam Fraction)", r"B0 [$T$]", r"B0 Angle $[^\circ]$", r"Time [$\tau_{ci}$]"])
+    matrix_plot([df.wavenumber.to_numpy(), df.time.to_numpy(), df.maxGamma.to_numpy()], labels = [r"Wavenumber [$\omega_{ci}/V_A$]", r"Time [$\tau_{ci}$]", r"Max Gamma [$\omega_{ci}$]"])
 
 if __name__ == "__main__":
 
@@ -516,7 +530,7 @@ if __name__ == "__main__":
         "--field",
         action="store",
         help="Simulation field to use in Epoch output format, e.g. \'Derived/Charge_Density\', \'Electric Field/Ex\', \'Magnetic Field/Bz\'",
-        required = True,
+        required = False,
         type=str
     )
     parser.add_argument(
@@ -547,6 +561,18 @@ if __name__ == "__main__":
         "--plotGammas",
         action="store_true",
         help="Plot all growth rates in run.",
+        required = False
+    )
+    parser.add_argument(
+        "--plotMatrix",
+        action="store_true",
+        help="Plot matrix of growth rates across simulations.",
+        required = False
+    )
+    parser.add_argument(
+        "--calculateGrowthRates",
+        action="store_true",
+        help="Calculate all growth rates across simulations.",
         required = False
     )
     parser.add_argument(
@@ -617,7 +643,9 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    if args.overallDir is not None:
+    if args.plotMatrix:
+        analyse_growth_rates_across_simulations("/home/era536/Documents/Epoch/Data/gamma_out.csv")
+    elif args.calculateGrowthRates:
         print("Simulation directories:")
         dirs = next(os.walk(args.overallDir))[1] 
         print(dirs)
@@ -630,7 +658,7 @@ if __name__ == "__main__":
             path = args.overallDir / Path(dir)
             print(f"Processing {path}; simNum {int(dir.split('_')[-1])}...")
             calculate_max_growth_rate_in_simulation(path, simNum, args.field, args.savePath, args.maxK, maxRes = 0.05, deuteron = True)
-
+    
     if args.dir is not None:
         plot_growth_rate_data(
             args.dir, 

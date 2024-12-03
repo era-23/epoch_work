@@ -46,10 +46,8 @@
             "program": "growth_rate_analysis.py",
             "console": "integratedTerminal",
             "args": [
-                "--overallDir", "/home/era536/Documents/Epoch/Data/test",
-                "--field", "Magnetic_Field_Bz",
-                "--savePath", "/home/era536/Documents/Epoch/Data/test/outTest.csv",
-                "--maxK", "100.0"
+                "--overallDir", "/home/era536/Documents/Epoch/Data/gamma_out.csv",
+                "--plotMatrix"
             ]
         },
         {
@@ -59,8 +57,10 @@
             "program": "bicoherence.py",
             "console": "integratedTerminal",
             "args": [
-                "--dir", "/home/era536/Documents/Epoch/Data/irb_mid_run23/",
+                "--overallDir", "/home/era536/Documents/Epoch/Data/gamma_out.csv",
                 "--field", "Magnetic_Field_Bz",
+                //"--plotTk",
+                "--time", "1.0",
                 "--irb"
             ]
         }
