@@ -46,13 +46,14 @@ def fit_to_middle_percentage(x, y, pct):
 
 def filter_by_residuals(x, residuals, maxRes):
     x = np.array(x)
+
     min_res = np.nanmin(residuals)
     max_res = np.nanmax(residuals)
     range_res = max_res - min_res
     for lgr in x:
         lgr.residual = (lgr.residual - min_res) / range_res
     
-    # Filter growth rates  
+    # Filter growth rates
     x_low_residuals = np.array([i for i in x if i.residual <= maxRes])
 
     for i in x_low_residuals:
@@ -194,12 +195,25 @@ def plot_growth_rate_data(
             spec = spec.sel(wavenumber=spec.wavenumber>=-maxK)
         if maxW is not None:
             spec = spec.sel(frequency=spec.frequency<=maxW)
-        spec.plot(size=9)
+        spec.plot(size=9, cbar_kwargs={'label': f'Spectral power in {field}' if not log else f'Log of spectral power in {field}'})
         if savePath is not None:
             plt.savefig(savePath / f'{directory.name}_wk_dField-{deltaField}_log-{log}_maxK-{maxK if maxK is not None else "all"}_maxW-{maxK if maxK is not None else "all"}.png')
         #plt.title(f"{directory.name}: Dispersion relation of {field}")
         plt.ylabel(r"Frequency [$\omega_{ci}$]")
         plt.xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
+        plt.show()
+
+        spec = spec.sel(wavenumber=spec.wavenumber>0.0)
+        spec.plot(size=9)
+        plt.ylabel(r"Frequency [$\omega_{ci}$]")
+        plt.xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
+        plt.show()
+
+        f_over_all_k = spec.sum(dim = "wavenumber")
+        f_over_all_k.plot()
+        plt.grid()
+        plt.xlabel(r"Frequency [$\omega_{ci}$]")
+        plt.ylabel(r"Sum of power in Bz over all k")
         plt.show()
 
     # Create t-k spectrum
@@ -219,7 +233,7 @@ def plot_growth_rate_data(
         if args.maxK is not None:
             spec_tk_plot = spec_tk.sel(wavenumber=spec_tk.wavenumber<=maxK)
             spec_tk_plot = spec_tk_plot.sel(wavenumber=spec_tk_plot.wavenumber>=-maxK)
-        spec_tk_plot.plot(size=9, x = "wavenumber", y = "time")
+        spec_tk_plot.plot(size=9, x = "wavenumber", y = "time", cbar_kwargs={'label': f'Spectral power in {field}' if not log else f'Log of spectral power in {field}'})
         if savePath is not None:
             plt.savefig(savePath / f'{directory.name}_tk_dField-{deltaField}_log-{log}_maxK-{maxK if maxK is not None else "all"}.png')
         #plt.title(f"{directory.name}: Time evolution of spectral power in {field}")
@@ -353,6 +367,7 @@ def plot_growth_rate_data(
             filtered_times.append(lgr.time)
             filtered_gammas.append(lgr.gamma)
         
+        plt.title(f'k = {float(spec_tk.coords["wavenumber"][k]):.4f}')
         plt.scatter(filtered_times, filtered_gammas, marker = 'x')
         plt.xlabel(r"Time at centre of window [$\tau_{ci}$]")
         plt.ylabel(r"Gamma [$\omega_{ci}$]")

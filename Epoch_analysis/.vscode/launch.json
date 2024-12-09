@@ -30,7 +30,7 @@
             "program": "growth_rate_analysis.py",
             "console": "integratedTerminal",
             "args": [
-                "--dir", "/home/era536/Documents/Epoch/Data/irb_max_hr_O5_smoothI/",
+                "--dir", "/home/era536/Documents/Epoch/Data/irb_lowRes_superAlfvenic/",
                 "--field", "Magnetic_Field_Bz",
                 //"--plotOmegaK",
                 //"--plotTk",
@@ -57,11 +57,32 @@
             "program": "bicoherence.py",
             "console": "integratedTerminal",
             "args": [
-                "--overallDir", "/home/era536/Documents/Epoch/Data/gamma_out.csv",
+                "--dir", "/home/era536/Documents/Epoch/Data/irb_max_highres/",
                 "--field", "Magnetic_Field_Bz",
                 //"--plotTk",
                 "--time", "1.0",
                 "--irb"
+            ]
+        },
+        {
+            "name": "Python Debugger: Plot Velo Distribution",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "velocity_distribution.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--dir", "/home/era536/Documents/Epoch/Data/irb_lowRes_alfvenic/",
+                "--field", "Velocity_vx"
+            ]
+        },
+        {
+            "name": "Python Debugger: Debugging",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "debugging.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--dir", "/home/era536/Documents/Epoch/Data/irb_lowRes_alfvenic/"
             ]
         }
     ]
