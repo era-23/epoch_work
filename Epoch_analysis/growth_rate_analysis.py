@@ -18,12 +18,14 @@ import os
 class LinearGrowthRateByK:
     wavenumber: float
     gamma: float
+    yIntercept: float
     residual: float
 
 @dataclass
 class LinearGrowthRateByT:
     time: float
     gamma: float
+    yIntercept: float
     residual: float
 
 @dataclass
@@ -44,20 +46,18 @@ def fit_to_middle_percentage(x, y, pct):
     y_trim = trim_to_middle_pct(y, pct)
     return np.polyfit(x_trim, y_trim, deg = 1, full = True)
 
+# Formerly everything below maxRes percentile, i.e. maxRes == 0.2 --> bottom (best) 20th percentile
+# Now everything at maxRes proportion and below, i.e. maxRes == 0.2 --> bottom (best) 20% values
 def filter_by_residuals(x, residuals, maxRes):
     x = np.array(x)
 
     min_res = np.nanmin(residuals)
     max_res = np.nanmax(residuals)
     range_res = max_res - min_res
-    for lgr in x:
-        lgr.residual = (lgr.residual - min_res) / range_res
+    absoluteMaxResidual = min_res + (maxRes * range_res)
     
     # Filter growth rates
-    x_low_residuals = np.array([i for i in x if i.residual <= maxRes])
-
-    for i in x_low_residuals:
-        i.residual = (i.residual * range_res) + min_res
+    x_low_residuals = np.array([i for i in x if i.residual <= absoluteMaxResidual])
 
     return x_low_residuals
 
@@ -305,7 +305,7 @@ def plot_growth_rate_data(
     filtered_spec_tk = filtered_spec_tk.sel(wavenumber=filtered_spec_tk.wavenumber>=-maxK)
     for k in range(len(filtered_spec_tk.coords['wavenumber'])):
         fit, res, _, _, _ = np.polyfit(x = filtered_spec_tk.coords["time"][:peak_power_t_index], y = np.log(filtered_spec_tk[:peak_power_t_index,k]), deg = 1, full=True)
-        all_linear_growth_rates.append(LinearGrowthRateByK(wavenumber = float(filtered_spec_tk.coords['wavenumber'][k].data), gamma = float(fit[0]), residual = float(res[0])))
+        all_linear_growth_rates.append(LinearGrowthRateByK(wavenumber = float(filtered_spec_tk.coords['wavenumber'][k].data), gamma = float(fit[0]), yIntercept=float(fit[1]), residual = float(res[0])))
         all_residuals.append(float(res[0]))
     
     # Normalise growth rates
@@ -355,7 +355,7 @@ def plot_growth_rate_data(
         for i in range(len(t_k) - (gammaWindow + 1)): # For each window
             t_k_window = t_k[i:(i + gammaWindow)]
             fit, res, _, _, _ = np.polyfit(x = t_k.coords["time"][i:(i + gammaWindow)], y = np.log(t_k_window), deg = 1, full = True)
-            all_gammas.append(LinearGrowthRateByT(time = t_k.coords["time"][i:(i + gammaWindow)][int(gammaWindow/2)], gamma = float(fit[0]), residual = float(res[0])))
+            all_gammas.append(LinearGrowthRateByT(time = t_k.coords["time"][i:(i + gammaWindow)][int(gammaWindow/2)], gamma = float(fit[0]), yIntercept=float(fit[1]), residual = float(res[0])))
             all_residuals.append(float(res[0]))
         
         # Normalise residuals and filter
@@ -363,9 +363,11 @@ def plot_growth_rate_data(
 
         filtered_times = []
         filtered_gammas = []
+        filtered_intercepts = []
         for lgr in filtered:
             filtered_times.append(lgr.time)
             filtered_gammas.append(lgr.gamma)
+            filtered_intercepts.append(lgr.yIntercept)
         
         plt.title(f'k = {float(spec_tk.coords["wavenumber"][k]):.4f}')
         plt.scatter(filtered_times, filtered_gammas, marker = 'x')
@@ -375,6 +377,19 @@ def plot_growth_rate_data(
         #plt.title(f"{directory.name}: k = {float(spec_tk.coords['wavenumber'][k]):.4f} Growth rate within sliding window of size {gammaWindow} ({gammaWindow*100.0/num_t}%)")
         #plt.savefig(savePath / f'{directory.name}_k{k:.5f}_growthRateSlidingWindow.png')
         plt.show()
+
+        plt.title(f'Highest growth rate of k = {float(spec_tk.coords["wavenumber"][k]):.4f}')
+        plt.plot(t_k.coords["time"], np.log(t_k), label="Data")
+        maxGammaIndex = np.argmax(filtered_gammas)
+        middleTimeIndex = np.absolute(t_k.coords["time"]-filtered_times[maxGammaIndex]).argmin()
+        bestFitTimes = t_k.coords["time"][int(middleTimeIndex-(gammaWindow/2)):int(middleTimeIndex+(gammaWindow/2))]
+        bestFit = (filtered_gammas[maxGammaIndex] * bestFitTimes) + filtered_intercepts[maxGammaIndex]
+        plt.plot(bestFitTimes, bestFit, label = f"gamma = {float(filtered_gammas[maxGammaIndex]):.4f}")
+        plt.xlabel("Time/tau_ci")
+        plt.legend()
+        plt.ylabel("Log of power in k")
+        plt.show()
+
 
 def calculate_max_growth_rate_in_simulation(
         directory : Path, 
@@ -687,7 +702,7 @@ if __name__ == "__main__":
             args.maxW, 
             0.2 if args.maxRes is None else args.maxRes,
             args.numKs,
-            20 if args.gammaWindow is None else args.gammaWindow,
+            100 if args.gammaWindow is None else args.gammaWindow,
             args.log, 
             args.deltaField, 
             args.beam,
