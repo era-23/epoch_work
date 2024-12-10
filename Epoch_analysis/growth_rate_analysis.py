@@ -206,12 +206,14 @@ def plot_growth_rate_data(
         if maxW is not None:
             spec = spec.sel(frequency=spec.frequency<=maxW)
         spec.plot(size=9, cbar_kwargs={'label': f'Spectral power in {field}' if not log else f'Log of spectral power in {field}'})
-        if savePath is not None:
-            plt.savefig(savePath / f'{directory.name}_wk_dField-{deltaField}_log-{log}_maxK-{maxK if maxK is not None else "all"}_maxW-{maxK if maxK is not None else "all"}.png')
         #plt.title(f"{directory.name}: Dispersion relation of {field}")
         plt.ylabel(r"Frequency [$\omega_{ci}$]")
         plt.xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
-        plt.show()
+        if savePath is not None:
+            plt.savefig(savePath / f'{directory.name}_wk_dField-{deltaField}_log-{log}_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
+            plt.clf()
+        else:
+            plt.show()
 
         spec = spec.sel(wavenumber=spec.wavenumber>0.0)
         spec.plot(size=9)
@@ -219,14 +221,22 @@ def plot_growth_rate_data(
         plt.legend()
         plt.ylabel(r"Frequency [$\omega_{ci}$]")
         plt.xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
-        plt.show()
+        if savePath is not None:
+            plt.savefig(savePath / f'{directory.name}_wk_positiveK_dField-{deltaField}_log-{log}_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
+            plt.clf()
+        else:
+            plt.show()
 
         f_over_all_k = spec.sum(dim = "wavenumber")
         f_over_all_k.plot()
         plt.grid()
         plt.xlabel(r"Frequency [$\omega_{ci}$]")
         plt.ylabel(r"Sum of power in Bz over all k")
-        plt.show()
+        if savePath is not None:
+            plt.savefig(savePath / f'{directory.name}_powerByK_dField-{deltaField}_log-{log}_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
+            plt.clf()
+        else:
+            plt.show()
 
     # Create t-k spectrum
     zeroed_spec = original_spec.where(original_spec.frequency>0.0, 0.0)
@@ -246,12 +256,14 @@ def plot_growth_rate_data(
             spec_tk_plot = spec_tk.sel(wavenumber=spec_tk.wavenumber<=maxK)
             spec_tk_plot = spec_tk_plot.sel(wavenumber=spec_tk_plot.wavenumber>=-maxK)
         spec_tk_plot.plot(size=9, x = "wavenumber", y = "time", cbar_kwargs={'label': f'Spectral power in {field}' if not log else f'Log of spectral power in {field}'})
-        if savePath is not None:
-            plt.savefig(savePath / f'{directory.name}_tk_dField-{deltaField}_log-{log}_maxK-{maxK if maxK is not None else "all"}.png')
         #plt.title(f"{directory.name}: Time evolution of spectral power in {field}")
         plt.xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
         plt.ylabel(r"Time [$\tau_{ci}$]")
-        plt.show()
+        if savePath is not None:
+            plt.savefig(savePath / f'{directory.name}_tk_dField-{deltaField}_log-{log}_maxK-{maxK if maxK is not None else "all"}.png')
+            plt.clf()
+        else:
+            plt.show()
 
     #sum_over_all_t = np.sum(spec_tk, axis=0)
     peak_powers = spec_tk.max(axis=0)
@@ -273,7 +285,9 @@ def plot_growth_rate_data(
         plt.legend()
         if savePath is not None:
             plt.savefig(savePath / f'{directory.name}_growthRates_dField-{deltaField}_log-{log}_numK-{numKs if numKs is not None else "all"}.png')
-        plt.show()
+            plt.clf()
+        else:
+            plt.show()
 
     if plotGammas:
         # Calculate gamma by time for only high power ks
@@ -304,8 +318,11 @@ def plot_growth_rate_data(
             plt.ylabel(r"Gamma [$\omega_{ci}$]")
             #plt.yscale("log")
             #plt.title(f"{directory.name}: k = {float(spec_tk.coords['wavenumber'][k]):.4f} Growth rate within sliding window of size {gammaWindow} ({gammaWindow*100.0/num_t}%)")
-            #plt.savefig(savePath / f'{directory.name}_k{k:.5f}_growthRateSlidingWindow.png')
-            plt.show()
+            if savePath is not None:
+                plt.savefig(savePath / f'{directory.name}_k{float(spec_tk.coords["wavenumber"][k]):.5f}_growthRateSlidingWindow.png')
+                plt.clf()
+            else:
+                plt.show()
 
             plt.title(f'Highest growth rate of k = {float(spec_tk.coords["wavenumber"][k]):.4f}')
             plt.plot(t_k.coords["time"], np.log(t_k), label="Data")
@@ -317,7 +334,11 @@ def plot_growth_rate_data(
             plt.xlabel("Time/tau_ci")
             plt.legend()
             plt.ylabel("Log of power in k")
-            plt.show()
+            if savePath is not None:
+                plt.savefig(savePath / f'{directory.name}_k{float(spec_tk.coords["wavenumber"][k]):.5f}_highestGamma.png')
+                plt.clf()
+            else:
+                plt.show()
 
 
 def calculate_max_growth_rate_in_simulation(
