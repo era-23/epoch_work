@@ -3,8 +3,11 @@ from pathlib import Path
 from scipy import constants
 from dataclasses import dataclass
 import matplotlib.pyplot as plt
-from matplotlib import colors
+#from matplotlib import colors
 from inference.plotting import matrix_plot
+#import xrscipy as xrscipy
+#import xrscipy.fft
+import epoch_utils
 import pandas as pd
 import epydeck
 import numpy as np
@@ -46,8 +49,8 @@ def fit_to_middle_percentage(x, y, pct):
     y_trim = trim_to_middle_pct(y, pct)
     return np.polyfit(x_trim, y_trim, deg = 1, full = True)
 
-# Formerly everything below maxRes percentile, i.e. maxRes == 0.2 --> bottom (best) 20th percentile
-# Now everything at maxRes proportion and below, i.e. maxRes == 0.2 --> bottom (best) 20% values
+# Formerly everything below maxRes percentile, i.e. maxRes == 0.2 --> all values within bottom (best) 20th percentile
+# Now everything at maxRes proportion and below, i.e. maxRes == 0.2 --> bottom (best) 20% of values
 def filter_by_residuals(x, residuals, maxRes):
     x = np.array(x)
 
@@ -130,17 +133,18 @@ def plot_growth_rate_data(
 
     electron_mass = input['species']['electron']['mass'] * constants.electron_mass
     ion_bkgd_mass = input['constant']['ion_mass_e'] * constants.electron_mass
+    ion_bkgd_charge = input['species']['proton']['charge'] * constants.elementary_charge
     ion_ring_frac = input['constant']['frac_beam']
-    mass_density = (input['constant']['background_density'] * (electron_mass + ion_bkgd_mass)) - (ion_ring_frac * ion_bkgd_mass) # Bare minimum
+    bkgd_number_density = input['constant']['background_density']
+    mass_density = (bkgd_number_density * (electron_mass + ion_bkgd_mass)) - (ion_ring_frac * ion_bkgd_mass) # Bare minimum
     if beam:
         ion_ring_mass = input['constant']['ion_mass_e'] * constants.electron_mass # Note: assumes background and ring beam ions are then same species
         if deuteron:
             ion_ring_mass *= 2.0
-        mass_density += input['constant']['background_density'] * ion_ring_frac * ion_ring_mass
+        mass_density += bkgd_number_density * ion_ring_frac * ion_ring_mass
         ion_ring_charge = input['species']['ion_ring_beam']['charge'] * constants.elementary_charge
         ion_gyroperiod = (TWO_PI * ion_ring_mass) / (ion_ring_charge * B0)
     else:
-        ion_bkgd_charge = input['species']['proton']['charge'] * constants.elementary_charge
         ion_gyroperiod = (TWO_PI * ion_bkgd_mass) / (ion_bkgd_charge * B0)
 
     # Interpolate data onto evenly-spaced coordinates
@@ -176,6 +180,8 @@ def plot_growth_rate_data(
     
     data = data.rename(X_Grid_mid="x_space")
     original_spec : xr.DataArray = xrft.xrft.fft(data, true_amplitude=True, true_phase=True, window=None)
+    # original_spec : xr.DataArray = xrscipy.fft.fftn(data, 'x_space', 'time')
+    # original_spec.data = fft.fftshift(original_spec.data)
     original_spec = original_spec.rename(freq_time="frequency", freq_x_space="wavenumber")
     original_spec = original_spec.where(original_spec.wavenumber!=0.0, None)
 
@@ -185,6 +191,10 @@ def plot_growth_rate_data(
     plt.rcParams.update({'ytick.labelsize': 14})
     # Plot omega-k
     if plotOmegaK:
+
+        w_LH = epoch_utils.calculate_lower_hybrid_frequency(ion_bkgd_charge, ion_bkgd_mass, bkgd_number_density, B0, 'cyc')
+        print(w_LH)
+
         spec = abs(original_spec)
         print(f"Log == {log}")
         if log:
@@ -205,6 +215,8 @@ def plot_growth_rate_data(
 
         spec = spec.sel(wavenumber=spec.wavenumber>0.0)
         spec.plot(size=9)
+        plt.plot(spec.coords['wavenumber'].data, spec.coords['wavenumber'].data, 'k--', label=r'$V_A$ branch')
+        plt.legend()
         plt.ylabel(r"Frequency [$\omega_{ci}$]")
         plt.xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
         plt.show()
@@ -315,7 +327,7 @@ def calculate_max_growth_rate_in_simulation(
         outFile : Path,
         maxK : float,
         maxRes = 0.2,
-        gammaWindow = 20,
+        gammaWindow = 100,
         log = False, 
         deltaField = False, 
         beam = True,

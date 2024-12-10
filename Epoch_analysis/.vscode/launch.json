@@ -32,11 +32,12 @@
             "args": [
                 "--dir", "/home/era536/Documents/Epoch/Data/irb_lowRes_superAlfvenic/",
                 "--field", "Magnetic_Field_Bz",
-                //"--plotOmegaK",
+                "--plotOmegaK",
                 //"--plotTk",
-                "--plotGrowth",
+                //"--plotGrowth",
                 "--numKs", "5",
-                "--maxK", "100.0"
+                "--maxK", "100.0",
+                //"--log"
             ]
         },
         {
