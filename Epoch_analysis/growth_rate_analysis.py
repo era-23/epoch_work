@@ -695,7 +695,7 @@ if __name__ == "__main__":
             simNum = int(dir.split('_')[-1])
             path = args.overallDir / Path(dir)
             print(f"Processing {path}; simNum {int(dir.split('_')[-1])}...")
-            calculate_max_growth_rate_in_simulation(path, simNum, args.field, args.savePath, args.maxK, args.maxRes, deuteron=args.deutreon, plot=args.plot, figureSavePath=args.figureSavePath)
+            calculate_max_growth_rate_in_simulation(path, simNum, args.field, args.savePath, args.maxK, args.maxRes, deuteron=args.deuteron, plot=args.plot, figureSavePath=args.figureSavePath)
     
     if args.dir is not None:
         plot_growth_rate_data(
