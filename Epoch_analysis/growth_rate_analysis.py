@@ -36,6 +36,7 @@ class MaxGrowthRate:
     wavenumber: float
     time: float
     gamma: float
+    yIntercept: float
 
 def trim_to_middle_pct(x, pct):
     remove_pct = 100.0 - pct
@@ -76,7 +77,7 @@ def plot_growth_rate_data(
         maxW = None,
         maxRes = 0.2,
         numKs = 5,
-        gammaWindow = 20,
+        gammaWindow = 100,
         log = False, 
         deltaField = False, 
         beam = True,
@@ -147,6 +148,11 @@ def plot_growth_rate_data(
     else:
         ion_gyroperiod = (TWO_PI * ion_bkgd_mass) / (ion_bkgd_charge * B0)
 
+    w_LH = epoch_utils.calculate_lower_hybrid_frequency(ion_bkgd_charge, ion_bkgd_mass, bkgd_number_density, B0, 'si')
+    print(f"Lower Hybrid frequency: {w_LH}Hz")
+    w_LH_Wci = epoch_utils.calculate_lower_hybrid_frequency(ion_bkgd_charge, ion_bkgd_mass, bkgd_number_density, B0, 'cyc')
+    print(f"NORMALISED: Lower Hybrid frequency in Wci: {w_LH_Wci}Wci")
+
     # Interpolate data onto evenly-spaced coordinates
     evenly_spaced_time = np.linspace(ds.coords["time"][0].data, ds.coords["time"][-1].data, len(ds.coords["time"].data))
     field_data = field_data.interp(time=evenly_spaced_time)
@@ -154,6 +160,9 @@ def plot_growth_rate_data(
     Tci = evenly_spaced_time / ion_gyroperiod
     alfven_velo = B0 / (np.sqrt(constants.mu_0 * mass_density))
     vA_Tci = ds.coords["X_Grid_mid"] / (ion_gyroperiod * alfven_velo)
+
+    w_LH = epoch_utils.calculate_lower_hybrid_frequency(ion_bkgd_charge, ion_bkgd_mass, bkgd_number_density, B0, 'si')
+    print(f"Lower Hybrid frequency: {w_LH}Hz")
 
     # Nyquist frequencies in normalised units
     simtime_Tci = float(Tci[-1])
@@ -164,6 +173,8 @@ def plot_growth_rate_data(
     print(f"NORMALISED: Sim L in vA*Tci: {simL_vATci}vA*Tci")
     print(f"NORMALISED: Sampling frequency in Wci/vA: {num_cells/simL_vATci}Wci/vA")
     print(f"NORMALISED: Nyquist frequency in Wci/vA: {num_cells/(2.0 *simL_vATci)}Wci/vA")
+    w_LH_Wci = epoch_utils.calculate_lower_hybrid_frequency(ion_bkgd_charge, ion_bkgd_mass, bkgd_number_density, B0, 'cyc')
+    print(f"NORMALISED: Lower Hybrid frequency in Wci: {w_LH_Wci}Wci")
 
     # Clean data and take FFT
     print(f"Normalise == {normalise}")
@@ -191,9 +202,6 @@ def plot_growth_rate_data(
     plt.rcParams.update({'ytick.labelsize': 14})
     # Plot omega-k
     if plotOmegaK:
-
-        w_LH = epoch_utils.calculate_lower_hybrid_frequency(ion_bkgd_charge, ion_bkgd_mass, bkgd_number_density, B0, 'cyc')
-        print(w_LH)
 
         spec = abs(original_spec)
         print(f"Log == {log}")
@@ -340,7 +348,6 @@ def plot_growth_rate_data(
             else:
                 plt.show()
 
-
 def calculate_max_growth_rate_in_simulation(
         directory : Path, 
         simNum : int,
@@ -352,7 +359,9 @@ def calculate_max_growth_rate_in_simulation(
         log = False, 
         deltaField = False, 
         beam = True,
-        deuteron = False):
+        deuteron = False,
+        plot = False,
+        figureSavePath = None):
     
     # Read dataset
     ds = xr.open_mfdataset(
@@ -453,17 +462,34 @@ def calculate_max_growth_rate_in_simulation(
         spec_tk = spec_tk.sel(wavenumber=spec_tk.wavenumber<=maxK)
         spec_tk = spec_tk.sel(wavenumber=spec_tk.wavenumber>=-maxK)
 
+    if plot or figureSavePath is not None:
+        spec_tk.plot(size=9, x = "wavenumber", y = "time", cbar_kwargs={'label': f'Spectral power in {field}' if not log else f'Log of spectral power in {field}'})
+        plt.title(f"{directory.name}: time-wavenumber up to k = {maxK if maxK is not None else nyq_freq_space}")
+        plt.xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
+        plt.ylabel(r"Time [$\tau_{ci}$]")
+        if figureSavePath is not None:
+            plt.savefig(figureSavePath / f"{directory.name}_tk_maxK{maxK if maxK is not None else nyq_freq_space}.png")
+        if plot:
+            plt.show()
+        plt.clf()
+
     max_growth_rates = []
 
     # Calculate max gamma for all ks
     for k in spec_tk.coords["wavenumber"]:
+        print(f"Processing k = {float(k)}....")
         t_k = spec_tk.sel(wavenumber = k)[:]
         all_gammas = []
         all_residuals = []
         for i in range(len(t_k) - (gammaWindow + 1)): # For each window
             t_k_window = t_k[i:(i + gammaWindow)]
             fit, res, _, _, _ = np.polyfit(x = t_k.coords["time"][i:(i + gammaWindow)], y = np.log(t_k_window), deg = 1, full = True)
-            all_gammas.append(LinearGrowthRateByT(time = float(t_k.coords["time"][i:(i + gammaWindow)][int(gammaWindow/2)]), gamma = float(fit[0]), residual = float(res[0])))
+            # plt.scatter(t_k.coords["time"][i:(i + gammaWindow)], np.log(t_k_window))
+            # if not np.isnan(fit[0]):
+            #     plt.plot(t_k.coords["time"][i:(i + gammaWindow)], fit[0] * t_k.coords["time"][i:(i + gammaWindow)] + fit[1])
+            # plt.title(f'k = {float(k):.3f}')
+            # plt.show()
+            all_gammas.append(LinearGrowthRateByT(time = float(t_k.coords["time"][i:(i + gammaWindow)][int(gammaWindow/2)]), gamma = float(fit[0]), yIntercept=float(fit[1]), residual = float(res[0])))
             all_residuals.append(float(res[0]))
         
         # Normalise residuals and filter
@@ -472,10 +498,29 @@ def calculate_max_growth_rate_in_simulation(
         if filtered.size != 0:
             filtered_gammas = [lgr.gamma for lgr in filtered]
             max_gamma_id = np.nanargmax(filtered_gammas)
-            max_growth_rates.append(MaxGrowthRate(wavenumber=float(k), time=filtered[max_gamma_id].time, gamma=filtered[max_gamma_id].gamma))
+            max_growth_rates.append(MaxGrowthRate(wavenumber=float(k), time=filtered[max_gamma_id].time, gamma=filtered[max_gamma_id].gamma, yIntercept=filtered[max_gamma_id].yIntercept))
 
     all_max_gammas = [mgr.gamma for mgr in max_growth_rates]
     max_gamma_in_sim = max_growth_rates[np.nanargmax(all_max_gammas)]
+
+    if figureSavePath is not None:
+        plt.title(f'Highest growth rate of k = {max_gamma_in_sim.wavenumber:.4f}')
+        t_k = spec_tk.sel(wavenumber = max_gamma_in_sim.wavenumber)[:]
+        plt.plot(t_k.coords["time"], np.log(t_k), label="Data")
+        maxGamma = max_gamma_in_sim.gamma
+        middleTime = max_gamma_in_sim.time
+        middleTimeIndex = np.where(t_k.coords["time"] == middleTime)[0][0]
+        bestFitTimes = t_k.coords["time"][int(middleTimeIndex-(gammaWindow/2)):int(middleTimeIndex+(gammaWindow/2))]
+        bestFit = (maxGamma * bestFitTimes) + max_gamma_in_sim.yIntercept
+        plt.plot(bestFitTimes, bestFit, label = f"gamma = {float(maxGamma):.4f}")
+        plt.xlabel("Time/tau_ci")
+        plt.legend()
+        plt.ylabel("Log of power in k")
+        if figureSavePath is not None:
+            plt.savefig(figureSavePath / f'{directory.name}_k{max_gamma_in_sim.wavenumber:.5f}_highestGammaFit.png')
+        if plot:
+            plt.show()
+        plt.clf()
 
     with open(str(outFile.absolute()), mode="a") as csvOut:
         writer = csv.writer(csvOut)
@@ -550,6 +595,12 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
+        "--plot",
+        action="store_true",
+        help="Plot details of max gamma calculation across multiple simulations.",
+        required = False
+    )
+    parser.add_argument(
         "--calculateGrowthRates",
         action="store_true",
         help="Calculate all growth rates across simulations.",
@@ -621,10 +672,17 @@ if __name__ == "__main__":
         required = False,
         type=Path
     )
+    parser.add_argument(
+        "--figureSavePath",
+        action="store",
+        help="Directory to which figures should be saved when calculating gamma across multiple simulations.",
+        required = False,
+        type=Path
+    )
     args = parser.parse_args()
 
     if args.plotMatrix:
-        analyse_growth_rates_across_simulations("/home/era536/Documents/Epoch/Data/gamma_out.csv")
+        analyse_growth_rates_across_simulations("/home/era536/Documents/Epoch/Data/gamma_2_out.csv")
     elif args.calculateGrowthRates:
         print("Simulation directories:")
         dirs = next(os.walk(args.overallDir))[1] 
@@ -637,7 +695,7 @@ if __name__ == "__main__":
             simNum = int(dir.split('_')[-1])
             path = args.overallDir / Path(dir)
             print(f"Processing {path}; simNum {int(dir.split('_')[-1])}...")
-            calculate_max_growth_rate_in_simulation(path, simNum, args.field, args.savePath, args.maxK, maxRes = 0.05, deuteron = True)
+            calculate_max_growth_rate_in_simulation(path, simNum, args.field, args.savePath, args.maxK, args.maxRes, deuteron=True, plot=args.plot, figureSavePath=args.figureSavePath)
     
     if args.dir is not None:
         plot_growth_rate_data(

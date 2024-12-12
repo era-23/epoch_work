@@ -7,7 +7,6 @@ import xarray as xr
 import numpy as np
 import epydeck
 import argparse
-import re
 
 def gaussian(x, a, mean, sigma):
     return a * np.exp(-((x - mean)**2 / (2 * sigma**2)))

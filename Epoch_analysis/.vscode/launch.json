@@ -30,12 +30,28 @@
             "program": "growth_rate_analysis.py",
             "console": "integratedTerminal",
             "args": [
-                "--dir", "/home/era536/Documents/Epoch/Data/irb_lowRes_superAlfvenic/",
+                "--dir", "/home/era536/Documents/Epoch/Data/irb_mid_megaRes/",
                 "--field", "Magnetic_Field_Bz",
                 "--plotOmegaK",
                 //"--plotTk",
                 //"--plotGrowth",
                 "--numKs", "5",
+                "--maxK", "100.0",
+                //"--log"
+            ]
+        },
+        {
+            "name": "Python Debugger: Growth Rate Calculation",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "growth_rate_analysis.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--overallDir", "/home/era536/Documents/Epoch/Data/irb_scan_highRes/",
+                "--savePath", "/home/era536/Documents/Epoch/Data/irb_scan_highRes/gamma_test_out.csv",
+                "--calculateGrowthRates",
+                "--field", "Magnetic_Field_Bz",
+                "--maxRes", "0.1",
                 "--maxK", "100.0",
                 //"--log"
             ]

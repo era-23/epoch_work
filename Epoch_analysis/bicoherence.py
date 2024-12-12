@@ -1,14 +1,15 @@
 from sdf_xarray import SDFPreprocess
 from pathlib import Path
 from scipy import constants
-from spectrum import bicoherence, plot_bicoherence, bicoherencex, plot_bicoherencex, bispectrumd, bispectrumi, plot_bispectrumd, plot_bispectrumi
+#from spectrum import bicoherence, plot_bicoherence, bicoherencex, plot_bicoherencex, bispectrumd, bispectrumi, plot_bispectrumd, plot_bispectrumi
+from spectrum import bispectrumd
 from matplotlib import pyplot as plt
 import epydeck
 import numpy as np
 import xarray as xr
 import argparse
 import xrft
-from typing import Tuple, Any, Union
+from typing import Any
 
 def my_plot_bispectrumd(
     Bspec: np.ndarray[Any, np.dtype[Any]],
