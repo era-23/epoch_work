@@ -522,9 +522,10 @@ def calculate_max_growth_rate_in_simulation(
             plt.show()
         plt.clf()
 
-    with open(str(outFile.absolute()), mode="a") as csvOut:
-        writer = csv.writer(csvOut)
-        writer.writerow([simNum, background_density, ion_ring_frac, B0, B0_angle, max_gamma_in_sim.wavenumber, max_gamma_in_sim.time, max_gamma_in_sim.gamma])
+    if outFile is not None:
+        with open(str(outFile.absolute()), mode="a") as csvOut:
+            writer = csv.writer(csvOut)
+            writer.writerow([simNum, background_density, ion_ring_frac, B0, B0_angle, max_gamma_in_sim.wavenumber, max_gamma_in_sim.time, max_gamma_in_sim.gamma])
 
 def analyse_growth_rates_across_simulations(csvData : str):
 
@@ -601,9 +602,15 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
-        "--calculateGrowthRates",
+        "--calculateAllGrowthRates",
         action="store_true",
         help="Calculate all growth rates across simulations.",
+        required = False
+    )
+    parser.add_argument(
+        "--calculateIndividualGrowthRate",
+        action="store_true",
+        help="Calculate a single growth rate for one of a batch of simulations (useful for array jobs).",
         required = False
     )
     parser.add_argument(
@@ -679,11 +686,18 @@ if __name__ == "__main__":
         required = False,
         type=Path
     )
+    parser.add_argument(
+        "--simRunNumber",
+        action="store",
+        help="Simulation run number, i.e. 23 for run_23 folder in epyrunner naming convention.",
+        required = False,
+        type=int
+    )
     args = parser.parse_args()
 
     if args.plotMatrix:
         analyse_growth_rates_across_simulations("/home/era536/Documents/Epoch/Data/gamma_2_out.csv")
-    elif args.calculateGrowthRates:
+    elif args.calculateAllGrowthRates:
         print("Simulation directories:")
         dirs = next(os.walk(args.overallDir))[1] 
         print(dirs)
@@ -695,8 +709,13 @@ if __name__ == "__main__":
             simNum = int(dir.split('_')[-1])
             path = args.overallDir / Path(dir)
             print(f"Processing {path}; simNum {int(dir.split('_')[-1])}...")
-            calculate_max_growth_rate_in_simulation(path, simNum, args.field, args.savePath, args.maxK, args.maxRes, deuteron=args.deuteron, plot=args.plot, figureSavePath=args.figureSavePath)
-    
+            calculate_max_growth_rate_in_simulation(path, simNum, args.field, args.savePath, args.maxK, args.maxRes, plot=args.plot, figureSavePath=args.figureSavePath)
+    elif args.calculateIndividualGrowthRate:
+        simNumber = args.simRunNumber
+        print(f"Processing simulation number {simNumber}....")
+        path = args.overallDir / Path(f"run_{str(simNumber)}")
+        calculate_max_growth_rate_in_simulation(path, simNumber, args.field, args.savePath, args.maxK, args.maxRes, plot=args.plot, figureSavePath=args.figureSavePath)
+
     if args.dir is not None:
         plot_growth_rate_data(
             args.dir, 
