@@ -30,14 +30,14 @@
             "program": "growth_rate_analysis.py",
             "console": "integratedTerminal",
             "args": [
-                "--dir", "/home/era536/Documents/Epoch/Data/irb_mid_megaRes/",
+                "--dir", "/home/era536/Documents/Epoch/Data/irb_run51_newRes/",
                 "--field", "Magnetic_Field_Bz",
                 "--plotOmegaK",
-                //"--plotTk",
-                //"--plotGrowth",
+                "--plotTk",
+                "--plotGrowth",
                 "--numKs", "5",
                 "--maxK", "100.0",
-                //"--log"
+                "--log"
             ]
         },
         {

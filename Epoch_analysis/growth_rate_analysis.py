@@ -5,6 +5,8 @@ from dataclasses import dataclass
 import matplotlib.pyplot as plt
 #from matplotlib import colors
 from inference.plotting import matrix_plot
+import astropy.units as u
+from plasmapy.formulary import frequencies as ppf
 #import xrscipy as xrscipy
 #import xrscipy.fft
 import epoch_utils
@@ -148,10 +150,13 @@ def plot_growth_rate_data(
     else:
         ion_gyroperiod = (TWO_PI * ion_bkgd_mass) / (ion_bkgd_charge * B0)
 
-    w_LH = epoch_utils.calculate_lower_hybrid_frequency(ion_bkgd_charge, ion_bkgd_mass, bkgd_number_density, B0, 'si')
-    print(f"Lower Hybrid frequency: {w_LH}Hz")
-    w_LH_Wci = epoch_utils.calculate_lower_hybrid_frequency(ion_bkgd_charge, ion_bkgd_mass, bkgd_number_density, B0, 'cyc')
-    print(f"NORMALISED: Lower Hybrid frequency in Wci: {w_LH_Wci}Wci")
+    pp_tCI = 1.0 / ppf.gyrofrequency(B0 * u.T, 'p+')
+    print(f"Ion gyroperiod from plasmapy in s/rad: {pp_tCI}")
+    print(f"Ion gyroperiod from plasmapy in s: {pp_tCI * TWO_PI * u.rad}")
+    pp_wLH = ppf.lower_hybrid_frequency(B0 * u.T, bkgd_number_density / u.m**3, 'p+')
+    print(f"Lower hybrid freqency from plasmapy in rad/s: {pp_wLH}")
+    wLH_cyclo = pp_wLH * pp_tCI
+    print(f"Lower hybrid freqency from plasmapy in W_ci: {wLH_cyclo}")
 
     # Interpolate data onto evenly-spaced coordinates
     evenly_spaced_time = np.linspace(ds.coords["time"][0].data, ds.coords["time"][-1].data, len(ds.coords["time"].data))
@@ -160,9 +165,6 @@ def plot_growth_rate_data(
     Tci = evenly_spaced_time / ion_gyroperiod
     alfven_velo = B0 / (np.sqrt(constants.mu_0 * mass_density))
     vA_Tci = ds.coords["X_Grid_mid"] / (ion_gyroperiod * alfven_velo)
-
-    w_LH = epoch_utils.calculate_lower_hybrid_frequency(ion_bkgd_charge, ion_bkgd_mass, bkgd_number_density, B0, 'si')
-    print(f"Lower Hybrid frequency: {w_LH}Hz")
 
     # Nyquist frequencies in normalised units
     simtime_Tci = float(Tci[-1])
@@ -190,7 +192,7 @@ def plot_growth_rate_data(
         data = (data - data[0])**2 / data[0]**2
     
     data = data.rename(X_Grid_mid="x_space")
-    original_spec : xr.DataArray = xrft.xrft.fft(data, true_amplitude=True, true_phase=True, window=None)
+    original_spec : xr.DataArray = xrft.xrft.fft(data, true_amplitude=True, true_phase=True, window='hamming')
     # original_spec : xr.DataArray = xrscipy.fft.fftn(data, 'x_space', 'time')
     # original_spec.data = fft.fftshift(original_spec.data)
     original_spec = original_spec.rename(freq_time="frequency", freq_x_space="wavenumber")
@@ -213,7 +215,7 @@ def plot_growth_rate_data(
             spec = spec.sel(wavenumber=spec.wavenumber>=-maxK)
         if maxW is not None:
             spec = spec.sel(frequency=spec.frequency<=maxW)
-        spec.plot(size=9, cbar_kwargs={'label': f'Spectral power in {field}' if not log else f'Log of spectral power in {field}'})
+        spec.plot(size=9, cbar_kwargs={'label': f'Spectral power in {field}' if not log else f'Log of spectral power in {field}'}, cmap='plasma')
         #plt.title(f"{directory.name}: Dispersion relation of {field}")
         plt.ylabel(r"Frequency [$\omega_{ci}$]")
         plt.xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
@@ -224,8 +226,9 @@ def plot_growth_rate_data(
             plt.show()
 
         spec = spec.sel(wavenumber=spec.wavenumber>0.0)
-        spec.plot(size=9)
+        spec.plot(size=9, cbar_kwargs={'label': f'Spectral power in {field}' if not log else f'Log of spectral power in {field}'}, cmap='plasma')
         plt.plot(spec.coords['wavenumber'].data, spec.coords['wavenumber'].data, 'k--', label=r'$V_A$ branch')
+        plt.axhline(y = wLH_cyclo, color='black', linestyle=':', label=r'Lower hybrid frequency')
         plt.legend()
         plt.ylabel(r"Frequency [$\omega_{ci}$]")
         plt.xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
@@ -236,8 +239,9 @@ def plot_growth_rate_data(
             plt.show()
 
         f_over_all_k = spec.sum(dim = "wavenumber")
-        f_over_all_k.plot()
-        plt.grid()
+        f_over_all_k.plot(size=9)
+        plt.xticks(ticks=np.arange(np.floor(f_over_all_k.coords['frequency'][0]), np.ceil(f_over_all_k.coords['frequency'][-1])+1.0, 1.0), minor=True)
+        plt.grid(which='both', axis='x')
         plt.xlabel(r"Frequency [$\omega_{ci}$]")
         plt.ylabel(r"Sum of power in Bz over all k")
         if savePath is not None:
@@ -261,10 +265,11 @@ def plot_growth_rate_data(
         if log:
             spec_tk_plot = np.log(spec_tk_plot)
         if args.maxK is not None:
-            spec_tk_plot = spec_tk.sel(wavenumber=spec_tk.wavenumber<=maxK)
+            spec_tk_plot = spec_tk_plot.sel(wavenumber=spec_tk_plot.wavenumber<=maxK)
             spec_tk_plot = spec_tk_plot.sel(wavenumber=spec_tk_plot.wavenumber>=-maxK)
-        spec_tk_plot.plot(size=9, x = "wavenumber", y = "time", cbar_kwargs={'label': f'Spectral power in {field}' if not log else f'Log of spectral power in {field}'})
+        spec_tk_plot.plot(size=9, x = "wavenumber", y = "time", cbar_kwargs={'label': f'Spectral power in {field}' if not log else f'Log of spectral power in {field}'}, cmap='plasma')
         #plt.title(f"{directory.name}: Time evolution of spectral power in {field}")
+        plt.grid()
         plt.xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
         plt.ylabel(r"Time [$\tau_{ci}$]")
         if savePath is not None:
@@ -361,6 +366,7 @@ def calculate_max_growth_rate_in_simulation(
         beam = True,
         deuteron = False,
         plot = False,
+        writeToLocalCSV = False,
         figureSavePath = None):
     
     # Read dataset
@@ -526,6 +532,11 @@ def calculate_max_growth_rate_in_simulation(
         with open(str(outFile.absolute()), mode="a") as csvOut:
             writer = csv.writer(csvOut)
             writer.writerow([simNum, background_density, ion_ring_frac, B0, B0_angle, max_gamma_in_sim.wavenumber, max_gamma_in_sim.time, max_gamma_in_sim.gamma])
+    elif writeToLocalCSV:
+        with open(directory / f'{directory.name}_growthRate.csv', mode="w") as csvOut:
+            writer = csv.writer(csvOut)
+            writer.writerow(["simNumber", "background_density", "frac_beam", "b0_strength", "b0_angle", "wavenumber", "time", "maxGamma"])
+            writer.writerow([simNum, background_density, ion_ring_frac, B0, B0_angle, max_gamma_in_sim.wavenumber, max_gamma_in_sim.time, max_gamma_in_sim.gamma])
 
 def analyse_growth_rates_across_simulations(csvData : str):
 
@@ -534,6 +545,8 @@ def analyse_growth_rates_across_simulations(csvData : str):
     #matrix_plot([np.log(df.background_density.to_numpy()), np.log(df.frac_beam.to_numpy()), df.b0_strength.to_numpy(), df.b0_angle.to_numpy(), df.maxGamma.to_numpy()], labels = ["Log(Density)", "Log(Beam Fraction)", r"B0 [$T$]", r"B0 Angle $[^\circ]$", r"Max Gamma [$\omega_{ci}$]"])
     matrix_plot([np.log(df.background_density.to_numpy()), np.log(df.frac_beam.to_numpy()), df.b0_strength.to_numpy(), df.b0_angle.to_numpy(), df.time.to_numpy()], labels = ["Log(Density)", "Log(Beam Fraction)", r"B0 [$T$]", r"B0 Angle $[^\circ]$", r"Time [$\tau_{ci}$]"])
     matrix_plot([df.wavenumber.to_numpy(), df.time.to_numpy(), df.maxGamma.to_numpy()], labels = [r"Wavenumber [$\omega_{ci}/V_A$]", r"Time [$\tau_{ci}$]", r"Max Gamma [$\omega_{ci}$]"])
+
+#def collate_growth_rate_CSVs(overallDirectory : Path):
 
 if __name__ == "__main__":
 
@@ -714,7 +727,7 @@ if __name__ == "__main__":
         simNumber = args.simRunNumber
         print(f"Processing simulation number {simNumber}....")
         path = args.overallDir / Path(f"run_{str(simNumber)}")
-        calculate_max_growth_rate_in_simulation(path, simNumber, args.field, args.savePath, args.maxK, args.maxRes, plot=args.plot, figureSavePath=args.figureSavePath)
+        calculate_max_growth_rate_in_simulation(path, simNumber, args.field, args.savePath, args.maxK, args.maxRes, plot=args.plot, writeToLocalCSV=True, figureSavePath=args.figureSavePath)
 
     if args.dir is not None:
         plot_growth_rate_data(
