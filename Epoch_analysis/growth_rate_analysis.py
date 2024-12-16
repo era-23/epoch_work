@@ -546,7 +546,23 @@ def analyse_growth_rates_across_simulations(csvData : str):
     matrix_plot([np.log(df.background_density.to_numpy()), np.log(df.frac_beam.to_numpy()), df.b0_strength.to_numpy(), df.b0_angle.to_numpy(), df.time.to_numpy()], labels = ["Log(Density)", "Log(Beam Fraction)", r"B0 [$T$]", r"B0 Angle $[^\circ]$", r"Time [$\tau_{ci}$]"])
     matrix_plot([df.wavenumber.to_numpy(), df.time.to_numpy(), df.maxGamma.to_numpy()], labels = [r"Wavenumber [$\omega_{ci}/V_A$]", r"Time [$\tau_{ci}$]", r"Max Gamma [$\omega_{ci}$]"])
 
-#def collate_growth_rate_CSVs(overallDirectory : Path):
+def collate_growth_rate_CSVs(overallDirectory : Path):
+    overallCsvPath = args.overallDir / "allGrowthRates.csv"
+    with open(overallCsvPath, mode="w") as overallCsv:
+        print(f'Processing dirs in {overallDirectory}....')
+        dirs = next(os.walk(overallDirectory))[1] 
+        writer = csv.writer(overallCsv)
+        writer.writerow(["simNumber", "background_density", "frac_beam", "b0_strength", "b0_angle", "wavenumber", "time", "maxGamma"])
+        for dir in dirs:
+            dir = Path(dir)
+            print(f'Processing {dir.name}....')
+            csvPath = args.overallDir / dir / f'{dir.name}_growthRate.csv'
+            with open(csvPath, mode='r') as dataFile:
+                reader = csv.reader(dataFile)
+                next(reader) # header
+                for row in reader:
+                    writer.writerow(row)
+                    
 
 if __name__ == "__main__":
 
@@ -624,6 +640,12 @@ if __name__ == "__main__":
         "--calculateIndividualGrowthRate",
         action="store_true",
         help="Calculate a single growth rate for one of a batch of simulations (useful for array jobs).",
+        required = False
+    )
+    parser.add_argument(
+        "--collateGrowthRates",
+        action="store_true",
+        help="Collate all growth rates stored in separate CSVs across a simulation directory into one CSV in overallDir.",
         required = False
     )
     parser.add_argument(
@@ -728,6 +750,9 @@ if __name__ == "__main__":
         print(f"Processing simulation number {simNumber}....")
         path = args.overallDir / Path(f"run_{str(simNumber)}")
         calculate_max_growth_rate_in_simulation(path, simNumber, args.field, args.savePath, args.maxK, args.maxRes, plot=args.plot, writeToLocalCSV=True, figureSavePath=args.figureSavePath)
+    
+    if args.collateGrowthRates:
+        collate_growth_rate_CSVs(overallDirectory=args.overallDir)
 
     if args.dir is not None:
         plot_growth_rate_data(
