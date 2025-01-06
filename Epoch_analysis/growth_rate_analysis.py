@@ -153,7 +153,7 @@ def plot_growth_rate_data(
     pp_tCI = 1.0 / ppf.gyrofrequency(B0 * u.T, 'p+')
     print(f"Ion gyroperiod from plasmapy in s/rad: {pp_tCI}")
     print(f"Ion gyroperiod from plasmapy in s: {pp_tCI * TWO_PI * u.rad}")
-    pp_wLH = ppf.lower_hybrid_frequency(B0 * u.T, bkgd_number_density / u.m**3, 'p+')
+    pp_wLH = ppf.lower_hybrid_frequency(B0 * u.T, bkgd_number_density * u.m**-3, 'p+')
     print(f"Lower hybrid freqency from plasmapy in rad/s: {pp_wLH}")
     wLH_cyclo = pp_wLH * pp_tCI
     print(f"Lower hybrid freqency from plasmapy in W_ci: {wLH_cyclo}")
@@ -192,7 +192,7 @@ def plot_growth_rate_data(
         data = (data - data[0])**2 / data[0]**2
     
     data = data.rename(X_Grid_mid="x_space")
-    original_spec : xr.DataArray = xrft.xrft.fft(data, true_amplitude=True, true_phase=True, window='hamming')
+    original_spec : xr.DataArray = xrft.xrft.fft(data, true_amplitude=True, true_phase=True, window=None)
     # original_spec : xr.DataArray = xrscipy.fft.fftn(data, 'x_space', 'time')
     # original_spec.data = fft.fftshift(original_spec.data)
     original_spec = original_spec.rename(freq_time="frequency", freq_x_space="wavenumber")
@@ -543,8 +543,11 @@ def analyse_growth_rates_across_simulations(csvData : str):
     df = pd.read_csv(csvData, header=0)
     
     #matrix_plot([np.log(df.background_density.to_numpy()), np.log(df.frac_beam.to_numpy()), df.b0_strength.to_numpy(), df.b0_angle.to_numpy(), df.maxGamma.to_numpy()], labels = ["Log(Density)", "Log(Beam Fraction)", r"B0 [$T$]", r"B0 Angle $[^\circ]$", r"Max Gamma [$\omega_{ci}$]"])
-    matrix_plot([np.log(df.background_density.to_numpy()), np.log(df.frac_beam.to_numpy()), df.b0_strength.to_numpy(), df.b0_angle.to_numpy(), df.time.to_numpy()], labels = ["Log(Density)", "Log(Beam Fraction)", r"B0 [$T$]", r"B0 Angle $[^\circ]$", r"Time [$\tau_{ci}$]"])
-    matrix_plot([df.wavenumber.to_numpy(), df.time.to_numpy(), df.maxGamma.to_numpy()], labels = [r"Wavenumber [$\omega_{ci}/V_A$]", r"Time [$\tau_{ci}$]", r"Max Gamma [$\omega_{ci}$]"])
+    #matrix_plot([np.log(df.background_density.to_numpy()), np.log(df.frac_beam.to_numpy()), df.b0_strength.to_numpy(), df.b0_angle.to_numpy(), df.time.to_numpy()], labels = ["Log(Density)", "Log(Beam Fraction)", r"B0 [$T$]", r"B0 Angle $[^\circ]$", r"Time [$\tau_{ci}$]"])
+    #matrix_plot([np.log(df.background_density.to_numpy()), np.log(df.frac_beam.to_numpy()), df.b0_strength.to_numpy(), df.b0_angle.to_numpy(), df.wavenumber.to_numpy()], labels = ["Log(Density)", "Log(Beam Fraction)", r"B0 [$T$]", r"B0 Angle $[^\circ]$", r"Wavenumber [$\omega_{ci}/V_A$]"])
+    matrix_plot([np.log(df.background_density.to_numpy()), np.log(df.frac_beam.to_numpy()), df.b0_strength.to_numpy(), df.b0_angle.to_numpy(), df.maxGamma.to_numpy(), df.time.to_numpy(), df.wavenumber.to_numpy()], labels = ["Log(Density)", "Log(Beam Fraction)", r"B0 [$T$]", r"B0 Angle $[^\circ]$", r"Max Gamma [$\omega_{ci}$]", r"Time [$\tau_{ci}$]", r"Wavenumber [$\omega_{ci}/V_A$]"], show_ticks=True)
+    #matrix_plot([df.wavenumber.to_numpy(), df.time.to_numpy(), df.maxGamma.to_numpy()], labels = [r"Wavenumber [$\omega_{ci}/V_A$]", r"Time [$\tau_{ci}$]", r"Max Gamma [$\omega_{ci}$]"])
+    
 
 def collate_growth_rate_CSVs(overallDirectory : Path):
     overallCsvPath = args.overallDir / "allGrowthRates.csv"
@@ -731,7 +734,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.plotMatrix:
-        analyse_growth_rates_across_simulations("/home/era536/Documents/Epoch/Data/gamma_2_out.csv")
+        analyse_growth_rates_across_simulations(str(args.dir))
     elif args.calculateAllGrowthRates:
         print("Simulation directories:")
         dirs = next(os.walk(args.overallDir))[1] 

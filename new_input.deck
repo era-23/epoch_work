@@ -1,0 +1,163 @@
+begin:constant
+  background_density = 3.2296731306167534e+19
+  background_temp = 100000000.0
+  frac_beam = 0.0005780120173172839
+  ion_mass_e = 1836.2
+  mass_background_ion = me * ion_mass_e
+  mass_fast_ion = me * ion_mass_e
+  z_fast = 1.0 # This needs to be propagated
+  background_mass_density = background_density * mass_background_ion * (1.0 - frac_beam)
+  b0_strength = 4.991538027102641
+  b0_angle = 90.69135370213533
+  alfven_velo = b0_strength / sqrt(mu0 * background_mass_density)
+  v_perp_ratio = 1.0
+  v_perp = v_perp_ratio * alfven_velo
+  theta = -pi/3
+  pring_beam = mass_fast_ion * v_perp * sqrt(1.0 / cos(theta)^2)
+  pbeam = pring_beam * sin(theta)
+  pring = pring_beam * cos(theta)
+  p_ring_th = pring_beam / 100
+  p_beam_th = pring_beam / 1000
+  px_min_limit = (pring - 6*p_ring_th gt 0) * (pring - 6*p_ring_th)
+  px_peak = pring / 2 * (1 + sqrt(1 + (2*p_ring_th/pring)^2))
+  
+  #Electron beam
+  p_eBeam = frac_beam * (pbeam / mass_fast_ion) * me
+  p_e_th = frac_beam * sqrt(me * kb * background_temp) 
+  p_ex_min_limit = 0.0
+  p_ex_peak = 0.0
+  
+  vel_ion = sqrt(2 * kb * background_temp / mass_fast_ion)
+  ion_gyrofrequency = (qe * b0_strength) / (2.0 * pi * mass_fast_ion)
+  ion_gyroperiod = 1.0 / ion_gyrofrequency
+  lambda_db = sqrt(epsilon0 * kb * background_temp / background_density / qe^2)
+  grid_spacing = lambda_db
+  num_cells = 20000
+  num_time_samples = 1000.0
+  nyquist_omega = 40.0 * ion_gyrofrequency
+  simtime = num_time_samples / (2.0 * nyquist_omega)
+  domain_length = num_cells * grid_spacing
+  diagtime = simtime / num_time_samples
+end:constant
+
+begin:control
+  nx = num_cells
+  npart = nx * 100.0
+  t_end = simtime
+  x_min = 0.0
+  x_max = num_cells * grid_spacing
+  smooth_currents = T
+end:control
+
+begin:boundaries
+  bc_x_min = periodic
+  bc_x_max = periodic
+end:boundaries
+
+begin:fields
+  bx = b0_strength * cos(b0_angle * pi/180)
+  by = 0.0
+  bz = b0_strength * sin(b0_angle * pi/180)
+end:fields
+
+begin:species
+  name = proton
+  charge = 1.0
+  mass = ion_mass_e
+  frac = 0.1
+  number_density = background_density * (1.0 - frac_beam)
+  number_density_back = background_density * (1.0 - frac_beam)
+  temp = background_temp
+  temp_back = background_temp
+end:species
+
+begin:species
+  name = electron
+  charge = -1.0
+  mass = 1.0
+  frac = 0.1
+  temp = background_temp / 100
+  temp_back = background_temp / 100
+  number_density = background_density
+  dist_fn = px / p_ex_peak * exp(-0.5 * (px / p_e_th)^2) * exp(-0.5 * ((pz - p_ebeam) / p_e_th)^2)
+  dist_fn_px_range = (0.0, 6*p_e_th)
+  dist_fn_pz_range = (p_ebeam - 6*p_e_th, p_ebeam + 6*p_e_th)
+  field_aligned_initialisation = T
+  x_perp_y_ignored_z_para = T
+  number_density_back = background_density
+end:species
+
+begin:species
+  name = ion_ring_beam
+  charge = z_fast
+  mass = ion_mass_e
+  frac = 0.8
+  number_density = background_density * frac_beam
+  dist_fn = px / px_peak * exp(-0.5 * ((px - pring) / p_ring_th)^2) * exp(-0.5 * ((pz - pbeam) / p_beam_th)^2)
+  dist_fn_px_range = (px_min_limit, pring + 6*p_ring_th)
+  dist_fn_pz_range = (pbeam - 6*p_ring_th, pbeam + 6*p_ring_th)
+  field_aligned_initialisation = T
+  x_perp_y_ignored_z_para = T
+end:species
+
+begin:output
+  dt_snapshot = diagtime
+  full_dump_every = 100000
+  force_final_to_be_restartable = F
+  particles = never
+  particle_weight = never
+  vx = never
+  vy = never
+  vz = never
+  grid = always
+  ex = always
+  ey = always
+  ez = always
+  bx = always
+  by = always
+  bz = always
+  ekbar = always + species
+  charge_density = never
+  number_density = never
+  distribution_functions = never
+end:output
+
+begin:dist_fn
+  name = py_pz
+  ndims = 2
+  direction1 = dir_py
+  direction2 = dir_pz
+  range1 = (1, 1)
+  range2 = (-3e-22, 3e-22)
+  resolution1 = 100
+  resolution2 = 100
+  include_species:electron
+  include_species:proton
+  include_species:ion_ring_beam
+end:dist_fn
+
+begin:dist_fn
+  name = px_py
+  ndims = 2
+  direction1 = dir_px
+  direction2 = dir_py
+  range1 = (1, 1)
+  range2 = (-3e-22, 3e-22)
+  resolution1 = 100
+  resolution2 = 100
+  include_species:electron
+  include_species:proton
+  include_species:ion_ring_beam
+end:dist_fn
+
+begin:dist_fn
+  name = px
+  ndims = 1
+  direction1 = dir_px
+  range1 = (-3e-22, 3e-22)
+  resolution1 = 100
+  include_species:electron
+  include_species:proton
+  include_species:ion_ring_beam
+end:dist_fn
+
