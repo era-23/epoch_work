@@ -27,14 +27,15 @@
             "name": "Python Debugger: Growth Rate Plotting",
             "type": "debugpy",
             "request": "launch",
-            "program": "growth_rate_analysis.py",
+            "program": "analysis_development.py",
             "console": "integratedTerminal",
             "args": [
-                "--dir", "/home/era536/Documents/Epoch/Data/irb_run51_newRes/",
+                "--dir", "/home/era536/Documents/Epoch/Data/batch_testing/run_65/",
                 "--field", "Magnetic_Field_Bz",
                 "--plotOmegaK",
                 "--plotTk",
-                "--plotGrowth",
+                "--beam",
+                //"--plotGrowth",
                 "--numKs", "5",
                 "--maxK", "100.0",
                 "--log"
@@ -44,7 +45,7 @@
             "name": "Python Debugger: Growth Rate Calculation",
             "type": "debugpy",
             "request": "launch",
-            "program": "growth_rate_analysis.py",
+            "program": "analysis_development.py",
             "console": "integratedTerminal",
             "args": [
                 "--overallDir", "/home/era536/Documents/Epoch/Data/irb_scan_highRes/",
@@ -60,7 +61,7 @@
             "name": "Python Debugger: Growth Rate Analysis",
             "type": "debugpy",
             "request": "launch",
-            "program": "growth_rate_analysis.py",
+            "program": "analysis_development.py",
             "console": "integratedTerminal",
             "args": [
                 "--overallDir", "/home/era536/Documents/Epoch/Data/gamma_out.csv",
@@ -100,6 +101,19 @@
             "console": "integratedTerminal",
             "args": [
                 "--dir", "/home/era536/Documents/Epoch/Data/irb_lowRes_alfvenic/"
+            ]
+        },
+        {
+            "name": "Python Debugger: Batch Processing",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "batch_simulation_processing.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--dir", "/home/era536/Documents/Epoch/Data/batch_testing/",
+                "--fields", "Magnetic_Field_Bz",
+                "--displayPlots",
+                "--takeLog"
             ]
         }
     ]

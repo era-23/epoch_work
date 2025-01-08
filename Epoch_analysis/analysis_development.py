@@ -164,6 +164,7 @@ def plot_growth_rate_data(
 
     Tci = evenly_spaced_time / ion_gyroperiod
     alfven_velo = B0 / (np.sqrt(constants.mu_0 * mass_density))
+    print(f"Alfven speed: {alfven_velo}m/s")
     vA_Tci = ds.coords["X_Grid_mid"] / (ion_gyroperiod * alfven_velo)
 
     # Nyquist frequencies in normalised units
@@ -351,7 +352,7 @@ def plot_growth_rate_data(
                 plt.savefig(savePath / f'{directory.name}_k{float(spec_tk.coords["wavenumber"][k]):.5f}_highestGamma.png')
                 plt.clf()
             else:
-                plt.show()
+                plt.show()  
 
 def calculate_max_growth_rate_in_simulation(
         directory : Path, 
@@ -430,6 +431,7 @@ def calculate_max_growth_rate_in_simulation(
 
     Tci = evenly_spaced_time / ion_gyroperiod
     alfven_velo = B0 / (np.sqrt(constants.mu_0 * mass_density))
+    print(f"Alfven speed: {alfven_velo}m/s")
     vA_Tci = ds.coords["X_Grid_mid"] / (ion_gyroperiod * alfven_velo)
 
     # Nyquist frequencies in normalised units
