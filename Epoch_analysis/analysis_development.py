@@ -246,14 +246,16 @@ def plot_growth_rate_data(
         plt.xlabel(r"Frequency [$\omega_{ci}$]")
         plt.ylabel(r"Sum of power in Bz over all k")
         if savePath is not None:
-            plt.savefig(savePath / f'{directory.name}_powerByK_dField-{deltaField}_log-{log}_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
+            plt.savefig(savePath / f'{directory.name}_powerByOmega_dField-{deltaField}_log-{log}_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
             plt.clf()
         else:
             plt.show()
 
     # Create t-k spectrum
+    print(original_spec.sel(wavenumber=0.0))
     zeroed_spec = original_spec.where(original_spec.frequency>0.0, 0.0)
     zeroed_doubled_spec = 2.0 * zeroed_spec # Double spectrum to conserve E
+    print(zeroed_spec.sel(wavenumber=0.0))
     zeroed_doubled_spec.loc[dict(wavenumber=0.0)] = zeroed_spec.sel(wavenumber=0.0) # Restore original 0-freq amplitude
     spec_tk = xrft.xrft.ifft(zeroed_doubled_spec, dim="frequency")
     spec_tk = spec_tk.rename(freq_frequency="time")

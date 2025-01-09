@@ -15,43 +15,132 @@ import epydeck
 import numpy as np
 import xrft
 
-def create_omega_k_plot(
-        fftSpectrum : xr.DataArray,
+def create_t_k_plots(
+        tkSpectrum : xr.DataArray,
         field : str,
+        field_unit : str,
         saveDirectory : Path,
         runName : str,
+        maxK : float = None,
+        log : bool = False,
+        display : bool = False):
+    
+    if log:
+        tkSpectrum = np.log(tkSpectrum)
+    if maxK is not None:
+        tkSpectrum = tkSpectrum.sel(wavenumber=tkSpectrum.wavenumber<=maxK)
+        tkSpectrum = tkSpectrum.sel(wavenumber=tkSpectrum.wavenumber>=-maxK)
+
+    # Time-wavenumber
+    fig, axs = plt.subplots(figsize=(15, 10))
+    tkSpectrum.plot(ax=axs, x = "wavenumber", y = "time", cbar_kwargs={'label': f'Spectral power in {field} [{field_unit}]' if not log else f'Log of spectral power in {field}'}, cmap='plasma')
+    axs.grid()
+    axs.set_xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
+    axs.set_ylabel(r"Time [$\tau_{ci}$]")
+    filename = Path(f'{runName}_{field.replace("_", "")}_tk_log-{log}_maxK-{maxK if maxK is not None else "all"}.png')
+    fig.savefig(str(saveDirectory / filename))
+    if display:
+        plt.show()
+
+def create_t_k_spectrum(
+        originalFftSpectrum : xr.DataArray) -> xr.DataArray :
+    
+    tk_spec = originalFftSpectrum.where(originalFftSpectrum.frequency>0.0, 0.0)
+    original_zero_freq_amplitude = tk_spec.sel(wavenumber=0.0)
+    tk_spec = 2.0 * tk_spec # Double spectrum to conserve E
+    tk_spec.loc[dict(wavenumber=0.0)] = original_zero_freq_amplitude # Restore original 0-freq amplitude
+    tk_spec = xrft.xrft.ifft(tk_spec, dim="frequency")
+    tk_spec = tk_spec.rename(freq_frequency="time")
+    tk_spec = abs(tk_spec)
+
+    return tk_spec
+
+def create_omega_k_plots(
+        fftSpectrum : xr.DataArray,
+        field : str,
+        field_unit : str,
+        saveDirectory : Path,
+        runName : str,
+        inputDeck : dict,
+        bkgdSpecies : str = 'p+',
+        fastSpecies : str = 'p+',
         maxK : float = None,
         maxW : float = None,
         log : bool = False,
         display : bool = False):
 
-    # Abs and log if needed
+    #print(fftSpectrum.sum())
     spec = abs(fftSpectrum)
-    if log:
-        spec = np.log(spec)
-
+    #print(spec.sum())
     # Select positive temporal frequencies
     spec = spec.sel(frequency=spec.frequency>=0.0)
-
+    #print(spec.sum())
     # Trim to max wavenumber and frequency, if specified
     if maxK is not None:
         spec = spec.sel(wavenumber=spec.wavenumber<=maxK)
         spec = spec.sel(wavenumber=spec.wavenumber>=-maxK)
     if maxW is not None:
         spec = spec.sel(frequency=spec.frequency<=maxW)
-
+    #print(spec.sum())
+    # Power in omega over all k
     fig, axs = plt.subplots(figsize=(15, 10))
-    spec.plot(ax=axs, cbar_kwargs={'label': f'Spectral power in {field}' if not log else f'Log of spectral power in {field}'}, cmap='plasma')
-    #fig.draw()
+    power_trace = spec.sum(dim = "wavenumber")
+    #print(power_trace.sum())
+    power_trace.plot(ax=axs)
+    axs.set_xticks(ticks=np.arange(np.floor(power_trace.coords['frequency'][0]), np.ceil(power_trace.coords['frequency'][-1])+1.0, 1.0), minor=True)
+    axs.grid(which='both', axis='x')
+    axs.set_xlabel(r"Frequency [$\omega_{ci}$]")
+    axs.set_ylabel(f"Sum of power in {field} over all k [{field_unit}]")
+    filename = Path(f'{runName}_{field.replace("_", "")}_powerByOmega_log-{log}_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
+    fig.savefig(str(saveDirectory / filename))
+    if display:
+        plt.show()
+
+    # Power in k over all omega
+    fig, axs = plt.subplots(figsize=(15, 10))
+    power_trace = spec.sum(dim = "frequency")
+    power_trace.plot(ax=axs)
+    axs.set_xticks(ticks=np.arange(np.floor(power_trace.coords['wavenumber'][0]), np.ceil(power_trace.coords['wavenumber'][-1])+1.0, 1.0), minor=True)
+    axs.grid(which='both', axis='x')
+    axs.set_xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
+    omega = r'$\omega_{ci}$'
+    axs.set_ylabel(f"Sum of power in {field} over all {omega} [{field_unit}]")
+    filename = Path(f'{runName}_{field.replace("_", "")}_powerByK_log-{log}_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
+    fig.savefig(str(saveDirectory / filename))
+    if display:
+        plt.show()
+
+    if log:
+        spec = np.log(spec)
+
+    # Full dispersion relation for positive omega
+    fig, axs = plt.subplots(figsize=(15, 10))
+    spec.plot(ax=axs, cbar_kwargs={'label': f'Spectral power in {field} [{field_unit}]' if not log else f'Log of spectral power in {field}'}, cmap='plasma')
     axs.set_ylabel(r"Frequency [$\omega_{ci}$]")
     axs.set_xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
     print(saveDirectory)
-    filename = Path(f'{runName}_wk_log-{log}_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
+    filename = Path(f'{runName}_{field.replace("_", "")}_wk_log-{log}_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
     print(str(saveDirectory / filename))
     fig.savefig(str(saveDirectory / filename))
     if display:
         plt.show()
-        plt.clf()
+
+    # Positive omega/positive k with vA and lower hybrid frequency
+    fig, axs = plt.subplots(figsize=(15, 10))
+    spec = spec.sel(wavenumber=spec.wavenumber>0.0)
+    spec.plot(ax=axs, cbar_kwargs={'label': f'Spectral power in {field} [{field_unit}]' if not log else f'Log of spectral power in {field}'}, cmap='plasma')
+    axs.plot(spec.coords['wavenumber'].data, spec.coords['wavenumber'].data, 'k--', label=r'$V_A$ branch')
+    B0 = inputDeck['constant']['b0_strength']
+    bkgd_number_density = float(inputDeck['constant']['background_density'])
+    wLH_cyclo = ppf.lower_hybrid_frequency(B0 * u.T, bkgd_number_density * u.m**-3, bkgdSpecies) / ppf.gyrofrequency(B0 * u.T, fastSpecies)
+    axs.axhline(y = wLH_cyclo, color='black', linestyle=':', label=r'Lower hybrid frequency')
+    axs.legend()
+    axs.set_ylabel(r"Frequency [$\omega_{ci}$]")
+    axs.set_xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
+    filename = Path(f'{runName}_{field.replace("_", "")}_wk_positiveK_log-{log}_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
+    fig.savefig(str(saveDirectory / filename))
+    if display:
+        plt.show()
 
 def calculate_simulation_parameters(
         inputDeck : dict,
@@ -139,17 +228,17 @@ def calculate_simulation_parameters(
 
     return ion_gyroperiod_s, alfven_velocity
 
-def normalise_data(original_data : xr.Dataset, ion_gyroperiod : float, alfven_velocity : float) -> xr.Dataset:
+def normalise_data(dataset : xr.Dataset, ion_gyroperiod : float, alfven_velocity : float) -> xr.Dataset:
     
-    evenly_spaced_time = np.linspace(original_data.coords["time"][0].data, original_data.coords["time"][-1].data, len(original_data.coords["time"].data))
-    interp_data = original_data.interp(time=evenly_spaced_time)
+    evenly_spaced_time = np.linspace(dataset.coords["time"][0].data, dataset.coords["time"][-1].data, len(dataset.coords["time"].data))
+    dataset = dataset.interp(time=evenly_spaced_time)
     Tci = evenly_spaced_time / ion_gyroperiod
-    vA_Tci = interp_data.coords["X_Grid_mid"] / (ion_gyroperiod * alfven_velocity)
-    interp_data = interp_data.drop_vars("X_Grid")
-    interp_data = interp_data.assign_coords({"time" : Tci, "X_Grid_mid" : vA_Tci})
-    data = interp_data.rename(X_Grid_mid="x_space")
+    vA_Tci = dataset.coords["X_Grid_mid"] / (ion_gyroperiod * alfven_velocity)
+    dataset = dataset.drop_vars("X_Grid")
+    dataset = dataset.assign_coords({"time" : Tci, "X_Grid_mid" : vA_Tci})
+    dataset = dataset.rename(X_Grid_mid="x_space")
 
-    return data
+    return dataset
 
 def process_simulation_batch(
         directory : Path,
@@ -230,29 +319,37 @@ def process_simulation_batch(
 
         ion_gyroperiod, alfven_velocity = calculate_simulation_parameters(inputDeck, ds, outputRoot, beam, fastSpecies, bkgdSpecies)
 
-        norm_ds = normalise_data(ds, ion_gyroperiod, alfven_velocity)
+        ds = normalise_data(ds, ion_gyroperiod, alfven_velocity)
 
         if "all" in fields:
-            fields = [str(f) for f in norm_ds.data_vars.keys() if str(f).startswith("Electric_Field") or str(f).startswith("Magnetic_Field")]
+            fields = [str(f) for f in ds.data_vars.keys() if str(f).startswith("Electric_Field") or str(f).startswith("Magnetic_Field")]
         
         for field in fields:
 
-            field_data_array : xr.DataArray = norm_ds[field]
-            field_data = field_data_array.load()
+            #field_data_array : xr.DataArray = ds[field]
+            #field_data = ds[field].load()
 
             # Take FFT
-            original_spec : xr.DataArray = xrft.xrft.fft(field_data, true_amplitude=True, true_phase=True, window=None)
+            field_unit = ds[field].units
+            print(float(ds[field].load().sum()))
+            original_spec : xr.DataArray = xrft.xrft.fft(ds[field].load(), true_amplitude=True, true_phase=True, window=None)
             original_spec = original_spec.rename(freq_time="frequency", freq_x_space="wavenumber")
             # Remove zero-frequency component
             original_spec = original_spec.where(original_spec.wavenumber!=0.0, None)
 
             # Dispersion relations
-            plt.rcParams.update({'axes.labelsize': plotLabelSize})
-            plt.rcParams.update({'axes.titlesize': plotTitleSize})
-            plt.rcParams.update({'xtick.labelsize': plotTickSize})
-            plt.rcParams.update({'ytick.labelsize': plotTickSize})
+            if createPlots:
 
-            create_omega_k_plot(original_spec, field, outFileDirectory, simFolder.name, maxK, maxW, takeLog, displayPlots)
+                plt.rcParams.update({'axes.labelsize': plotLabelSize})
+                plt.rcParams.update({'axes.titlesize': plotTitleSize})
+                plt.rcParams.update({'xtick.labelsize': plotTickSize})
+                plt.rcParams.update({'ytick.labelsize': plotTickSize})
+
+                create_omega_k_plots(original_spec, field, field_unit, outFileDirectory, simFolder.name, inputDeck, maxK=maxK, maxW=maxW, log=takeLog, display=displayPlots)
+
+                tk_spec = create_t_k_spectrum(original_spec)
+
+                create_t_k_plots(tk_spec, field, field_unit, outFileDirectory, simFolder.name, maxK, takeLog, displayPlots)
 
         outputRoot.close()
             

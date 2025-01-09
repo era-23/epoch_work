@@ -30,7 +30,7 @@
             "program": "analysis_development.py",
             "console": "integratedTerminal",
             "args": [
-                "--dir", "/home/era536/Documents/Epoch/Data/batch_testing/run_65/",
+                "--dir", "/home/era536/Documents/Epoch/Data/batch_testing/run_50/",
                 "--field", "Magnetic_Field_Bz",
                 "--plotOmegaK",
                 "--plotTk",
