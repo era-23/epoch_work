@@ -112,6 +112,7 @@
             "args": [
                 "--dir", "/home/era536/Documents/Epoch/Data/batch_testing/",
                 "--fields", "Magnetic_Field_Bz",
+                "--createPlots",
                 "--displayPlots",
                 "--takeLog"
             ]

@@ -1,5 +1,55 @@
 import numpy as np
 from scipy import constants
+from dataclasses import dataclass
+
+@dataclass
+class LinearGrowthRate:
+    wavenumber: float
+    timeValues: list
+    timeMidpoint: float
+    gamma: float
+    yIntercept: float
+    residual: float
+
+    def to_string(self) -> str:
+        return f"Wavenumber: {float(self.wavenumber)}, Time (midpoint): {float(self.timeMidpoint)}, Growth rate: {float(self.gamma)}, SoS residual: {float(self.residual)}"
+
+
+@dataclass
+class LinearGrowthRateByK:
+    wavenumber: float
+    gamma: float
+    yIntercept: float
+    residual: float
+
+@dataclass
+class LinearGrowthRateByT:
+    time: float
+    gamma: float
+    yIntercept: float
+    residual: float
+
+@dataclass
+class MaxGrowthRate:
+    wavenumber: float
+    time: float
+    gamma: float
+    yIntercept: float
+
+# Formerly everything below maxRes percentile, i.e. maxRes == 0.2 --> all values within bottom (best) 20th percentile
+# Now everything at maxRes proportion and below, i.e. maxRes == 0.2 --> bottom (best) 20% of values
+def filter_by_residuals(x, residuals, maxRes):
+    x = np.array(x)
+
+    min_res = np.nanmin(residuals)
+    max_res = np.nanmax(residuals)
+    range_res = max_res - min_res
+    absoluteMaxResidual = min_res + (maxRes * range_res)
+    
+    # Filter growth rates
+    x_low_residuals = np.array([i for i in x if i.residual <= absoluteMaxResidual])
+
+    return x_low_residuals
 
 def calculate_lower_hybrid_frequency(
         ion_charge : float,

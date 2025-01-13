@@ -1,7 +1,6 @@
 from sdf_xarray import SDFPreprocess
 from pathlib import Path
 from scipy import constants
-from dataclasses import dataclass
 import matplotlib.pyplot as plt
 #from matplotlib import colors
 from inference.plotting import matrix_plot
@@ -9,7 +8,7 @@ import astropy.units as u
 from plasmapy.formulary import frequencies as ppf
 #import xrscipy as xrscipy
 #import xrscipy.fft
-import epoch_utils
+import epoch_utils as utils
 import pandas as pd
 import epydeck
 import numpy as np
@@ -18,27 +17,6 @@ import argparse
 import xrft
 import csv
 import os
-
-@dataclass
-class LinearGrowthRateByK:
-    wavenumber: float
-    gamma: float
-    yIntercept: float
-    residual: float
-
-@dataclass
-class LinearGrowthRateByT:
-    time: float
-    gamma: float
-    yIntercept: float
-    residual: float
-
-@dataclass
-class MaxGrowthRate:
-    wavenumber: float
-    time: float
-    gamma: float
-    yIntercept: float
 
 def trim_to_middle_pct(x, pct):
     remove_pct = 100.0 - pct
@@ -51,21 +29,6 @@ def fit_to_middle_percentage(x, y, pct):
     x_trim = trim_to_middle_pct(x, pct)
     y_trim = trim_to_middle_pct(y, pct)
     return np.polyfit(x_trim, y_trim, deg = 1, full = True)
-
-# Formerly everything below maxRes percentile, i.e. maxRes == 0.2 --> all values within bottom (best) 20th percentile
-# Now everything at maxRes proportion and below, i.e. maxRes == 0.2 --> bottom (best) 20% of values
-def filter_by_residuals(x, residuals, maxRes):
-    x = np.array(x)
-
-    min_res = np.nanmin(residuals)
-    max_res = np.nanmax(residuals)
-    range_res = max_res - min_res
-    absoluteMaxResidual = min_res + (maxRes * range_res)
-    
-    # Filter growth rates
-    x_low_residuals = np.array([i for i in x if i.residual <= absoluteMaxResidual])
-
-    return x_low_residuals
 
 def plot_growth_rate_data(
         directory : Path, 
@@ -176,7 +139,7 @@ def plot_growth_rate_data(
     print(f"NORMALISED: Sim L in vA*Tci: {simL_vATci}vA*Tci")
     print(f"NORMALISED: Sampling frequency in Wci/vA: {num_cells/simL_vATci}Wci/vA")
     print(f"NORMALISED: Nyquist frequency in Wci/vA: {num_cells/(2.0 *simL_vATci)}Wci/vA")
-    w_LH_Wci = epoch_utils.calculate_lower_hybrid_frequency(ion_bkgd_charge, ion_bkgd_mass, bkgd_number_density, B0, 'cyc')
+    w_LH_Wci = utils.calculate_lower_hybrid_frequency(ion_bkgd_charge, ion_bkgd_mass, bkgd_number_density, B0, 'cyc')
     print(f"NORMALISED: Lower Hybrid frequency in Wci: {w_LH_Wci}Wci")
 
     # Clean data and take FFT
@@ -314,11 +277,11 @@ def plot_growth_rate_data(
             for i in range(len(t_k) - (gammaWindow + 1)): # For each window
                 t_k_window = t_k[i:(i + gammaWindow)]
                 fit, res, _, _, _ = np.polyfit(x = t_k.coords["time"][i:(i + gammaWindow)], y = np.log(t_k_window), deg = 1, full = True)
-                all_gammas.append(LinearGrowthRateByT(time = t_k.coords["time"][i:(i + gammaWindow)][int(gammaWindow/2)], gamma = float(fit[0]), yIntercept=float(fit[1]), residual = float(res[0])))
+                all_gammas.append(utils.LinearGrowthRateByT(time = t_k.coords["time"][i:(i + gammaWindow)][int(gammaWindow/2)], gamma = float(fit[0]), yIntercept=float(fit[1]), residual = float(res[0])))
                 all_residuals.append(float(res[0]))
             
             # Normalise residuals and filter
-            filtered = filter_by_residuals(all_gammas, all_residuals, maxRes)
+            filtered = utils.filter_by_residuals(all_gammas, all_residuals, maxRes)
 
             filtered_times = []
             filtered_gammas = []
@@ -499,16 +462,16 @@ def calculate_max_growth_rate_in_simulation(
             #     plt.plot(t_k.coords["time"][i:(i + gammaWindow)], fit[0] * t_k.coords["time"][i:(i + gammaWindow)] + fit[1])
             # plt.title(f'k = {float(k):.3f}')
             # plt.show()
-            all_gammas.append(LinearGrowthRateByT(time = float(t_k.coords["time"][i:(i + gammaWindow)][int(gammaWindow/2)]), gamma = float(fit[0]), yIntercept=float(fit[1]), residual = float(res[0])))
+            all_gammas.append(utils.LinearGrowthRateByT(time = float(t_k.coords["time"][i:(i + gammaWindow)][int(gammaWindow/2)]), gamma = float(fit[0]), yIntercept=float(fit[1]), residual = float(res[0])))
             all_residuals.append(float(res[0]))
         
         # Normalise residuals and filter
-        filtered = filter_by_residuals(all_gammas, all_residuals, maxRes)
+        filtered = utils.filter_by_residuals(all_gammas, all_residuals, maxRes)
 
         if filtered.size != 0:
             filtered_gammas = [lgr.gamma for lgr in filtered]
             max_gamma_id = np.nanargmax(filtered_gammas)
-            max_growth_rates.append(MaxGrowthRate(wavenumber=float(k), time=filtered[max_gamma_id].time, gamma=filtered[max_gamma_id].gamma, yIntercept=filtered[max_gamma_id].yIntercept))
+            max_growth_rates.append(utils.MaxGrowthRate(wavenumber=float(k), time=filtered[max_gamma_id].time, gamma=filtered[max_gamma_id].gamma, yIntercept=filtered[max_gamma_id].yIntercept))
 
     all_max_gammas = [mgr.gamma for mgr in max_growth_rates]
     max_gamma_in_sim = max_growth_rates[np.nanargmax(all_max_gammas)]

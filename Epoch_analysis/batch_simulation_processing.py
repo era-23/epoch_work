@@ -4,16 +4,88 @@ from pathlib import Path
 from matplotlib import pyplot as plt
 from scipy import constants
 from sdf_xarray import SDFPreprocess
-import astropy.units as u
+from typing import List
 from plasmapy.formulary import frequencies as ppf
 from plasmapy.formulary import speeds as pps
 from plasmapy.formulary import lengths as ppl
+import astropy.units as u
+import epoch_utils as utils
 import netCDF4 as nc
 import xarray as xr
 import glob
 import epydeck
 import numpy as np
+import numpy.typing as npt
+import numpy.polynomial.polynomial as poly
 import xrft
+
+def find_max_growth_rates(
+        tkSpectrum : xr.DataArray,
+        wavenumberIndicesToCalculate : np.ndarray,
+        gammaWindow : int
+) -> List[utils.LinearGrowthRate] :
+
+    max_growth_rates = []
+
+    for index in wavenumberIndicesToCalculate:
+
+        signal = tkSpectrum.isel(wavenumber=index)
+
+        signal_growth_rates = []
+
+        for w in range(len(signal) - (gammaWindow + 1)): # For each window
+
+            t_k_window = signal[w:(w + gammaWindow)]
+            coefs, stats = poly.polyfit(x = signal.coords["time"][w:(w + gammaWindow)], y = np.log(t_k_window), deg = 1, full = True)
+            signal_growth_rates.append(
+                utils.LinearGrowthRate(wavenumber=tkSpectrum.coords['wavenumber'][index],
+                                       timeValues=signal.coords["time"][w:(w + gammaWindow)],
+                                       timeMidpoint=signal.coords["time"][w:(w + gammaWindow)][int(gammaWindow/2)],
+                                       gamma=coefs[1],
+                                       yIntercept=coefs[0],
+                                       residual=stats[0]))
+            
+        max_signal_growth_rate_index = np.nanargmax([lgr.gamma for lgr in signal_growth_rates])
+        max_growth_rates.append(signal_growth_rates[max_signal_growth_rate_index])
+
+        # Debugging
+        max = signal_growth_rates[max_signal_growth_rate_index]
+        np.log(signal).plot()
+        plt.plot(max.timeValues, max.gamma * max.timeValues + max.yIntercept)
+        plt.title(f'k = {float(max.wavenumber):.3f}')
+        plt.show()
+
+    return max_growth_rates
+
+def find_max_growth_rates_of_top_n_k_with_max_total_power(
+        tkSpectrum : xr.DataArray,
+        gammaWindow : int,
+        n : int = 10,
+):
+    # Apply max which returns highest values along axis
+    max_powers = tkSpectrum.sum(dim='time')
+    max_powers = np.nan_to_num(max_powers)
+
+    # Find indices of highest peark powers
+    max_power_k_indices = np.argpartition(max_powers, -n)[-n:][::-1]
+
+    return find_max_growth_rates(tkSpectrum, max_power_k_indices, gammaWindow)
+
+def find_max_growth_rates_of_top_n_k_with_max_peak_power(
+        tkSpectrum : xr.DataArray,
+        gammaWindow : int = 100,
+        n : int = 10
+) -> List[utils.LinearGrowthRate]:
+    
+    # Apply max which returns highest values along axis
+    peak_powers = tkSpectrum.max(dim='time')
+    peak_powers = np.nan_to_num(peak_powers)
+
+    # Find indices of highest peark powers
+    peak_power_k_indices = np.argpartition(peak_powers, -n)[-n:][::-1]
+
+    return find_max_growth_rates(tkSpectrum, peak_power_k_indices, gammaWindow)
+    
 
 def create_t_k_plots(
         tkSpectrum : xr.DataArray,
@@ -133,6 +205,15 @@ def create_omega_k_plots(
     B0 = inputDeck['constant']['b0_strength']
     bkgd_number_density = float(inputDeck['constant']['background_density'])
     wLH_cyclo = ppf.lower_hybrid_frequency(B0 * u.T, bkgd_number_density * u.m**-3, bkgdSpecies) / ppf.gyrofrequency(B0 * u.T, fastSpecies)
+    manual_ion_gyro = (constants.elementary_charge * B0) / constants.proton_mass
+    manual_electron_gyro = (constants.elementary_charge * B0) / constants.electron_mass
+    james_wLH = (1.0 / (np.sqrt(manual_ion_gyro * manual_electron_gyro))) / manual_ion_gyro
+    my_w_LH = 1.0 / (manual_ion_gyro*u.rad*u.s**-1 * np.sqrt((1.0/ppf.plasma_frequency(bkgd_number_density * u.m**-3, 'p+')**2) + (1.0/(manual_ion_gyro*u.rad*u.s**-1*manual_electron_gyro*u.rad*u.s**-1))))
+    print(f"PPF Lower hybrid: {wLH_cyclo}")
+    print(f"James' Lower hybrid: {james_wLH}")
+    print(f"My Lower hybrid: {my_w_LH}")
+    wUH_cyclo = ppf.upper_hybrid_frequency(B0 * u.T, bkgd_number_density * u.m**-3) / ppf.gyrofrequency(B0 * u.T, fastSpecies)
+    print(f"Upper hybrid: {wUH_cyclo}")
     axs.axhline(y = wLH_cyclo, color='black', linestyle=':', label=r'Lower hybrid frequency')
     axs.legend()
     axs.set_ylabel(r"Frequency [$\omega_{ci}$]")
@@ -246,6 +327,7 @@ def process_simulation_batch(
         outFileDirectory : Path = None,
         maxK : float = 100.0,
         maxW : float = None,
+        numGrowthRates : int = 10,
         maxResPct : float = 0.1,
         maxResidual : float = 0.1, # IMPLEMENT THIS ONCE BASELINED
         gammaWindowPct : float = 10.0,
@@ -258,7 +340,7 @@ def process_simulation_batch(
         plotTitleSize : float = 18.0,
         plotLabelSize : float = 16.0,
         plotTickSize : float = 14.0,
-        createPlots = True,
+        createPlots = False,
         displayPlots = False):
     """
     Processes a batch of simulations:
@@ -274,12 +356,14 @@ def process_simulation_batch(
         field: list = 'all' -- List of string fields to use for analysis, either EPOCH output fields such as ['Magnetic_Field_Bz', 'Electric_Field_Ex']
             or ['all'] to process all magnetic and electric field components. Defaults to Bz
         outFileDirectory : Path = None -- directory to use for output, defaults to the input directory
+        numGrowthRates : int = 10 -- number of wavenumbers for which to calculate growth rates
         maxK : float = 100.0 -- Maximum wavenumber for plots and analysis
+        maxW : float = None -- Maximum frequency for plots and analysis
         maxResPct : float = 0.1 -- Percentage of growth rates to use based on ranked residual values, e.g. 0.1 = top 10% of gammas ranked by (lowest) residuals (default).
         maxResidual : float = 0.1 -- Maximum residual value to consider a well-conditioned fit. Must be baselined from null cases 
         gammaWindowPct : float = 5.0 -- Percentage of trace (in time) to use as a growth rate fitting window. Defaults to 5%
         minSignalPower : float = 0.08 -- Minimum peak signal power to observe in frequency-wavenumber space to discern MCI activity. Defaults to 0.08T (FIELD DEPENDENT and must be baselined from null cases.) 
-        log = False -- Take logarithm of data 
+        takeLog = False -- Take logarithm of data 
         deltaField = False -- Consider the change in field strength from t = 1 (t = 0 is discarded as initial conditions) rather than absolute values
         beam = True -- Take ion ring beam (fast) as significant ion species 
         fastSpecies : str = 'proton' -- Fast (ion ring beam) species, if present
@@ -326,16 +410,15 @@ def process_simulation_batch(
         
         for field in fields:
 
-            #field_data_array : xr.DataArray = ds[field]
-            #field_data = ds[field].load()
-
             # Take FFT
             field_unit = ds[field].units
-            print(float(ds[field].load().sum()))
+            #print(float(ds[field].load().sum()))
             original_spec : xr.DataArray = xrft.xrft.fft(ds[field].load(), true_amplitude=True, true_phase=True, window=None)
             original_spec = original_spec.rename(freq_time="frequency", freq_x_space="wavenumber")
             # Remove zero-frequency component
             original_spec = original_spec.where(original_spec.wavenumber!=0.0, None)
+
+            tk_spec = create_t_k_spectrum(original_spec)
 
             # Dispersion relations
             if createPlots:
@@ -347,9 +430,42 @@ def process_simulation_batch(
 
                 create_omega_k_plots(original_spec, field, field_unit, outFileDirectory, simFolder.name, inputDeck, maxK=maxK, maxW=maxW, log=takeLog, display=displayPlots)
 
-                tk_spec = create_t_k_spectrum(original_spec)
-
                 create_t_k_plots(tk_spec, field, field_unit, outFileDirectory, simFolder.name, maxK, takeLog, displayPlots)
+
+            growth_rate_group = outputRoot.createGroup("growthRates")
+            growth_rate_group.createDimension("rank", numGrowthRates)
+            growth_rate_group.createDimension("wavenumber")
+            growth_rate_group.createDimension("time")
+            growth_rate_group.createDimension("yIntercept")
+            growth_rate_group.createDimension("residual")
+            k_var = growth_rate_group.createVariable("wavenumber", "f4", ("wavenumber",))
+            k_var.units = "wCI/vA"
+            t_var = growth_rate_group.createVariable("time", "f4", ("time",))
+            t_var.units = "tauCI"
+            growth_rate_group.createVariable("yIntercept", "f4", ("yIntercept",))
+            growth_rate_group.createVariable("residual", "f4", ("yIntercept",))
+            gamma_var = growth_rate_group.createVariable("growthRate", "f8", ("rank", "wavenumber", "time", "yIntercept", "residual",))
+            gamma_var.units = "wCI"
+            gamma_var.standard_name = "linear_growth_rate"
+
+            peak_power_group = growth_rate_group.createGroup("maxPeakPowerWavenumbers")
+            peak_power_group.selectionCriteria = "maximumPeakPowerK"
+
+            gammaWindowIndices = int((gammaWindowPct / 100.0) * tk_spec.coords['time'].size)
+            max_gammas = find_max_growth_rates_of_top_n_k_with_max_peak_power(tk_spec, gammaWindowIndices, 3)
+            # print("Max growth rates found in wavenumbers with highest peak power: ")
+            # for mg in max_gammas:
+            #     print(mg.to_string())
+            for i in range(0, len(max_gammas)):
+                
+                # How to append growth rate dataclasses?
+                gamma_var[i,]
+
+            max_gammas = find_max_growth_rates_of_top_n_k_with_max_total_power(tk_spec, gammaWindowIndices, 3)
+            # print("Max growth rates found in wavenumbers with highest total power: ")
+            # for mg in max_gammas:
+            #     print(mg.to_string())
+            total_power_group = growth_rate_group.createGroup("maxTotalPowerWavenumbers")
 
         outputRoot.close()
             
@@ -361,16 +477,23 @@ if __name__ == "__main__":
         "--dir",
         action="store",
         help="Directory containing multiple simulation directories for evaluation.",
-        required = False,
+        required = True,
         type=Path
     )
     parser.add_argument(
         "--fields",
         action="store",
         help="EPOCH fields to use for analysis.",
-        required = False,
+        required = True,
         type=str,
         nargs="*"
+    )
+    parser.add_argument(
+        "--numGrowthRates",
+        action="store",
+        help="Number of wavenumbers for which to calculate growth rates.",
+        required = True,
+        type=int
     )
     parser.add_argument(
         "--takeLog",
@@ -379,11 +502,18 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
+        "--createPlots",
+        action="store_true",
+        help="Create dispersion plots and save to file.",
+        required = False
+    )
+    parser.add_argument(
         "--displayPlots",
         action="store_true",
         help="Display plots in addition to saving to file.",
         required = False
     )
+    
     args = parser.parse_args()
 
-    process_simulation_batch(directory=args.dir, fields=args.fields, takeLog=args.takeLog, displayPlots=args.displayPlots)
+    process_simulation_batch(directory=args.dir, fields=args.fields, numGrowthRates=args.numGrowthRates, takeLog=args.takeLog, createPlots=args.createPlots, displayPlots=args.displayPlots)
