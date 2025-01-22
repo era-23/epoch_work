@@ -113,15 +113,16 @@
             "program": "batch_simulation_processing.py",
             "console": "integratedTerminal",
             "args": [
-                "--dir", "/home/era536/Documents/Epoch/Data/irb_scan_nulls/",
+                "--dir", "/home/era536/Documents/Epoch/Data/batch_testing/",
                 "--fields", "Magnetic_Field_Bz",
                 "--maxK", "100.0",
                 "--numGrowthRates", "3",
-                "--saveGammaPlots",
+                //"--saveGammaPlots",
                 //"--displayPlots",
-                "--createPlots",
+                "--energy",
+                //"--createPlots",
                 //"--takeLog",
-                "--outputType", "csv",
+                "--outputType", "csv"
                 //"--debug"
             ]
         }
