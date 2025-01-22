@@ -117,6 +117,7 @@
                 "--fields", "Magnetic_Field_Bz",
                 "--maxK", "100.0",
                 "--numGrowthRates", "3",
+                "--runNumber", "65",
                 //"--saveGammaPlots",
                 //"--displayPlots",
                 "--energy",

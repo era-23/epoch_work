@@ -949,6 +949,13 @@ if __name__ == "__main__":
         type=int
     )
     parser.add_argument(
+        "--runNumber",
+        action="store",
+        help="Run number to analyse (folder must be in directory and named \'run_##\' where ## is runNumber).",
+        required = False,
+        type=int
+    )
+    parser.add_argument(
         "--takeLog",
         action="store_true",
         help="Take logarithm of field data for plotting.",
@@ -995,6 +1002,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     debug = args.debug
+
+    if args.runNumber is not None:
+        args.dir = Path(os.path.join(args.dir, f"run_{args.runNumber}"))
 
     process_simulation_batch(
         directory=args.dir, 
