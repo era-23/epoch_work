@@ -48,12 +48,15 @@
             "program": "analysis_development.py",
             "console": "integratedTerminal",
             "args": [
-                "--overallDir", "/home/era536/Documents/Epoch/Data/irb_scan_highRes/",
-                "--savePath", "/home/era536/Documents/Epoch/Data/irb_scan_highRes/gamma_test_out.csv",
-                "--calculateGrowthRates",
+                "--dir", "/home/era536/Documents/Epoch/Data/batch_testing/run_91",
+                //"--savePath", "/home/era536/Documents/Epoch/Data/irb_scan_highRes/gamma_test_out.csv",
                 "--field", "Magnetic_Field_Bz",
+                "--plotGammas",
                 "--maxRes", "0.1",
                 "--maxK", "100.0",
+                "--numKs", "5",
+                "--gammaWindow", "100",
+                "--beam"
                 //"--log"
             ]
         },
@@ -110,11 +113,16 @@
             "program": "batch_simulation_processing.py",
             "console": "integratedTerminal",
             "args": [
-                "--dir", "/home/era536/Documents/Epoch/Data/batch_testing/",
+                "--dir", "/home/era536/Documents/Epoch/Data/irb_scan_nulls/",
                 "--fields", "Magnetic_Field_Bz",
+                "--maxK", "100.0",
+                "--numGrowthRates", "3",
+                "--saveGammaPlots",
+                //"--displayPlots",
                 "--createPlots",
-                "--displayPlots",
-                "--takeLog"
+                //"--takeLog",
+                "--outputType", "csv",
+                //"--debug"
             ]
         }
     ]

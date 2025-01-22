@@ -4,15 +4,19 @@ from dataclasses import dataclass
 
 @dataclass
 class LinearGrowthRate:
-    wavenumber: float
-    timeValues: list
-    timeMidpoint: float
-    gamma: float
-    yIntercept: float
-    residual: float
+    gamma : float
+    timeStartIndex : float = None
+    timeEndIndex : float = None
+    timeMidpointIndex : float = None
+    timeMidpoint: float = None
+    yIntercept : float = None
+    residual : float = None
+    wavenumber : float = None
+    peakPower : float = None
+    totalPower : float = None
 
     def to_string(self) -> str:
-        return f"Wavenumber: {float(self.wavenumber)}, Time (midpoint): {float(self.timeMidpoint)}, Growth rate: {float(self.gamma)}, SoS residual: {float(self.residual)}"
+        return f"Wavenumber: {float(self.wavenumber)}, Peak power: {float(self.peakPower)}, Total power: {float(self.totalPower)}, Time (midpoint): {float(self.timeMidpoint)}, Growth rate: {float(self.gamma)}, SoS residual: {float(self.residual)}"
 
 
 @dataclass

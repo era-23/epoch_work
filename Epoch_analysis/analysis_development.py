@@ -17,6 +17,7 @@ import argparse
 import xrft
 import csv
 import os
+from tqdm import tqdm
 
 def trim_to_middle_pct(x, pct):
     remove_pct = 100.0 - pct
@@ -270,11 +271,11 @@ def plot_growth_rate_data(
 
     if plotGammas:
         # Calculate gamma by time for only high power ks
-        for k in peak_power_k_indices: # For highest peak power ks
+        for k in tqdm(peak_power_k_indices): # For highest peak power ks
             t_k = spec_tk[:,k]
             all_gammas = []
             all_residuals = []
-            for i in range(len(t_k) - (gammaWindow + 1)): # For each window
+            for i in tqdm(range(len(t_k) - (gammaWindow + 1))): # For each window
                 t_k_window = t_k[i:(i + gammaWindow)]
                 fit, res, _, _, _ = np.polyfit(x = t_k.coords["time"][i:(i + gammaWindow)], y = np.log(t_k_window), deg = 1, full = True)
                 all_gammas.append(utils.LinearGrowthRateByT(time = t_k.coords["time"][i:(i + gammaWindow)][int(gammaWindow/2)], gamma = float(fit[0]), yIntercept=float(fit[1]), residual = float(res[0])))
