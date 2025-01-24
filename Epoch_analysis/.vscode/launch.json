@@ -114,17 +114,21 @@
             "console": "integratedTerminal",
             "args": [
                 "--dir", "/home/era536/Documents/Epoch/Data/batch_testing/",
-                "--fields", "Magnetic_Field_Bz",
-                "--maxK", "100.0",
-                "--numGrowthRates", "3",
-                "--runNumber", "65",
-                //"--saveGammaPlots",
+                "--outputDir", "/home/era536/Documents/Epoch/Data/batch_testing/analysis/",
+                "--fields", "Magnetic_Field_Bz", "Electric_Field_Ex",
+                "--createFolders",
+                "--process",
+                "--growthRates",
+                "--maxK", "5.0",
+                "--numGrowthRatesToPlot", "10",
+                "--runNumber", "91",
+                "--saveGammaPlots",
                 //"--displayPlots",
-                "--energy",
+                //"--energy",
                 //"--createPlots",
                 //"--takeLog",
-                "--outputType", "csv"
-                //"--debug"
+                "--outputType", "csv",
+                "--debug",
             ]
         }
     ]

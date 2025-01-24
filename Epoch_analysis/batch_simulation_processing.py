@@ -9,6 +9,7 @@ from scipy import constants
 from plasmapy.formulary import frequencies as ppf
 from plasmapy.formulary import speeds as pps
 from plasmapy.formulary import lengths as ppl
+from numpy.typing import ArrayLike, NDArray
 import astropy.units as u
 import epoch_utils as utils
 import netCDF4 as nc
@@ -17,6 +18,7 @@ import glob
 import epydeck
 import numpy as np
 import numpy.polynomial.polynomial as poly
+import shutil as sh
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 import xrft  # noqa: E402
@@ -25,67 +27,106 @@ global debug
 
 def initialise_folder_structure(
         dataDirectory : Path,
+        create : bool = False,
         outFileDirectory : Path = None
-) -> tuple[Path, Path, Path, Path]:
+) -> tuple[Path, Path, Path]:
     
     if outFileDirectory is None:
         outFileDirectory = dataDirectory / "analysis"
-        if not os.path.exists(outFileDirectory):
-            os.mkdir(outFileDirectory)
-    metadataFolder = outFileDirectory / "metadata"
-    if not os.path.exists(metadataFolder):
-        os.mkdir(metadataFolder)
-    growthDataFolder = outFileDirectory / "growth_rates"
-    if not os.path.exists(growthDataFolder):
-        os.mkdir(growthDataFolder)
+            
+    dataFolder = outFileDirectory / "data"
     plotsFolder = outFileDirectory / "plots"
-    if not os.path.exists(plotsFolder):
+    
+    if create:
+        if outFileDirectory.exists():
+            sh.rmtree(outFileDirectory)
+        os.mkdir(outFileDirectory)
+        os.mkdir(dataFolder)
         os.mkdir(plotsFolder)
+    
+    return dataFolder, plotsFolder
 
-    return metadataFolder, growthDataFolder, plotsFolder
-
-def create_netCDF_data_structure(
-        root : nc.Dataset,
+def create_netCDF_fieldVariable_structure(
+        fieldRoot : nc.Dataset,
         numGrowthRates : int
 ) -> nc.Dataset:
-    growth_rate_group = root.createGroup("growthRates")
-    growth_rate_group.createDimension("rank", numGrowthRates)
-    growth_rate_group.createDimension("wavenumber")
-    growth_rate_group.createDimension("time")
-    growth_rate_group.createDimension("yIntercept")
-    growth_rate_group.createDimension("residual")
-    k_var = growth_rate_group.createVariable("wavenumber", "f4", ("wavenumber",))
+    growth_rate_group = fieldRoot.createGroup("growthRates")
+    growth_rate_group.createDimension("wavenumberIndex", numGrowthRates)
+
+    k_var = growth_rate_group.createVariable("wavenumber", datatype="f4", dimensions=("wavenumberIndex",))
     k_var.units = "wCI/vA"
-    t_var = growth_rate_group.createVariable("time", "f4", ("time",))
-    t_var.units = "tauCI"
-    growth_rate_group.createVariable("yIntercept", "f4", ("yIntercept",))
-    growth_rate_group.createVariable("residual", "f4", ("yIntercept",))
-    gamma_var = growth_rate_group.createVariable("growthRate", "f8", ("rank", "wavenumber", "time", "yIntercept", "residual",))
+    growth_rate_group.createVariable("peakPower", datatype="f4", dimensions=("wavenumberIndex",))
+    growth_rate_group.createVariable("totalPower", datatype="f4", dimensions=("wavenumberIndex",))
+    t_var = growth_rate_group.createVariable("time", datatype="f4", dimensions=("wavenumberIndex",))
+    t_var.units = "tCI"
+    gamma_var = growth_rate_group.createVariable("growthRate", datatype="f8", dimensions=("wavenumberIndex",))
     gamma_var.units = "wCI"
     gamma_var.standard_name = "linear_growth_rate"
+    growth_rate_group.createVariable("residual", datatype="f4", dimensions=("wavenumberIndex",))
+    growth_rate_group.createVariable("yIntercept", datatype="f4", dimensions=("wavenumberIndex",))
 
-    peak_power_group = growth_rate_group.createGroup("maxPeakPowerWavenumbers")
-    peak_power_group.selectionCriteria = "maximumPeakPowerK"
-
-    total_power_group = growth_rate_group.createGroup("maxTotalPowerWavenumbers")
-    total_power_group.selectionCriteria = "maximumTotalPowerK"
-
-    return root
+    return growth_rate_group
     
+def plot_growth_rates(
+        tkSpectrum : xr.DataArray,
+        field : str,
+        growthRateData : list[utils.LinearGrowthRate],
+        numToPlot : int,
+        selectionMetric : str,
+        save : bool = False,
+        display : bool = False,
+        saveFolder : Path = None,
+        runName : str = None
+):
+    # Short-circuit
+    if numToPlot == 0:
+        return
+    
+    if debug:
+        print(f"Plotting max growth rates in {field} of {numToPlot} {selectionMetric} power wavenumbers....")
+    
+    if selectionMetric == "peak":
+        # Find n highest peak or total powers
+        growth_rates_to_plot = sorted(growthRateData, key=lambda gamma: gamma.peakPower, reverse=True)[:numToPlot]
+    elif selectionMetric == "total":
+        growth_rates_to_plot = sorted(growthRateData, key=lambda gamma: gamma.totalPower, reverse=True)[:numToPlot]
+    else:
+        raise NotImplementedError("Only \'peak\' or \'total\' power selection criteria implemented.")
+    
+    rank = 0
+    for g in growth_rates_to_plot:
+        signal = tkSpectrum.sel(wavenumber=g.wavenumber)
+        timeVals = signal.coords['time'][g.timeStartIndex:g.timeEndIndex]
+        plt.close("all")
+        fig, ax = plt.subplots(figsize=(12, 8))
+        np.log(signal).plot(ax=ax)
+        ax.plot(timeVals, g.gamma * timeVals + g.yIntercept, label = r"$\gamma = $" + f"{g.gamma:.3f}" + r"$\omega_{ci}$")
+        ax.set_xlabel(r"Time [$\tau_{ci}$]")
+        ax.set_ylabel(f"Log of {field} signal power")
+        ax.grid()
+        ax.legend()
+        plt.title(f'f"{runName}_growth_k_{g.wavenumber:.3f}_{selectionMetric}Power_rank_{rank}')
+        if save:
+            plt.savefig(saveFolder / Path(f"{runName}_growth_k_{g.wavenumber:.3f}_{selectionMetric}Power_rank_{rank}.png"))
+        if display:
+            plt.show()
+        rank += 1
+        plt.clf()
+
 def find_max_growth_rates(
         tkSpectrum : xr.DataArray,
-        wavenumberIndicesToCalculate : np.ndarray,
-        gammaWindow : int,
-        savePlots : bool = False,
-        displayPlots : bool = False
+        gammaWindow : int
 ) -> List[utils.LinearGrowthRate] :
 
     max_growth_rates = []
 
-    for index in wavenumberIndicesToCalculate:
+    num_wavenumbers = tkSpectrum.sizes["wavenumber"]
+
+    for index in range(0, num_wavenumbers):
 
         # Must load data here for quick iteration over windows
-        signal = tkSpectrum.isel(wavenumber=index).load()
+        # Changed: this is pre-loaded in create_t_k_spectrum()
+        signal = tkSpectrum.isel(wavenumber=index)
 
         signalK=tkSpectrum.coords['wavenumber'][index]
         signalPeak=float(signal.max())
@@ -100,129 +141,32 @@ def find_max_growth_rates(
             w_gamma = coefs[1]
             y_int = coefs[0]
             res = stats[0][0]
-            signal_growth_rates.append(
-                utils.LinearGrowthRate(timeStartIndex=w,
-                                       timeEndIndex=(w + gammaWindow),
-                                       timeMidpointIndex=int(gammaWindow/2),
-                                       gamma=w_gamma,
-                                       yIntercept=y_int,
-                                       residual=res))
+            if not np.isnan(w_gamma):
+                signal_growth_rates.append(
+                    utils.LinearGrowthRate(timeStartIndex=w,
+                                        timeEndIndex=(w + gammaWindow),
+                                        timeMidpointIndex=w+(int(gammaWindow/2)),
+                                        gamma=w_gamma,
+                                        yIntercept=y_int,
+                                        residual=res))
         del(signal)
             
-        max_signal_growth_rate_index = np.nanargmax([lgr.gamma for lgr in signal_growth_rates])
+        try:
+            max_signal_growth_rate_index = np.nanargmax([lgr.gamma for lgr in signal_growth_rates])
+        except ValueError as ve:
+            print(ve)
+            continue
         gamma : utils.LinearGrowthRate = signal_growth_rates[max_signal_growth_rate_index]
         gamma.wavenumber = float(signalK)
         gamma.timeMidpoint = float(tkSpectrum.coords['time'][gamma.timeMidpointIndex])
         gamma.peakPower = signalPeak
         gamma.totalPower = signalTotal
         max_growth_rates.append(gamma)
+        
         if debug: 
             print(f"Max gamma found: {gamma.to_string()}")
 
     return max_growth_rates
-
-def find_max_growth_rates_of_top_n_k_with_max_total_power(
-        tkSpectrum : xr.DataArray,
-        field : str,
-        runName : str,
-        gammaWindow : int = 100,
-        n : int = 10,
-        savePlots : bool = False,
-        displayPlots : bool = False,
-        numPlotsToSaveDisplay : int = 0,
-        saveFolder : Path = None
-):
-    # Short-circuit
-    if n == 0:
-        return []
-    
-    if debug:
-        print(f"Finding max growth rates in {field} of {n} highest total power wavenumbers....")
-
-    # Apply max which returns highest values along axis
-    max_powers = tkSpectrum.sum(dim='time')
-    max_powers = np.nan_to_num(max_powers)
-
-    # Find indices of highest peark powers
-    max_power_k_indices = np.argpartition(max_powers, -n)[-n:][::-1]
-
-    gammas = find_max_growth_rates(tkSpectrum, max_power_k_indices, gammaWindow, displayPlots)
-
-    n = 0
-    # Debugging
-    if displayPlots or savePlots:
-        for i in range(numPlotsToSaveDisplay):
-            signal = tkSpectrum[:,max_power_k_indices[i]]
-            max_g = gammas[i]
-            timeVals = signal.coords['time'][max_g.timeStartIndex:max_g.timeEndIndex]
-            plt.close("all")
-            fig, ax = plt.subplots(figsize=(12, 8))
-            np.log(signal).plot(ax=ax)
-            ax.plot(timeVals, max_g.gamma * timeVals + max_g.yIntercept, label = r"$\gamma = $" + f"{max_g.gamma:.3f}" + r"$\omega_{ci}$")
-            ax.set_xlabel(r"Time [$\tau_{ci}$]")
-            ax.set_ylabel(f"Log of {field} signal power")
-            ax.grid()
-            ax.legend()
-            plt.title(f'k = {float(max_g.wavenumber):.3f}')
-            if savePlots:
-                plt.savefig(saveFolder / Path(f"{i}_{runName}_{field}_max_total_power_k_{max_g.wavenumber:.3f}.png"))
-            if displayPlots:
-                plt.show()
-            plt.clf()
-
-    return gammas
-
-def find_max_growth_rates_of_top_n_k_with_max_peak_power(
-        tkSpectrum : xr.DataArray,
-        field : str,
-        runName : str,
-        gammaWindow : int = 100,
-        n : int = 10,
-        savePlots : bool = False,
-        displayPlots : bool = False,
-        numPlotsToSaveDisplay : int = 0,
-        saveFolder : Path = None
-) -> List[utils.LinearGrowthRate]:
-    
-    # Short-circuit
-    if n < 1:
-        return []
-    
-    if debug:
-        print(f"Finding max growth rates in {field} of {n} highest peak power wavenumbers....")
-
-    # Apply max which returns highest values along axis
-    peak_powers = tkSpectrum.max(dim='time')
-    peak_powers = np.nan_to_num(peak_powers)
-
-    # Find indices of highest peark powers
-    peak_power_k_indices = np.argpartition(peak_powers, -n)[-n:][::-1]
-
-    gammas = find_max_growth_rates(tkSpectrum, peak_power_k_indices, gammaWindow, displayPlots)
-
-    # Debugging
-    if displayPlots or savePlots:
-        numPlotsToSaveDisplay = np.min([n, numPlotsToSaveDisplay])
-        for i in range(numPlotsToSaveDisplay):
-            signal = tkSpectrum[:,peak_power_k_indices[i]]
-            max_g = gammas[i]
-            timeVals = signal.coords['time'][max_g.timeStartIndex:max_g.timeEndIndex]
-            plt.close("all")
-            fig, ax = plt.subplots(figsize=(12, 8))
-            np.log(signal).plot(ax=ax)
-            ax.plot(timeVals, max_g.gamma * timeVals + max_g.yIntercept, label = r"$\gamma = $" + f"{max_g.gamma:.3f}" + r"$\omega_{ci}$")
-            ax.set_xlabel(r"Time [$\tau_{ci}$]")
-            ax.set_ylabel(f"Log of {field} signal power")
-            ax.grid()
-            ax.legend()
-            plt.title(f'k = {float(max_g.wavenumber):.3f}')
-            if savePlots:
-                plt.savefig(saveFolder / Path(f"{i}_{runName}_{field}_max_peak_power_k_{max_g.wavenumber:.3f}.png"))
-            if displayPlots:
-                plt.show()
-            plt.clf()
-
-    return gammas
 
 def create_t_k_plots(
         tkSpectrum : xr.DataArray,
@@ -255,7 +199,11 @@ def create_t_k_plots(
     plt.clf()
 
 def create_t_k_spectrum(
-        originalFftSpectrum : xr.DataArray, statsFile : nc.Dataset) -> xr.DataArray :
+        originalFftSpectrum : xr.DataArray, 
+        statsFile : nc.Dataset,
+        maxK : float = None,
+        load : bool = True
+) -> xr.DataArray :
     
     tk_spec = originalFftSpectrum.where(originalFftSpectrum.frequency>0.0, 0.0)
     original_zero_freq_amplitude = tk_spec.sel(wavenumber=0.0)
@@ -288,6 +236,12 @@ def create_t_k_spectrum(
         print(f"Mean of t-k: {tk_mean}")
         print(f"Ratio of peak to mean in t-k: {tk_peak/tk_mean}")
 
+    tk_spec = tk_spec.sel(wavenumber=tk_spec.wavenumber<=maxK)
+    tk_spec = tk_spec.sel(wavenumber=tk_spec.wavenumber>=-maxK)
+
+    if load:
+        tk_spec = tk_spec.load()
+
     return tk_spec
 
 def create_omega_k_plots(
@@ -307,7 +261,7 @@ def create_omega_k_plots(
 
     print("Generating w-k plots....")
 
-    spec = abs(fftSpectrum)
+    spec = abs(fftSpectrum.load())
 
     # Select positive temporal frequencies
     spec = spec.sel(frequency=spec.frequency>=0.0)
@@ -399,6 +353,8 @@ def create_omega_k_plots(
         plt.show()
         plt.clf()
         plt.close("all")
+    
+    del(spec)
 
 def calculate_simulation_metadata(
         inputDeck : dict,
@@ -707,17 +663,17 @@ def run_energy_analysis(
 
 def process_simulation_batch(
         directory : Path,
+        dataFolder : Path,
+        plotsFolder : Path,
         fields : list = ['Magnetic_Field_Bz'],
-        outFileDirectory : Path = None,
         maxK : float = None,
         maxW : float = None,
-        numGrowthRates : int = 10,
+        growthRates : bool = True,
         maxResPct : float = 0.1,
         maxResidual : float = 0.1, # IMPLEMENT THIS ONCE BASELINED
         gammaWindowPct : float = 10.0,
         minSignalPower : float = 0.08, # IMPLEMENT THIS ONCE BASELINED
         takeLog = False, 
-        deltaField = False, 
         beam = True,
         fastSpecies : str = 'p+',
         bkgdSpecies : str = 'p+',
@@ -727,6 +683,7 @@ def process_simulation_batch(
         createPlots = False,
         displayPlots = False,
         saveGrowthRatePlots = False,
+        numGrowthRatesToPlot : int = 0,
         energy = True,
         outputType : str = "csv"):
     """
@@ -759,8 +716,6 @@ def process_simulation_batch(
         displayPlots = False -- Display plots as they are generated
     """
 
-    metadataFolder, growthDataFolder, plotsFolder = initialise_folder_structure(directory, outFileDirectory)
-
     run_folders = []
     if directory.name.startswith("run_"): # Single simulation
         run_folders.append(directory)
@@ -790,7 +745,7 @@ def process_simulation_batch(
             inputDeck = epydeck.loads(id.read())
         
         statsFilename = simFolder.name + "_stats.nc"
-        statsFilepath = os.path.join(metadataFolder, statsFilename)
+        statsFilepath = os.path.join(dataFolder, statsFilename)
         statsRoot = nc.Dataset(statsFilepath, "w", format="NETCDF4")
 
         ion_gyroperiod, alfven_velocity = calculate_simulation_metadata(inputDeck, ds, statsRoot, beam, fastSpecies, bkgdSpecies)
@@ -813,7 +768,7 @@ def process_simulation_batch(
             plotFieldFolder = Path(os.path.join(plotsFolder, field))
             if not os.path.exists(plotFieldFolder):
                 os.mkdir(plotFieldFolder)
-            dataFieldFolder = Path(os.path.join(growthDataFolder, field))
+            dataFieldFolder = Path(os.path.join(dataFolder, field))
             if not os.path.exists(dataFieldFolder):
                 os.mkdir(dataFieldFolder)
 
@@ -851,7 +806,7 @@ def process_simulation_batch(
             # Remove zero-frequency component
             original_spec = original_spec.where(original_spec.wavenumber!=0.0, None)
 
-            tk_spec = create_t_k_spectrum(original_spec, fieldStats)
+            tk_spec = create_t_k_spectrum(original_spec, fieldStats, maxK, load=True)
 
             # Dispersion relations
             if createPlots:
@@ -866,39 +821,36 @@ def process_simulation_batch(
                 create_t_k_plots(tk_spec, field, field_unit, plotFieldFolder, simFolder.name, maxK, takeLog, displayPlots)
 
             # Linear growth rates
-            gammaWindowIndices = int((gammaWindowPct / 100.0) * tk_spec.coords['time'].size)
-            peakPowerGammaFolder = dataFieldFolder / "peak_power_Ks"
-            if not os.path.exists(peakPowerGammaFolder):
-                os.mkdir(peakPowerGammaFolder)
-            totalPowerGammaFolder = dataFieldFolder / "max_total_power_Ks"
-            if not os.path.exists(totalPowerGammaFolder):
-                os.mkdir(totalPowerGammaFolder)
-            max_peak_gammas = find_max_growth_rates_of_top_n_k_with_max_peak_power(tk_spec, field, simFolder.name, gammaWindowIndices, numGrowthRates, savePlots=saveGrowthRatePlots, displayPlots=displayPlots, numPlotsToSaveDisplay=numGrowthRates, saveFolder=peakPowerGammaFolder)
-            max_total_gammas = find_max_growth_rates_of_top_n_k_with_max_total_power(tk_spec, field, simFolder.name, gammaWindowIndices, numGrowthRates, savePlots=saveGrowthRatePlots, displayPlots=displayPlots, numPlotsToSaveDisplay=numGrowthRates, saveFolder=totalPowerGammaFolder)
+            if growthRates:
+                gammaWindowIndices = int((gammaWindowPct / 100.0) * tk_spec.coords['time'].size)
+                max_gammas = find_max_growth_rates(tk_spec, gammaWindowIndices)
+                if saveGrowthRatePlots:
+                    gammaPlotFolder = plotFieldFolder / "growth_rates"
+                    if not os.path.exists(gammaPlotFolder):
+                        os.mkdir(gammaPlotFolder)
+                    plot_growth_rates(tk_spec, field, max_gammas, numGrowthRatesToPlot, "peak", saveGrowthRatePlots, displayPlots, gammaPlotFolder, simFolder.name)
 
-            if outputType == "netcdf":
-                statsRoot = create_netCDF_data_structure(statsRoot)
-                # Write data here once netCDF output implemented
-            elif outputType == "csv":
-                dataFilename = simFolder.name + "_data.csv"
-                dataFilepath = Path(os.path.join(peakPowerGammaFolder, dataFilename))
-                with open(str(dataFilepath.absolute()), mode="w") as csvOut:
-                    writer = csv.writer(csvOut)
-                    writer.writerow(["rank", "wavenumber", "peakPower", "totalPower", "time", "maxGamma", "residual", "fitYintercept"])
+                if outputType == "netcdf":
+                    gammaNc : nc.Dataset = create_netCDF_fieldVariable_structure(fieldStats, len(max_gammas))
+                    for i in range(len(max_gammas)):
+                        gamma = max_gammas[i]
+                        gammaNc.variables["wavenumber"][i] = gamma.wavenumber
+                        gammaNc.variables["peakPower"][i] = gamma.peakPower
+                        gammaNc.variables["totalPower"][i] = gamma.totalPower
+                        gammaNc.variables["time"][i] = gamma.timeMidpoint
+                        gammaNc.variables["growthRate"][i] = gamma.gamma
+                        gammaNc.variables["residual"][i] = gamma.residual
+                        gammaNc.variables["yIntercept"][i] = gamma.yIntercept
+                elif outputType == "csv":
+                    dataFilename = simFolder.name + f"_{field}_growth_rates.csv"
+                    dataFilepath = Path(os.path.join(dataFieldFolder, dataFilename))
+                    with open(str(dataFilepath.absolute()), mode="w") as csvOut:
+                        writer = csv.writer(csvOut)
+                        writer.writerow(["wavenumber", "peakPower", "totalPower", "time", "maxGamma", "residual", "fitYintercept"])
 
-                    for i in range(0, len(max_peak_gammas)):
-                        gamma = max_peak_gammas[i]
-                        writer.writerow([i, gamma.wavenumber, gamma.peakPower, gamma.totalPower, gamma.timeMidpoint, gamma.gamma, gamma.residual, gamma.yIntercept])
-
-                dataFilepath = Path(os.path.join(totalPowerGammaFolder, dataFilename))
-                with open(str(dataFilepath.absolute()), mode="w") as csvOut:
-                    writer = csv.writer(csvOut)
-                    writer.writerow(["rank", "wavenumber", "peakPower", "totalPower", "time", "maxGamma", "residual", "fitYintercept"])
-
-                    for i in range(0, len(max_total_gammas)):
-                        gamma = max_total_gammas[i]
-                        writer.writerow([i, float(gamma.wavenumber), gamma.peakPower, gamma.totalPower, float(gamma.timeMidpoint), gamma.gamma, gamma.residual, gamma.yIntercept])
-
+                        for gamma in max_gammas:
+                            writer.writerow([gamma.wavenumber, gamma.peakPower, gamma.totalPower, gamma.timeMidpoint, gamma.gamma, gamma.residual, gamma.yIntercept])
+        
         statsRoot.close()
         ds.close()
             
@@ -928,6 +880,12 @@ if __name__ == "__main__":
         type=Path
     )
     parser.add_argument(
+        "--growthRates",
+        action="store_true",
+        help="Calculate growth rates.",
+        required = False
+    )
+    parser.add_argument(
         "--maxK",
         action="store",
         help="Max wavenumber for analysis.",
@@ -942,9 +900,9 @@ if __name__ == "__main__":
         type=float
     )
     parser.add_argument(
-        "--numGrowthRates",
+        "--numGrowthRatesToPlot",
         action="store",
-        help="Number of wavenumbers for which to calculate growth rates.",
+        help="Number of wavenumber max growth rates to plot.",
         required = True,
         type=int
     )
@@ -954,6 +912,18 @@ if __name__ == "__main__":
         help="Run number to analyse (folder must be in directory and named \'run_##\' where ## is runNumber).",
         required = False,
         type=int
+    )
+    parser.add_argument(
+        "--createFolders",
+        action="store_true",
+        help="Initialise folder structure.",
+        required = False
+    )
+    parser.add_argument(
+        "--process",
+        action="store_true",
+        help="Process simulation(s).",
+        required = False
     )
     parser.add_argument(
         "--takeLog",
@@ -1003,19 +973,24 @@ if __name__ == "__main__":
 
     debug = args.debug
 
-    if args.runNumber is not None:
-        args.dir = Path(os.path.join(args.dir, f"run_{args.runNumber}"))
+    dataFolder, plotsFolder = initialise_folder_structure(args.dir, args.createFolders, args.outputDir)
 
-    process_simulation_batch(
-        directory=args.dir, 
-        outFileDirectory=args.outputDir,
-        fields=args.fields,
-        maxK=args.maxK,
-        maxW=args.maxW,
-        numGrowthRates=args.numGrowthRates, 
-        takeLog=args.takeLog, 
-        createPlots=args.createPlots, 
-        displayPlots=args.displayPlots,
-        saveGrowthRatePlots=args.saveGammaPlots,
-        energy=args.energy,
-        outputType=args.outputType)
+    if args.process:
+        if args.runNumber is not None:
+            args.dir = Path(os.path.join(args.dir, f"run_{args.runNumber}"))
+
+        process_simulation_batch(
+            directory=args.dir, 
+            dataFolder=dataFolder,
+            plotsFolder=plotsFolder,
+            fields=args.fields,
+            maxK=args.maxK,
+            maxW=args.maxW,
+            growthRates=args.growthRates,
+            numGrowthRatesToPlot=args.numGrowthRatesToPlot, 
+            takeLog=args.takeLog, 
+            createPlots=args.createPlots, 
+            displayPlots=args.displayPlots,
+            saveGrowthRatePlots=args.saveGammaPlots,
+            energy=args.energy,
+            outputType=args.outputType)
