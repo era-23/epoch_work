@@ -679,7 +679,7 @@ def run_energy_analysis(
         totalDeltaMeanEnergyDensity_pct = deltaMeanMagneticEnergyDensity_pct + deltaMeanElectricEnergyDensity_pct + deltaProtonKEdensity_pct + deltaElectronKEdensity_pct
         
         if beam:
-            totalDeltaMeanEnergyDensity_pct +=  + deltaFastIonKEdensity_pct
+            totalDeltaMeanEnergyDensity_pct += deltaFastIonKEdensity_pct
 
         ax.plot(timeCoords, deltaProtonKEdensity_pct, label = "background proton KE")
         ax.plot(timeCoords, deltaElectronKEdensity_pct, label = "background electron KE")
