@@ -27,7 +27,10 @@ global debug
 
 def initialise_folder_structure(
         dataDirectory : Path,
+        fields : list,
         create : bool = False,
+        energy : bool = True,
+        plotGrowthRates : bool = False,
         outFileDirectory : Path = None
 ) -> tuple[Path, Path, Path]:
     
@@ -36,13 +39,28 @@ def initialise_folder_structure(
             
     dataFolder = outFileDirectory / "data"
     plotsFolder = outFileDirectory / "plots"
-    
+                
     if create:
-        if outFileDirectory.exists():
+        if os.path.exists(outFileDirectory):
             sh.rmtree(outFileDirectory)
         os.mkdir(outFileDirectory)
         os.mkdir(dataFolder)
         os.mkdir(plotsFolder)
+
+        if energy:
+            energyPlotFolder = plotsFolder / "energy"
+            os.mkdir(energyPlotFolder)
+
+        for field in fields:
+            plotFieldFolder = plotsFolder / field
+            os.mkdir(plotFieldFolder)
+            dataFieldFolder = dataFolder / field
+            os.mkdir(dataFieldFolder)
+
+            if plotGrowthRates:
+                gammaPlotFolder = plotFieldFolder / "growth_rates"
+                os.mkdir(gammaPlotFolder)
+
     
     return dataFolder, plotsFolder
 
@@ -472,7 +490,7 @@ def run_energy_analysis(
     dataset : xr.Dataset,
     inputDeck : dict,
     simName : str,
-    saveFolder : Path,
+    savePlotsFolder : Path,
     statsFile : nc.Dataset,
     fields : list = ['Magnetic_Field_Bx', 'Magnetic_Field_By', 'Magnetic_Field_Bz', 'Electric_Field_Ex', 'Electric_Field_Ey', 'Electric_Field_Ez'],
     displayPlots : bool = False,
@@ -623,7 +641,7 @@ def run_energy_analysis(
     ax.legend()
     ax.grid()
     fig.tight_layout()
-    fig.savefig(saveFolder / filename)
+    fig.savefig(savePlotsFolder / filename)
     if displayPlots:
         plt.show()
     plt.clf()
@@ -671,7 +689,7 @@ def run_energy_analysis(
         ax.legend()
         ax.grid()
         fig.tight_layout()
-        fig.savefig(saveFolder / filename)
+        fig.savefig(savePlotsFolder / filename)
         if displayPlots:
             plt.show()
         plt.clf()
@@ -770,9 +788,7 @@ def process_simulation_batch(
 
         # Energy analysis
         if energy:
-            energyPlotFolder = plotsFolder / Path("energy")
-            if not os.path.exists(energyPlotFolder):
-                os.mkdir(energyPlotFolder)
+            energyPlotFolder = plotsFolder / "energy"
             run_energy_analysis(ds, inputDeck, simFolder.name, energyPlotFolder, statsRoot, displayPlots = displayPlots, beam = beam, percentage = True)
 
         if "all" in fields:
@@ -782,11 +798,7 @@ def process_simulation_batch(
 
             print(f"Analyzing field '{field}'...")
             plotFieldFolder = Path(os.path.join(plotsFolder, field))
-            if not os.path.exists(plotFieldFolder):
-                os.mkdir(plotFieldFolder)
             dataFieldFolder = Path(os.path.join(dataFolder, field))
-            if not os.path.exists(dataFieldFolder):
-                os.mkdir(dataFieldFolder)
 
             # For field-specific stats
             fieldStats = statsRoot.createGroup(field)
@@ -842,8 +854,6 @@ def process_simulation_batch(
                 max_gammas = find_max_growth_rates(tk_spec, gammaWindowIndices)
                 if saveGrowthRatePlots:
                     gammaPlotFolder = plotFieldFolder / "growth_rates"
-                    if not os.path.exists(gammaPlotFolder):
-                        os.mkdir(gammaPlotFolder)
                     plot_growth_rates(tk_spec, field, max_gammas, numGrowthRatesToPlot, "peak", saveGrowthRatePlots, displayPlots, gammaPlotFolder, simFolder.name)
 
                 if outputType == "netcdf":
@@ -995,7 +1005,7 @@ if __name__ == "__main__":
 
     debug = args.debug
 
-    dataFolder, plotsFolder = initialise_folder_structure(args.dir, args.createFolders, args.outputDir)
+    dataFolder, plotsFolder = initialise_folder_structure(args.dir, args.fields, args.createFolders, args.energy, args.saveGammaPlots, args.outputDir)
 
     if args.process:
         if args.runNumber is not None:
