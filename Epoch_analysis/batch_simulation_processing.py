@@ -481,7 +481,10 @@ def run_energy_analysis(
 ):
     # Create stats group
     energyStats = statsFile.createGroup("Energy")
-    energyStats.long_name = "Stats on energy transfer"
+    energyStats.createDimension("time", dataset.coords["time"].size)
+    time_var = energyStats.createVariable("time", "f8", ("time",))
+    time_var[:] = dataset.coords["time"].data
+    energyStats.long_name = "Particle and field energy data"
 
     bkgd_density = inputDeck['constant']['background_density']
     frac_beam = inputDeck['constant']['frac_beam']
@@ -492,11 +495,19 @@ def run_energy_analysis(
     # Mean over all cells for mean particle/field energy
     proton_KE : xr.DataArray = dataset['Derived_Average_Particle_Energy_proton'].load()
     protonKE_mean = proton_KE.mean(dim = "x_space").data # J
+    protonKEdensity_mean = protonKE_mean * proton_density # J / m^3
     del(proton_KE)
+    del(protonKE_mean)
+    ped = energyStats.createVariable("protonMeanEnergyDensity", "f8", ("time",))
+    ped[:] = protonKEdensity_mean
 
     electron_KE : xr.DataArray = dataset['Derived_Average_Particle_Energy_electron'].load()
     electronKE_mean = electron_KE.mean(dim = "x_space").data # J
+    electronKEdensity_mean = electronKE_mean * electron_density # J / m^3
     del(electron_KE)
+    del(electronKE_mean)
+    eed = energyStats.createVariable("electronMeanEnergyDensity", "f8", ("time",))
+    eed[:] = electronKEdensity_mean
 
     Ex : xr.DataArray = dataset['Electric_Field_Ex'].load()
     Ey : xr.DataArray = dataset['Electric_Field_Ey'].load()
@@ -505,6 +516,9 @@ def run_energy_analysis(
     del(Ex, Ey, Ez)
     electricFieldEnergyDensity : xr.DataArray = (constants.epsilon_0 * electricFieldStrength**2) / 2.0 # J / m^3
     electricFieldDensity_mean = electricFieldEnergyDensity.mean(dim="x_space").data # J / m^3
+    del(electricFieldEnergyDensity)
+    efd = energyStats.createVariable("electricFieldMeanEnergyDensity", "f8", ("time",))
+    efd[:] = electricFieldDensity_mean
 
     Bx : xr.DataArray = dataset['Magnetic_Field_Bx'].load()
     By : xr.DataArray = dataset['Magnetic_Field_By'].load()
@@ -513,40 +527,69 @@ def run_energy_analysis(
     del(Bx, By, Bz)
     magneticFieldEnergyDensity : xr.DataArray = (magneticFieldStrength**2 / (2.0 * constants.mu_0)) # J / m^3
     magneticFieldEnergyDensity_mean = magneticFieldEnergyDensity.mean(dim = "x_space").data # J / m^3
+    del(magneticFieldEnergyDensity)
+    mfd = energyStats.createVariable("magneticFieldMeanEnergyDensity", "f8", ("time",))
+    mfd[:] = magneticFieldEnergyDensity_mean
 
     # Calculate B and E energy and convert others to to J/m3
     deltaMeanMagneticEnergyDensity = magneticFieldEnergyDensity_mean - magneticFieldEnergyDensity_mean[0] # J / m^3
     deltaMeanElectricEnergyDensity = electricFieldDensity_mean - electricFieldDensity_mean[0] # J / m^3
-    deltaProtonKE = protonKE_mean - protonKE_mean[0] # J
-    deltaElectronKE = electronKE_mean - electronKE_mean[0] # J
+    deltaProtonKE_density = protonKEdensity_mean - protonKEdensity_mean[0] # J / m^3
+    deltaElectronKE_density = electronKEdensity_mean - electronKEdensity_mean[0] # J / m^3
 
-    deltaProtonKEdensity = deltaProtonKE * proton_density # J / m^3
-    deltaElectronKEdensity = deltaElectronKE * electron_density # J / m^3
-
-    totalDeltaMeanEnergyDensity = deltaProtonKEdensity + deltaElectronKEdensity + deltaMeanMagneticEnergyDensity + deltaMeanElectricEnergyDensity
+    totalDeltaMeanEnergyDensity = deltaProtonKE_density + deltaElectronKE_density + deltaMeanMagneticEnergyDensity + deltaMeanElectricEnergyDensity
     timeCoords = dataset.coords['time']
+
+    # Initialise plotting
+    fig, ax = plt.subplots(figsize=(12, 8))
+    filename = Path(f"{simName}_absolute_energy_change.png")
 
     # Write stats
     # Start, end and peak energy densities, and times of maximum and minimum
-    energyStats.backgroundIonEnergyDensity_start = protonKE_mean[0] * proton_density
-    energyStats.backgroundIonEnergyDensity_end = protonKE_mean[-1] * proton_density
-    index = np.nanargmax(protonKE_mean)
-    energyStats.backgroundIonEnergyDensity_max = protonKE_mean[index] * proton_density
-    energyStats.backgroundIonEnergyDensity_timeMax = timeCoords[index]
-    index = np.nanargmin(protonKE_mean)
-    energyStats.backgroundIonEnergyDensity_min = protonKE_mean[index] * proton_density
-    energyStats.backgroundIonEnergyDensity_timeMin = timeCoords[index]
-    energyStats.backgroundIonEnergyDensity_delta = deltaProtonKEdensity[-1]
+    if beam:
 
-    energyStats.electronEnergyDensity_start = electronKE_mean[0] * electron_density
-    energyStats.electronEnergyDensity_end = electronKE_mean[-1] * electron_density
-    index = np.nanargmax(electronKE_mean)
-    energyStats.electronEnergyDensity_max = electronKE_mean[index] * electron_density
+        fastIonDensity = bkgd_density * frac_beam # m^-3
+        fastIonKE : xr.DataArray = dataset['Derived_Average_Particle_Energy_ion_ring_beam'].load()
+        fastIonKE_mean = fastIonKE.mean(dim = "x_space").data # J
+        fastIonKEdensity_mean = fastIonKE_mean * fastIonDensity # J / m^3
+        del(fastIonKE)
+        del(fastIonKE_mean)
+        fed = energyStats.createVariable("fastIonMeanEnergyDensity", "f8", ("time",))
+        fed[:] = fastIonKEdensity_mean
+        deltaFastIonKE_density = fastIonKEdensity_mean - fastIonKEdensity_mean[0] # J / m^3
+        totalDeltaMeanEnergyDensity += deltaFastIonKE_density
+
+        energyStats.fastIonEnergyDensity_start = fastIonKEdensity_mean[0]
+        energyStats.fastIonEnergyDensity_end = fastIonKEdensity_mean[-1]
+        index = np.nanargmax(fastIonKEdensity_mean)
+        energyStats.fastIonEnergyDensity_max = fastIonKEdensity_mean[index]
+        energyStats.fastIonEnergyDensity_timeMax = timeCoords[index]
+        index = np.nanargmin(fastIonKEdensity_mean)
+        energyStats.fastIonEnergyDensity_min = fastIonKEdensity_mean[index]
+        energyStats.fastIonEnergyDensity_timeMin = timeCoords[index]
+        energyStats.fastIonEnergyDensity_delta = deltaFastIonKE_density[-1]
+
+        ax.plot(timeCoords, deltaFastIonKE_density, label = r"ion ring beam KE", color="red")
+
+    energyStats.backgroundIonEnergyDensity_start = protonKEdensity_mean[0]
+    energyStats.backgroundIonEnergyDensity_end = protonKEdensity_mean[-1]
+    index = np.nanargmax(protonKEdensity_mean)
+    energyStats.backgroundIonEnergyDensity_max = protonKEdensity_mean[index]
+    energyStats.backgroundIonEnergyDensity_timeMax = timeCoords[index]
+    index = np.nanargmin(protonKEdensity_mean)
+    energyStats.backgroundIonEnergyDensity_min = protonKEdensity_mean[index]
+    energyStats.backgroundIonEnergyDensity_timeMin = timeCoords[index]
+    energyStats.backgroundIonEnergyDensity_delta = deltaProtonKE_density[-1]
+
+    energyStats.electronEnergyDensity_start = electronKEdensity_mean[0]
+    energyStats.electronEnergyDensity_end = electronKEdensity_mean[-1]
+    index = np.nanargmax(electronKEdensity_mean)
+    energyStats.electronEnergyDensity_max = electronKEdensity_mean[index]
     energyStats.electronEnergyDensity_timeMax = timeCoords[index]
-    index = np.nanargmin(electronKE_mean)
-    energyStats.electronEnergyDensity_min = electronKE_mean[index] * electron_density
+    index = np.nanargmin(electronKEdensity_mean)
+    energyStats.electronEnergyDensity_min = electronKEdensity_mean[index]
     energyStats.electronEnergyDensity_timeMin = timeCoords[index]
-    energyStats.electronEnergyDensity_delta = deltaElectronKEdensity[-1]
+    energyStats.electronEnergyDensity_delta = deltaElectronKE_density[-1]
 
     energyStats.electricFieldEnergyDensity_start = electricFieldDensity_mean[0]
     energyStats.electricFieldEnergyDensity_end = electricFieldDensity_mean[-1]
@@ -568,35 +611,12 @@ def run_energy_analysis(
     energyStats.magneticFieldEnergyDensity_timeMin = timeCoords[index]
     energyStats.magneticFieldEnergyDensity_delta = deltaMeanMagneticEnergyDensity[-1]
 
-    fig, ax = plt.subplots(figsize=(12, 8))
-    filename = Path(f"{simName}_absolute_energy_change.png")
-
-    if beam:
-        fastIonDensity = bkgd_density * frac_beam # m^-3
-        fastIonKE : xr.DataArray = dataset['Derived_Average_Particle_Energy_ion_ring_beam'].load()
-        fastIonKE_mean = fastIonKE.mean(dim = "x_space").data # J
-        del(fastIonKE)
-        deltaFastIonKE = fastIonKE_mean - fastIonKE_mean[0] # J
-        deltaFastIonKEdensity = deltaFastIonKE * fastIonDensity # J / m^3
-        totalDeltaMeanEnergyDensity += deltaFastIonKEdensity
-
-        energyStats.fastIonEnergyDensity_start = fastIonKE_mean[0] * fastIonDensity
-        energyStats.fastIonEnergyDensity_end = fastIonKE_mean[-1] * fastIonDensity
-        index = np.nanargmax(fastIonKE_mean)
-        energyStats.fastIonEnergyDensity_max = fastIonKE_mean[index] * fastIonDensity
-        energyStats.fastIonEnergyDensity_timeMax = timeCoords[index]
-        index = np.nanargmin(fastIonKE_mean)
-        energyStats.fastIonEnergyDensity_min = fastIonKE_mean[index] * fastIonDensity
-        energyStats.fastIonEnergyDensity_timeMin = timeCoords[index]
-        energyStats.fastIonEnergyDensity_delta = deltaFastIonKEdensity[-1]
-
-        ax.plot(timeCoords, deltaFastIonKEdensity, label = r"ion ring beam KE")
-
-    ax.plot(timeCoords, deltaProtonKEdensity, label = r"background proton KE")
-    ax.plot(timeCoords, deltaElectronKEdensity, label = r"background electron KE")
-    ax.plot(timeCoords, deltaMeanMagneticEnergyDensity, label = r"Magnetic field E")
-    ax.plot(timeCoords, deltaMeanElectricEnergyDensity, label = r"Electric field E")
-    ax.plot(timeCoords, totalDeltaMeanEnergyDensity, label = r"Total E")
+    # Main plotting
+    ax.plot(timeCoords, deltaProtonKE_density, label = r"background proton KE", color="orange")
+    ax.plot(timeCoords, deltaElectronKE_density, label = r"background electron KE", color="blue")
+    ax.plot(timeCoords, deltaMeanMagneticEnergyDensity, label = r"Magnetic field E", color="purple", linestyle="--")
+    ax.plot(timeCoords, deltaMeanElectricEnergyDensity, label = r"Electric field E", color="green", linestyle="--")
+    ax.plot(timeCoords, totalDeltaMeanEnergyDensity, label = r"Total E", color="black")
     ax.set_xlabel(r'Time [$\tau_{ci}$]')
     ax.set_ylabel(r"Change in energy density [$J/m^3$]")
     ax.set_title(f"{simName}: Evolution of absolute energy in particles and EM fields")
@@ -611,30 +631,32 @@ def run_energy_analysis(
 
     if percentage:
 
-        deltaMeanMagneticEnergyDensity_pct = 100.0 * (deltaMeanMagneticEnergyDensity / magneticFieldEnergyDensity_mean[0]) # %
-        deltaMeanElectricEnergyDensity_pct = 100.0 * (deltaMeanElectricEnergyDensity / electricFieldDensity_mean[0]) # %
-        proton_baseline = protonKE_mean[0] * proton_density
-        deltaProtonKEdensity_pct = 100.0 * (deltaProtonKEdensity / proton_baseline) # %
-        electron_baseline = electronKE_mean[0] * electron_density
-        deltaElectronKEdensity_pct = 100.0 * (deltaElectronKEdensity / electron_baseline) # %
-
         totalMeanEnergyDensity_0 = (
             magneticFieldEnergyDensity_mean[0] 
             + electricFieldDensity_mean[0] 
-            + proton_baseline
-            + electron_baseline
+            + protonKEdensity_mean[0]
+            + electronKEdensity_mean[0]
         )
 
         fig, ax = plt.subplots(figsize=(12, 8))
         filename = Path(f"{simName}_percentage_energy_change.png")
 
         if beam:
-            fastIon_baseline = fastIonKE_mean[0] * fastIonDensity
-            deltaFastIonKEdensity_pct = 100.0 * (deltaFastIonKEdensity / fastIon_baseline) # %
+            fastIon_baseline = fastIonKEdensity_mean[0]
+            deltaFastIonKEdensity_pct = 100.0 * (deltaFastIonKE_density / fastIon_baseline) # %
             totalMeanEnergyDensity_0 += fastIon_baseline
             ax.plot(timeCoords, deltaFastIonKEdensity_pct, label = "ion ring beam KE")
 
-        totalDeltaMeanEnergyDensity_pct = 100.0 * (totalDeltaMeanEnergyDensity/totalMeanEnergyDensity_0)
+            baseline_E = fastIon_baseline
+        else:
+            baseline_E = totalMeanEnergyDensity_0
+
+        deltaMeanMagneticEnergyDensity_pct = 100.0 * (deltaMeanMagneticEnergyDensity / baseline_E) # %
+        deltaMeanElectricEnergyDensity_pct = 100.0 * (deltaMeanElectricEnergyDensity / baseline_E) # %
+        deltaProtonKEdensity_pct = 100.0 * (deltaProtonKE_density / baseline_E) # %
+        deltaElectronKEdensity_pct = 100.0 * (deltaElectronKE_density / baseline_E) # %
+
+        totalDeltaMeanEnergyDensity_pct = deltaMeanMagneticEnergyDensity_pct + deltaMeanElectricEnergyDensity_pct + deltaProtonKEdensity_pct + deltaElectronKEdensity_pct + deltaFastIonKEdensity_pct
         
         ax.plot(timeCoords, deltaProtonKEdensity_pct, label = "background proton KE")
         ax.plot(timeCoords, deltaElectronKEdensity_pct, label = "background electron KE")
@@ -644,7 +666,8 @@ def run_energy_analysis(
         ax.set_yscale('symlog')
         ax.set_xlabel(r'Time [$\tau_{ci}$]')
         ax.set_ylabel("Percentage change in energy density [%]")
-        ax.set_title(f"{simName}: Evolution of percentage energy change in particles and EM fields")
+        ax.set_title(f"{simName}: Evolution of energy change in particles and EM fields, "
+                     + f"as a percentage of original {'fast ion' if beam else 'total'} energy")
         ax.legend()
         ax.grid()
         fig.tight_layout()
@@ -654,13 +677,6 @@ def run_energy_analysis(
         plt.clf()
         plt.close("all")
             
-    # e_KE_start = float(e_ke_mean[0].data)
-    # e_KE_end = float(e_ke_mean[-1].data)
-    # print(f"Change in electron energy density: e- KE t=start: {e_KE_start:.4f}, e- KE t=end: {e_KE_end:.4f} (+{((e_KE_end - e_KE_start)/e_KE_start)*100.0:.4f}%)")
-    # E_start = total_E_density[0]
-    # E_end = total_E_density[-1]
-    # print(f"Change in overall energy density: E t=start: {E_start:.4f}, E t=end: {E_end:.4f} (+{((E_end - E_start)/E_start)*100.0:.4f}%)")
-
 def process_simulation_batch(
         directory : Path,
         dataFolder : Path,
@@ -956,6 +972,12 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
+        "--beam",
+        action="store_true",
+        help="Account for a ring beam of fast ions.",
+        required = False
+    )
+    parser.add_argument(
         "--outputType",
         action="store",
         help="Output data type for growth rates (csv or netcdf)",
@@ -989,6 +1011,7 @@ if __name__ == "__main__":
             growthRates=args.growthRates,
             numGrowthRatesToPlot=args.numGrowthRatesToPlot, 
             takeLog=args.takeLog, 
+            beam = args.beam,
             createPlots=args.createPlots, 
             displayPlots=args.displayPlots,
             saveGrowthRatePlots=args.saveGammaPlots,
