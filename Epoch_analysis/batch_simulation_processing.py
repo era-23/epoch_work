@@ -9,7 +9,6 @@ from scipy import constants
 from plasmapy.formulary import frequencies as ppf
 from plasmapy.formulary import speeds as pps
 from plasmapy.formulary import lengths as ppl
-from numpy.typing import ArrayLike, NDArray
 import astropy.units as u
 import epoch_utils as utils
 import netCDF4 as nc
@@ -36,6 +35,9 @@ def initialise_folder_structure(
     
     if outFileDirectory is None:
         outFileDirectory = dataDirectory / "analysis"
+
+    if debug:
+        print(f"Creating folder structure in {outFileDirectory}....")
             
     dataFolder = outFileDirectory / "data"
     plotsFolder = outFileDirectory / "plots"
@@ -674,8 +676,11 @@ def run_energy_analysis(
         deltaProtonKEdensity_pct = 100.0 * (deltaProtonKE_density / baseline_E) # %
         deltaElectronKEdensity_pct = 100.0 * (deltaElectronKE_density / baseline_E) # %
 
-        totalDeltaMeanEnergyDensity_pct = deltaMeanMagneticEnergyDensity_pct + deltaMeanElectricEnergyDensity_pct + deltaProtonKEdensity_pct + deltaElectronKEdensity_pct + deltaFastIonKEdensity_pct
+        totalDeltaMeanEnergyDensity_pct = deltaMeanMagneticEnergyDensity_pct + deltaMeanElectricEnergyDensity_pct + deltaProtonKEdensity_pct + deltaElectronKEdensity_pct
         
+        if beam:
+            totalDeltaMeanEnergyDensity_pct +=  + deltaFastIonKEdensity_pct
+
         ax.plot(timeCoords, deltaProtonKEdensity_pct, label = "background proton KE")
         ax.plot(timeCoords, deltaElectronKEdensity_pct, label = "background electron KE")
         ax.plot(timeCoords, deltaMeanMagneticEnergyDensity_pct, label = "Magnetic field E")
@@ -929,7 +934,7 @@ if __name__ == "__main__":
         "--numGrowthRatesToPlot",
         action="store",
         help="Number of wavenumber max growth rates to plot.",
-        required = True,
+        required = False,
         type=int
     )
     parser.add_argument(
