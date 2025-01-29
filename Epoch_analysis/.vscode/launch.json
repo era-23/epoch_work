@@ -13,6 +13,16 @@
             "args": ["--dir", "/home/era536/Documents/Epoch/Data/run_23"]
         },
         {
+            "name": "Python Debugger: Batch Gaussian Process",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "batch_gaussian_process.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--dir", "/home/era536/Documents/Epoch/Data/null_analysis/data/"
+            ]
+        },
+        {
             "name": "Python Debugger: Energy Analysis",
             "type": "debugpy",
             "request": "launch",

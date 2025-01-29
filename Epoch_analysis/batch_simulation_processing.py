@@ -71,19 +71,19 @@ def create_netCDF_fieldVariable_structure(
         numGrowthRates : int
 ) -> nc.Dataset:
     growth_rate_group = fieldRoot.createGroup("growthRates")
-    growth_rate_group.createDimension("wavenumberIndex", numGrowthRates)
+    growth_rate_group.createDimension("wavenumber", numGrowthRates)
 
-    k_var = growth_rate_group.createVariable("wavenumber", datatype="f4", dimensions=("wavenumberIndex",))
+    k_var = growth_rate_group.createVariable("wavenumber", datatype="f4", dimensions=("wavenumber",))
     k_var.units = "wCI/vA"
-    growth_rate_group.createVariable("peakPower", datatype="f4", dimensions=("wavenumberIndex",))
-    growth_rate_group.createVariable("totalPower", datatype="f4", dimensions=("wavenumberIndex",))
-    t_var = growth_rate_group.createVariable("time", datatype="f4", dimensions=("wavenumberIndex",))
+    growth_rate_group.createVariable("peakPower", datatype="f4", dimensions=("wavenumber",))
+    growth_rate_group.createVariable("totalPower", datatype="f4", dimensions=("wavenumber",))
+    t_var = growth_rate_group.createVariable("time", datatype="f4", dimensions=("wavenumber",))
     t_var.units = "tCI"
-    gamma_var = growth_rate_group.createVariable("growthRate", datatype="f8", dimensions=("wavenumberIndex",))
+    gamma_var = growth_rate_group.createVariable("growthRate", datatype="f8", dimensions=("wavenumber",))
     gamma_var.units = "wCI"
     gamma_var.standard_name = "linear_growth_rate"
-    growth_rate_group.createVariable("residual", datatype="f4", dimensions=("wavenumberIndex",))
-    growth_rate_group.createVariable("yIntercept", datatype="f4", dimensions=("wavenumberIndex",))
+    growth_rate_group.createVariable("residual", datatype="f4", dimensions=("wavenumber",))
+    growth_rate_group.createVariable("yIntercept", datatype="f4", dimensions=("wavenumber",))
 
     return growth_rate_group
     
