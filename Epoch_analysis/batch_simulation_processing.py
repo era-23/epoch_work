@@ -681,11 +681,11 @@ def run_energy_analysis(
         if beam:
             totalDeltaMeanEnergyDensity_pct += deltaFastIonKEdensity_pct
 
-        ax.plot(timeCoords, deltaProtonKEdensity_pct, label = "background proton KE")
-        ax.plot(timeCoords, deltaElectronKEdensity_pct, label = "background electron KE")
-        ax.plot(timeCoords, deltaMeanMagneticEnergyDensity_pct, label = "Magnetic field E")
-        ax.plot(timeCoords, deltaMeanElectricEnergyDensity_pct, label = "Electric field E")
-        ax.plot(timeCoords, totalDeltaMeanEnergyDensity_pct, label = "Total E")
+        ax.plot(timeCoords, deltaProtonKEdensity_pct, label = "background proton KE", color="orange")
+        ax.plot(timeCoords, deltaElectronKEdensity_pct, label = "background electron KE", color="blue")
+        ax.plot(timeCoords, deltaMeanMagneticEnergyDensity_pct, label = "Magnetic field E", color="purple", linestyle="--")
+        ax.plot(timeCoords, deltaMeanElectricEnergyDensity_pct, label = "Electric field E", color="green", linestyle="--")
+        ax.plot(timeCoords, totalDeltaMeanEnergyDensity_pct, label = "Total E", color="black")
         ax.set_yscale('symlog')
         ax.set_xlabel(r'Time [$\tau_{ci}$]')
         ax.set_ylabel("Percentage change in energy density [%]")
