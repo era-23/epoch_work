@@ -138,6 +138,8 @@ def find_max_growth_rates(
         gammaWindow : int
 ) -> List[utils.LinearGrowthRate] :
 
+    print("Finding max growth rates....")
+
     max_growth_rates = []
 
     num_wavenumbers = tkSpectrum.sizes["wavenumber"]

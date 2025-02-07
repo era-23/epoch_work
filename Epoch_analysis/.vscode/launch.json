@@ -13,13 +13,22 @@
             "args": ["--dir", "/home/era536/Documents/Epoch/Data/run_23"]
         },
         {
-            "name": "Python Debugger: Batch Gaussian Process",
+            "name": "Python Debugger: Gaussian Process Development",
             "type": "debugpy",
             "request": "launch",
-            "program": "batch_gaussian_process.py",
+            "program": "gaussian_process_development.py",
             "console": "integratedTerminal",
             "args": [
-                "--dir", "/home/era536/Documents/Epoch/Data/null_analysis/data/"
+                "--dir", "/home/era536/Documents/Epoch/Data/null_analysis/data/",
+                "--inputFields", "B0strength", "backgroundDensity",
+                "--outputFields", "Energy/backgroundIonEnergyDensity_delta", "Energy/electricFieldEnergyDensity_delta", "Energy/magneticFieldEnergyDensity_delta",
+                    "Magnetic_Field_Bz/peakTkSpectralPower", "Magnetic_Field_Bz/meanTkSpectralPower", "Magnetic_Field_Bz/peakTkSpectralPowerRatio", 
+                    "Electric_Field_Ex/peakTkSpectralPower", "Electric_Field_Ex/meanTkSpectralPower", "Electric_Field_Ex/peakTkSpectralPowerRatio", 
+                //"--dir", "/home/era536/Documents/Epoch/Data/irb_scan_analysis/data/",
+                "--test",
+                //"--matrixPlot",
+                "--sobol",
+                "--evaluateModel"
             ]
         },
         {
