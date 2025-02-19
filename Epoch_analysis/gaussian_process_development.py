@@ -8,10 +8,11 @@ import numpy as np
 import xarray as xr
 from pathlib import Path
 from inference.plotting import matrix_plot
+from scipy.stats import norm
 from sklearn.preprocessing import StandardScaler, FunctionTransformer
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.gaussian_process import GaussianProcessClassifier, GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, RationalQuadratic
 from SALib import ProblemSpec
@@ -40,7 +41,7 @@ def parse_commandLine_netCDFpaths(paths : list) -> dict:
 
     return formattedPaths
 
-def preprocess_input_data(inputData : dict, log_fields : list) -> np.ndarray:
+def preprocess_input_data(inputData : dict, log_fields : list) -> tuple:
 
     inputData_asColVec = np.array(list(inputData.values())).T
 
@@ -66,18 +67,21 @@ def preprocess_input_data(inputData : dict, log_fields : list) -> np.ndarray:
         remainder='passthrough'
     )
     preprocess = Pipeline(steps=[('log', log_transform), ('scale', scale)])
-    return preprocess.fit_transform(inputData_asColVec)
+    return list(inputData.keys()), preprocess.fit_transform(inputData_asColVec)
 
 def preprocess_output_data(outputData : list):
     outputData_shaped = np.array(outputData).reshape(-1, 1)
     return StandardScaler().fit(outputData_shaped).transform(outputData_shaped)
 
-def regress_data(x_train : np.ndarray, y_train : np.ndarray, kernel : str) -> GaussianProcessRegressor:
+def untrained_GP(kernel : str) -> GaussianProcessRegressor:
     if kernel == 'RQ':
-        k = 1.0 * RationalQuadratic(length_scale=1.0, length_scale_bounds=(1e-2, 1e2))  
+        k = 1.0 * RationalQuadratic(length_scale=1.0, length_scale_bounds=(1e-2, 1e2))
     elif kernel == 'RBF':
         k = 1.0 * RBF(length_scale=1.0, length_scale_bounds=(1e-2, 1e2))
-    gp = GaussianProcessRegressor(k)
+    return GaussianProcessRegressor(k)
+
+def regress_data(x_train : np.ndarray, y_train : np.ndarray, kernel : str) -> GaussianProcessRegressor:
+    gp = untrained_GP(kernel)
     return gp.fit(x_train, y_train)
     
 def display_matrix_plots(inputs : dict, normalisedInputs : np.ndarray, outputs: dict, normalisedOutputs : dict):
@@ -99,13 +103,13 @@ def display_matrix_plots(inputs : dict, normalisedInputs : np.ndarray, outputs: 
 
     plt.close()
 
-def sobol_analysis(inputs : dict, outputs : dict, normalisedInputData : np.ndarray = None, normalisedOutput : dict = None):
+def sobol_analysis(inputs : dict, outputs : dict, normalisedInputData : np.ndarray = None, normalisedOutput : dict = None, plotGP = True):
     
-    normalisedInputData = normalisedInputData if normalisedInputData is not None else preprocess_input_data(inputs)
+    normalisedInputData = normalisedInputData if normalisedInputData is not None else preprocess_input_data(inputs)[1]
 
     for outName, outData in outputs.items():
 
-        normalisedOutputData = normalisedOutput[outName] if normalisedOutput is not None else preprocess_output_data(outData)
+        normalisedOutputData = normalisedOutput[outName] if normalisedOutput is not None else np.array([n[0] for n in preprocess_output_data(outData)])
         
         fit = regress_data(normalisedInputData, normalisedOutputData, 'RQ')
         print(fit.kernel_)
@@ -116,8 +120,48 @@ def sobol_analysis(inputs : dict, outputs : dict, normalisedInputData : np.ndarr
             'names': list(inputs.keys()),
             'bounds': [[np.min(column), np.max(column)] for column in normalisedInputData.T]
         })
-        test_values = salsamp.sobol.sample(sp, int(2**15))
+        test_values = salsamp.sobol.sample(sp, int(2**16))
         y_prediction, y_std = fit.predict(test_values, return_std=True)
+
+        if plotGP:
+            if len(inputs.keys()) == 2:
+                keys = [k for k in inputs.keys()]
+                fig = plt.figure()
+                ax = fig.add_subplot(projection='3d')
+                ax.scatter(normalisedInputData[:,0], normalisedInputData[:,1], normalisedOutputData)
+                ax.set_xlabel(keys[0])
+                ax.set_ylabel(keys[1])
+                ax.set_zlabel(outName)
+                ax.set_title("Training data")
+                plt.show()
+
+            zScore = abs(norm.ppf(0.975))
+            column = 0
+            plotSamples = salsamp.sobol.sample(sp, int(2**7))
+            plotPreds, plotStds = fit.predict(plotSamples, return_std=True)
+            for inputName in inputs.keys():
+                testData_unique = dict(zip(plotSamples[:,column], zip(plotPreds, plotStds)))
+                testPoints = sorted(testData_unique.keys())
+                testPredictions = np.array([testData_unique[p][0] for p in testPoints])
+                testStds = np.array([testData_unique[p][1] for p in testPoints])
+                plt.figure(figsize=(12,8))
+                plt.scatter(normalisedInputData[:,column], normalisedOutputData, label = inputName, color="tab:blue")
+                plt.plot(testPoints, testPredictions, label="Mean prediction", color ="tab:red")
+                plt.fill_between(
+                    testPoints,
+                    testPredictions - (zScore * testStds),
+                    testPredictions + (zScore * testStds),
+                    color="tab:red",
+                    alpha=0.3,
+                    label=r"95% confidence interval",
+                )
+                plt.legend()
+                plt.title(f"{inputName} vs {outName}")
+                plt.xlabel(f"{inputName} [normalised]")
+                plt.ylabel(f"{outName} [normalised]")
+                plt.show()
+                column += 1
+
         print(f"gp.predict() for {outName} -- y_std: {y_std}")
         sobol_indices = sobol.analyze(sp, y_prediction, print_to_console=True)
         print(f"Sobol indices for output {outName}:")
@@ -130,20 +174,28 @@ def sobol_analysis(inputs : dict, outputs : dict, normalisedInputData : np.ndarr
         plt.show()
         plt.close()
 
-def evaluate_model(normalisedInputData : np.ndarray, normalisedOutputs : dict, kernels : list):
+def evaluate_model(normalisedInputData : np.ndarray, normalisedOutputs : dict, kernels : list, crossValidate : bool = True, folds : int = 5):
     
-    #scores = dict.fromkeys(kernels, []) # Breaks because [] is initialised by reference -- different to below!
     scores = {k : [] for k in kernels}
+    stds = {k : [] for k in kernels}
     for outName, outData in normalisedOutputs.items():
 
-        x_train, x_test, y_train, y_test = train_test_split(normalisedInputData, outData, test_size=0.25)
-        
-        # Retrain without test data
-        for kernel in kernels:
-            fit = regress_data(x_train, y_train, kernel)
-            r_squared = fit.score(x_test, y_test)
-            print(f"R^2 for GP ({kernel} kernel) regression of {outName}: {r_squared}")
-            scores[kernel].append(r_squared)
+        if crossValidate:
+            for kernel in kernels:
+                model = untrained_GP(kernel)
+                all_cv_scores = cross_val_score(model, normalisedInputData, outData, cv=folds)
+                print(f"R^2 for GP ({kernel} kernel) regression of {outName} across {folds}-fold cross-validation: {all_cv_scores.mean()} (std: {all_cv_scores.std()})")
+                scores[kernel].append(all_cv_scores.mean())
+                stds[kernel].append(all_cv_scores.std())
+        else:
+            x_train, x_test, y_train, y_test = train_test_split(normalisedInputData, outData, test_size=0.25)
+            
+            # Retrain without test data
+            for kernel in kernels:
+                fit = regress_data(x_train, y_train, kernel)
+                r_squared = fit.score(x_test, y_test)
+                print(f"R^2 for GP ({kernel} kernel) regression of {outName}: {r_squared}")
+                scores[kernel].append(r_squared)
 
     outputNames = list(normalisedOutputs.keys())
     x = np.arange(len(outputNames))  # the label locations
@@ -155,6 +207,9 @@ def evaluate_model(normalisedInputData : np.ndarray, normalisedOutputs : dict, k
     for kernel, r2 in scores.items():
         offset = width * multiplier
         rects = ax.bar(x + offset, r2, width, label=kernel)
+        if crossValidate:
+            zScore = abs(norm.ppf(0.975))
+            ax.errorbar(x + offset, r2, yerr=zScore*np.array(stds[kernel]), fmt=' ', color='r')
         ax.bar_label(rects, padding=3, fmt="%.3f")
         multiplier += 1
     ax.set_ylabel(r'$R^2$')
@@ -162,6 +217,7 @@ def evaluate_model(normalisedInputData : np.ndarray, normalisedOutputs : dict, k
     ax.set_xticks(x + ((len(kernels)-1)*0.5*width), outputNames)
     ax.legend(loc='upper left')
     ax.set_ylim(0.0, 1.0)
+    plt.tight_layout()
     plt.show()
     plt.close()
 
@@ -213,13 +269,32 @@ def process_simulations(
             fieldName = s[-1]
             fieldData.append(data[group].attrs[fieldName])
 
+    # DEBUGGING
+    # for outName, outData in outputs.items():
+    #     for inName, inData in inputs.items():
+    #         plt.scatter(inData, outData)
+    #         plt.xlabel(inName)
+    #         plt.ylabel(outName)
+    #         if inName == "backgroundDensity": 
+    #             plt.xscale("log")
+    #         plt.show()
+
     # Preprocess inputs (multiple returned as column vector)
-    normalisedInputData = preprocess_input_data(inputs, ["backgroundDensity"])
+    inNames, normalisedInputData = preprocess_input_data(inputs, ["backgroundDensity"])
+    #normalisedInputData = preprocess_input_data(inputs, [])
 
     # Preprocess output (singular, for now -- 1 GP each)
     normalisedOutputs = {}
     for outputName, outputData in outputs.items():
-        normalisedOutputs[outputName] = preprocess_output_data(outputData)
+        normalisedOutputs[outputName] = np.array([n[0] for n in preprocess_output_data(outputData)])
+
+    # DEBUGGING
+    # for outName in outputs.keys():
+    #     for i in range(normalisedInputData.shape[1]):
+    #         plt.scatter(normalisedInputData[:,i], normalisedOutputs[outName])
+    #         plt.xlabel(inNames[i])
+    #         plt.ylabel(outName)
+    #         plt.show()
 
     # Display matrix plots
     if matrixPlot:
@@ -290,7 +365,7 @@ def classify(irbDir : Path, nullDir : Path):
     }
 
     # Preprocess inputs (multiple returned as column vector)
-    irbNormalisedInputData = preprocess_input_data(inputs, [])
+    inNames, irbNormalisedInputData = preprocess_input_data(inputs, [])
     irbOutputData = np.ones((1, irbNormalisedInputData.size[1]))
 
     ###### null
@@ -347,7 +422,7 @@ def classify(irbDir : Path, nullDir : Path):
     }
 
     # Preprocess inputs (multiple returned as column vector)
-    nullNormalisedInputData = preprocess_input_data(inputs, [])
+    inNames, nullNormalisedInputData = preprocess_input_data(inputs, [])
     nullOutputData = np.zeros((1, nullNormalisedInputData.size[1]))
 
     # Classify
