@@ -3,6 +3,7 @@ import glob
 import os
 import pprint
 import random
+import typing
 from matplotlib import pyplot as plt
 import numpy as np
 import xarray as xr
@@ -14,10 +15,40 @@ from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.gaussian_process import GaussianProcessClassifier, GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import RBF, RationalQuadratic
+from sklearn.gaussian_process.kernels import RBF, RationalQuadratic, WhiteKernel, ConstantKernel
 from SALib import ProblemSpec
 from SALib.analyze import sobol
 import SALib.sample as salsamp
+
+fieldNameToText = {
+    "Energy/electricFieldEnergyDensity_delta" : "E_deltaEnergy",
+    "Energy/magneticFieldEnergyDensity_delta" : "B_deltaEnergy", 
+    "Energy/backgroundIonEnergyDensity_delta" : "bkgdIon_deltaEnergy", 
+    "Energy/electronEnergyDensity_delta" : "e_deltaEnergy",
+    "Energy/fastIonEnergyDensity_max" : "fastIon_maxEnergy", 
+    "Energy/fastIonEnergyDensity_timeMax" : "fastIon_timeMaxEnergy", 
+    "Energy/fastIonEnergyDensity_min" : "fastIon_minEnergy", 
+    "Energy/fastIonEnergyDensity_timeMin" : "fastIon_timeMinEnergy", 
+    "Energy/fastIonEnergyDensity_delta" : "fastIon_deltaEnergy",
+    "Magnetic_Field_Bz/totalMagnitude" : "Bz_totalPower", 
+    "Magnetic_Field_Bz/meanMagnitude" : "Bz_meanPower", 
+    "Magnetic_Field_Bz/totalDelta" : "Bz_deltaTotalPower", 
+    "Magnetic_Field_Bz/meanDelta" : "Bz_deltaMeanPower", 
+    "Magnetic_Field_Bz/peakTkSpectralPower" : "Bz_peakTkPower", 
+    "Magnetic_Field_Bz/meanTkSpectralPower" : "Bz_meanTkPower", 
+    "Magnetic_Field_Bz/peakTkSpectralPowerRatio" : "Bz_tkPowerRatio", 
+    "Electric_Field_Ex/totalMagnitude" : "Ex_totalPower", 
+    "Electric_Field_Ex/meanMagnitude" : "Ex_meanPower", 
+    "Electric_Field_Ex/totalDelta" : "Ex_deltaTotalPower", 
+    "Electric_Field_Ex/meanDelta" : "Ex_deltaMeanPower", 
+    "Electric_Field_Ex/peakTkSpectralPower" : "Ex_peakTkPower", 
+    "Electric_Field_Ex/meanTkSpectralPower" : "Ex_meanTkPower", 
+    "Electric_Field_Ex/peakTkSpectralPowerRatio" : "Ex_tkPowerRatio",
+    "B0strength" : "B0strength", 
+    "B0angle" : "B0angle", 
+    "backgroundDensity" : "backgroundDensity", 
+    "beamFraction" : "beamFraction",
+}
 
 def parse_commandLine_netCDFpaths(paths : list) -> dict:
     
@@ -41,7 +72,7 @@ def parse_commandLine_netCDFpaths(paths : list) -> dict:
 
     return formattedPaths
 
-def preprocess_input_data(inputData : dict, log_fields : list) -> tuple:
+def preprocess_input_data(inputData : dict, log_fields : list = []) -> tuple:
 
     inputData_asColVec = np.array(list(inputData.values())).T
 
@@ -73,108 +104,166 @@ def preprocess_output_data(outputData : list):
     outputData_shaped = np.array(outputData).reshape(-1, 1)
     return StandardScaler().fit(outputData_shaped).transform(outputData_shaped)
 
-def untrained_GP(kernel : str) -> GaussianProcessRegressor:
+def untrained_GP(kernel : str, type : str):
+    ls_upper = 1e3
+    ls_lower = 1e-3
     if kernel == 'RQ':
-        k = 1.0 * RationalQuadratic(length_scale=1.0, length_scale_bounds=(1e-2, 1e2))
+        k = ConstantKernel(constant_value=1.0, constant_value_bounds=(ls_lower * 1e-2, ls_upper * 1e2)) * RationalQuadratic(length_scale=1.0, length_scale_bounds=(ls_lower, ls_upper)) + WhiteKernel(noise_level=1.0, noise_level_bounds=(ls_lower, ls_upper))
     elif kernel == 'RBF':
-        k = 1.0 * RBF(length_scale=1.0, length_scale_bounds=(1e-2, 1e2))
-    return GaussianProcessRegressor(k)
-
-def regress_data(x_train : np.ndarray, y_train : np.ndarray, kernel : str) -> GaussianProcessRegressor:
-    gp = untrained_GP(kernel)
-    return gp.fit(x_train, y_train)
+        k = ConstantKernel(constant_value=1.0, constant_value_bounds=(ls_lower * 1e-2, ls_upper * 1e2)) * RBF(length_scale=1.0, length_scale_bounds=(ls_lower, ls_upper)) + WhiteKernel(noise_level=1.0, noise_level_bounds=(ls_lower, ls_upper))
     
-def display_matrix_plots(inputs : dict, normalisedInputs : np.ndarray, outputs: dict, normalisedOutputs : dict):
+    if type == "regress":
+        return GaussianProcessRegressor(k, n_restarts_optimizer=10)
+    elif type == "classify":
+        return GaussianProcessClassifier(k, n_restarts_optimizer=0)
+    else:
+        raise NotImplementedError("type must be one of regress or classify")
+
+def train_data(x_train : np.ndarray, y_train : np.ndarray, kernel : str, problemType : str):
+    gp = untrained_GP(kernel, problemType)
+    return gp.fit(x_train, y_train)
+
+def read_data(dataFiles, data_dict : dict) -> dict:
+    
+    for simulation in dataFiles:
+
+        data = xr.open_datatree(
+            simulation,
+            engine="netcdf4"
+        )
+
+        for fieldPath in data_dict.keys():
+            s = fieldPath.split("/")
+            group = "/" if len(s) == 1 else s[0]
+            fieldName = s[-1]
+            data_dict[fieldPath].append(data[group].attrs[fieldName])
+
+    return data_dict
+    
+def display_matrix_plots(inputs : dict, normalisedInputs : np.ndarray, outputs: dict, normalisedOutputs : dict = {}):
 
     for outName, outData in outputs.items():
         data = [outData] + list(inputs.values())
-        labels = [outName] + list(inputs.keys())
+        labels = [fieldNameToText[outName]] + [fieldNameToText[i] for i in inputs.keys()]
         matrix_plot(data, labels, show=False)
         plt.title("Raw data")
         plt.tight_layout()
         plt.show()
 
-        data = list(np.array(normalisedOutputs[outName]).T) + list(normalisedInputs.T)
-        labels = [outName] + list(inputs.keys())
-        matrix_plot(data, labels, show=False)
-        plt.title("Normalised data")
-        plt.tight_layout()
-        plt.show()
+        if normalisedOutputs:
+            data = list(normalisedInputs.T)
+            data.insert(0, list(normalisedOutputs[outName]))
+            labels = [fieldNameToText[outName]] + [fieldNameToText[i] for i in inputs.keys()]
+            matrix_plot(data, labels, show=False)
+            plt.title("Normalised data")
+            plt.tight_layout()
+            plt.show()
 
     plt.close()
 
-def sobol_analysis(inputs : dict, outputs : dict, normalisedInputData : np.ndarray = None, normalisedOutput : dict = None, plotGP = True):
+def plot_models(models : dict, inputNames : list, normalisedInputData : np.ndarray, normalisedOutputs : dict, problemType : str):
     
-    normalisedInputData = normalisedInputData if normalisedInputData is not None else preprocess_input_data(inputs)[1]
+    for outputName, model in models.items():
 
-    for outName, outData in outputs.items():
+        # 3D plot if there are only 2 input dimensions
+        if len(inputNames) == 2:
+            fig = plt.figure()
+            ax = fig.add_subplot(projection='3d')
+            ax.scatter(normalisedInputData[:,0], normalisedInputData[:,1], normalisedOutputs[outputName])
+            ax.set_xlabel(inputNames[0])
+            ax.set_ylabel(inputNames[1])
+            ax.set_zlabel(outputName)
+            ax.set_title(f"Training data for output {outputName}")
+            plt.show()
 
-        normalisedOutputData = normalisedOutput[outName] if normalisedOutput is not None else np.array([n[0] for n in preprocess_output_data(outData)])
-        
-        fit = regress_data(normalisedInputData, normalisedOutputData, 'RQ')
-        print(fit.kernel_)
+        # Sample values of each input dim keeping others fixed at their mean value
+        zScore = abs(norm.ppf(0.975))
+        numSamples = 1000
+        for i in range(len(inputNames)):
+            inputName = fieldNameToText[inputNames[i]]
+            sampleColumn = normalisedInputData[:,i]
+            samples = np.linspace(sampleColumn.min(), sampleColumn.max(), numSamples)
 
-        # SALib SOBOL indices
-        sp = ProblemSpec({
-            'num_vars': len(inputs),
-            'names': list(inputs.keys()),
-            'bounds': [[np.min(column), np.max(column)] for column in normalisedInputData.T]
-        })
-        test_values = salsamp.sobol.sample(sp, int(2**16))
-        y_prediction, y_std = fit.predict(test_values, return_std=True)
+            allDatapoints = [[] for _ in inputNames]
+            trainingDistancesForAlphas = np.zeros(len(sampleColumn))
+            for i2 in range(len(inputNames)):
+                if i2 == i:
+                    allDatapoints[i2] = samples
+                else:
+                    mean = normalisedInputData[:,i2].mean()
+                    allDatapoints[i2] = np.ones(numSamples) * mean
+                    # Sum geometric distance from non-x-axis dim means to calculate how relevant each point is for this view
+                    trainingDistancesForAlphas += (normalisedInputData[:,i2] - mean)**2
 
-        if plotGP:
-            if len(inputs.keys()) == 2:
-                keys = [k for k in inputs.keys()]
-                fig = plt.figure()
-                ax = fig.add_subplot(projection='3d')
-                ax.scatter(normalisedInputData[:,0], normalisedInputData[:,1], normalisedOutputData)
-                ax.set_xlabel(keys[0])
-                ax.set_ylabel(keys[1])
-                ax.set_zlabel(outName)
-                ax.set_title("Training data")
-                plt.show()
+            # Columnise
+            allDatapoints = np.array(allDatapoints).T
 
-            zScore = abs(norm.ppf(0.975))
-            column = 0
-            plotSamples = salsamp.sobol.sample(sp, int(2**7))
-            plotPreds, plotStds = fit.predict(plotSamples, return_std=True)
-            for inputName in inputs.keys():
-                testData_unique = dict(zip(plotSamples[:,column], zip(plotPreds, plotStds)))
-                testPoints = sorted(testData_unique.keys())
-                testPredictions = np.array([testData_unique[p][0] for p in testPoints])
-                testStds = np.array([testData_unique[p][1] for p in testPoints])
-                plt.figure(figsize=(12,8))
-                plt.scatter(normalisedInputData[:,column], normalisedOutputData, label = inputName, color="tab:blue")
-                plt.plot(testPoints, testPredictions, label="Mean prediction", color ="tab:red")
+            # Sample
+            y_preds = []
+            if problemType == "regress":
+                y_preds, y_std = model.predict(allDatapoints, return_std=True)
                 plt.fill_between(
-                    testPoints,
-                    testPredictions - (zScore * testStds),
-                    testPredictions + (zScore * testStds),
+                    samples,
+                    y_preds - (zScore * y_std),
+                    y_preds + (zScore * y_std),
                     color="tab:red",
                     alpha=0.3,
-                    label=r"95% confidence interval",
+                    label=r"95% confidence interval"
                 )
-                plt.legend()
-                plt.title(f"{inputName} vs {outName}")
-                plt.xlabel(f"{inputName} [normalised]")
-                plt.ylabel(f"{outName} [normalised]")
-                plt.show()
-                column += 1
+            elif problemType == "classify":
+                y_preds = model.predict_proba(allDatapoints)[:,1]
+            else:
+                raise NotImplementedError("problemType must be regress or classify")
 
-        print(f"gp.predict() for {outName} -- y_std: {y_std}")
+            # Calculate alphas
+            trainingDistancesForAlphas = np.sqrt(trainingDistancesForAlphas)
+            normDistance = (trainingDistancesForAlphas - np.min(trainingDistancesForAlphas)) / (np.max(trainingDistancesForAlphas) - np.min(trainingDistancesForAlphas))
+            normAlpha = 1.0 - normDistance # Closer is better therefore higher alpha
+
+            # Plot
+            plt.plot(samples, y_preds, label="Mean prediction", color="tab:red")
+            plt.scatter(sampleColumn, normalisedOutputs[outputName], label="Training data", alpha=normAlpha)
+            plt.xlabel(inputName)
+            plt.ylabel(outputName)
+            plt.legend()
+            #plt.tight_layout()
+            plt.title(f"GP predictions for {outputName}, all other input dimensions fixed to mean value", wrap=True)
+            plt.show()
+
+def sobol_analysis(models : dict, inputNames : list, normalisedInputData : np.ndarray, problemType : str):
+
+    formattedNames = [fieldNameToText[i] for i in inputNames]
+    # SALib SOBOL indices
+    sp = ProblemSpec({
+        'num_vars': len(formattedNames),
+        'names': formattedNames,
+        'bounds': [[np.min(column), np.max(column)] for column in normalisedInputData.T]
+    })
+    test_values = salsamp.sobol.sample(sp, int(2**16))
+
+    for outName, model in models.items():
+        print(f"SOBOL analysing model {model.kernel_} for {outName}....")
+
+        if problemType == "regress":
+            y_prediction, y_std = model.predict(test_values, return_std=True)
+            print(f"gp.predict() for {outName} -- y_std: {y_std}")
+        elif problemType == "classify":
+            y_prediction = model.predict_proba(test_values)[:,1]
+            print(f"gp.predict() for {outName}")
+
+        
         sobol_indices = sobol.analyze(sp, y_prediction, print_to_console=True)
         print(f"Sobol indices for output {outName}:")
         print(sobol_indices)
         print(f"Sum of SOBOL indices: ST = {np.sum(sobol_indices['ST'])}, S1 = {np.sum(sobol_indices['S1'])}, abs(S1) = {np.sum(abs(sobol_indices['S1']))} S2 = {np.nansum(sobol_indices['S2'])}, abs(S2) = {np.nansum(abs(sobol_indices['S2']))}")
-        plt.rcParams["figure.figsize"] = (12,6)
+        plt.rcParams["figure.figsize"] = (12,10)
         sobol_indices.plot()
         plt.title(f"Output: {outName}")
-        plt.tight_layout()
+        #plt.tight_layout()
         plt.show()
         plt.close()
 
-def evaluate_model(normalisedInputData : np.ndarray, normalisedOutputs : dict, kernels : list, crossValidate : bool = True, folds : int = 5):
+def evaluate_model(normalisedInputData : np.ndarray, normalisedOutputs : dict, kernels : list, problemType : str, crossValidate : bool = True, folds : int = 5):
     
     scores = {k : [] for k in kernels}
     stds = {k : [] for k in kernels}
@@ -182,7 +271,7 @@ def evaluate_model(normalisedInputData : np.ndarray, normalisedOutputs : dict, k
 
         if crossValidate:
             for kernel in kernels:
-                model = untrained_GP(kernel)
+                model = untrained_GP(kernel, problemType)
                 all_cv_scores = cross_val_score(model, normalisedInputData, outData, cv=folds)
                 print(f"R^2 for GP ({kernel} kernel) regression of {outName} across {folds}-fold cross-validation: {all_cv_scores.mean()} (std: {all_cv_scores.std()})")
                 scores[kernel].append(all_cv_scores.mean())
@@ -192,7 +281,7 @@ def evaluate_model(normalisedInputData : np.ndarray, normalisedOutputs : dict, k
             
             # Retrain without test data
             for kernel in kernels:
-                fit = regress_data(x_train, y_train, kernel)
+                fit = train_data(x_train, y_train, kernel, problemType)
                 r_squared = fit.score(x_test, y_test)
                 print(f"R^2 for GP ({kernel} kernel) regression of {outName}: {r_squared}")
                 scores[kernel].append(r_squared)
@@ -221,13 +310,15 @@ def evaluate_model(normalisedInputData : np.ndarray, normalisedOutputs : dict, k
     plt.show()
     plt.close()
 
-def process_simulations(
+def regress_simulations(
         directory : Path, 
         inputFields : list, 
         outputFields : list,
+        logFields : list = [],
         matrixPlot : bool = False,
         sobol : bool = False,
         evaluateModels : bool = False,
+        plotModels : bool = False
         ):
     """
     Processes a batch of simulations:
@@ -246,189 +337,91 @@ def process_simulations(
 
     # Input data
     inputs = {inp : [] for inp in inputFields}
+    inputs = read_data(output_files, inputs)
 
     # Output data
     outputs = {outp : [] for outp in outputFields}
-
-    for simulation in output_files:
-
-        data = xr.open_datatree(
-            simulation,
-            engine="netcdf4"
-        )
-
-        for fieldPath in inputs.keys():
-            s = fieldPath.split("/")
-            group = "/" if len(s) == 1 else s[0]
-            fieldName = s[-1]
-            inputs[fieldPath].append(data[group].attrs[fieldName])
-
-        for fieldPath, fieldData in outputs.items():
-            s = fieldPath.split("/")
-            group = "/" if len(s) == 1 else s[0]
-            fieldName = s[-1]
-            fieldData.append(data[group].attrs[fieldName])
-
-    # DEBUGGING
-    # for outName, outData in outputs.items():
-    #     for inName, inData in inputs.items():
-    #         plt.scatter(inData, outData)
-    #         plt.xlabel(inName)
-    #         plt.ylabel(outName)
-    #         if inName == "backgroundDensity": 
-    #             plt.xscale("log")
-    #         plt.show()
+    outputs = read_data(output_files, outputs)
 
     # Preprocess inputs (multiple returned as column vector)
-    inNames, normalisedInputData = preprocess_input_data(inputs, ["backgroundDensity"])
-    #normalisedInputData = preprocess_input_data(inputs, [])
+    inNames, normalisedInputData = preprocess_input_data(inputs, list(set(logFields).intersection(inputFields)))
 
     # Preprocess output (singular, for now -- 1 GP each)
     normalisedOutputs = {}
     for outputName, outputData in outputs.items():
         normalisedOutputs[outputName] = np.array([n[0] for n in preprocess_output_data(outputData)])
 
-    # DEBUGGING
-    # for outName in outputs.keys():
-    #     for i in range(normalisedInputData.shape[1]):
-    #         plt.scatter(normalisedInputData[:,i], normalisedOutputs[outName])
-    #         plt.xlabel(inNames[i])
-    #         plt.ylabel(outName)
-    #         plt.show()
-
     # Display matrix plots
     if matrixPlot:
         display_matrix_plots(inputs, normalisedInputData, outputs, normalisedOutputs)
 
+    # Train individual models for each output
+    models = dict.fromkeys(normalisedOutputs.keys())
+    for outputName in models.keys():
+        models[outputName] = train_data(normalisedInputData, normalisedOutputs[outputName], "RQ", "regress")
+
+    if plotModels:
+        plot_models(models, inNames, normalisedInputData, normalisedOutputs, "regress")
+
     # Perform SOBOL analysis
     if sobol:
-        sobol_analysis(inputs, outputs, normalisedInputData, normalisedOutputs)
+        sobol_analysis(models, inNames, normalisedInputData, "regress")
 
     # Evaluate model
     if evaluateModels:
         kernels = ["RBF", "RQ"]
-        evaluate_model(normalisedInputData, normalisedOutputs, kernels)
+        evaluate_model(normalisedInputData, normalisedOutputs, kernels, "regress")
 
-def classify(irbDir : Path, nullDir : Path):
+def classify_simulations(
+        irbDir : Path, 
+        nullDir : Path, 
+        fields : list, 
+        logFields : list = [],
+        matrixPlot : bool = False,
+        sobol : bool = False,
+        evaluateModels : bool = False,
+        plotModels : bool = False):
 
     ###### IRB
-
-    output_files = glob.glob(str(irbDir / "*.nc")) 
-
+    data_files = glob.glob(str(irbDir / "*.nc")) 
     # Input data
-    input_backgroundIonEnergyDensity_delta = []
-    input_electricFieldEnergyDensity_delta = []
-    input_magneticFieldEnergyDensity_delta = []
-    input_E_peakTkSpectralPower = []
-    input_E_peakTkSpectralPowerRatio = []
-    input_B_peakTkSpectralPower = []
-    input_B_peakTkSpectralPowerRatio = []
+    inputs = {f : [] for f in fields}
+    inputs = read_data(data_files, inputs)
 
-    for simulation in output_files:
+    # Initialise outputs
+    # IRB == 1
+    normalisedOutputs = {"fastIonSimulation" : np.ones(len(data_files))}
 
-        energyData = xr.open_dataset(
-            simulation,
-            engine="netcdf4",
-            group="Energy"
-        )
-        input_backgroundIonEnergyDensity_delta.append(energyData.backgroundIonEnergyDensity_delta)
-        input_electricFieldEnergyDensity_delta.append(energyData.electricFieldEnergyDensity_delta)
-        input_magneticFieldEnergyDensity_delta.append(energyData.magneticFieldEnergyDensity_delta)
-        del(energyData)
+    ###### Null
+    data_files = glob.glob(str(nullDir / "*.nc")) 
+    # Input data
+    inputs = read_data(data_files, inputs)
 
-        eFieldData = xr.open_dataset(
-            simulation,
-            engine="netcdf4",
-            group="Electric_Field_Ex"
-        )
-        input_E_peakTkSpectralPower.append(eFieldData.peakTkSpectralPower)
-        input_E_peakTkSpectralPowerRatio.append(eFieldData.peakTkSpectralPowerRatio)
-        del(eFieldData)
-
-        bFieldData = xr.open_dataset(
-            simulation,
-            engine="netcdf4",
-            group="Magnetic_Field_Bz"
-        )
-        input_B_peakTkSpectralPower.append(bFieldData.peakTkSpectralPower)
-        input_B_peakTkSpectralPowerRatio.append(bFieldData.peakTkSpectralPowerRatio)
-        del(bFieldData)
-    
-    inputs = {
-        "bkgd delta KE" : input_backgroundIonEnergyDensity_delta,
-        "E-field delta E" : input_electricFieldEnergyDensity_delta,
-        "B-field delta E" : input_magneticFieldEnergyDensity_delta,
-        "Ex peak power" : input_E_peakTkSpectralPower,
-        "Ex power ratio" : input_E_peakTkSpectralPowerRatio,
-        "Bz peak power" : input_B_peakTkSpectralPower,
-        "Bz power ratio" : input_B_peakTkSpectralPowerRatio
-    }
+    # Append output class
+    # null == 0
+    normalisedOutputs["fastIonSimulation"] = np.concatenate((normalisedOutputs["fastIonSimulation"], np.zeros(len(data_files))), axis=0)
 
     # Preprocess inputs (multiple returned as column vector)
-    inNames, irbNormalisedInputData = preprocess_input_data(inputs, [])
-    irbOutputData = np.ones((1, irbNormalisedInputData.size[1]))
+    inNames, normalisedInputData = preprocess_input_data(inputs, list(set(logFields).intersection(fields)))
 
-    ###### null
+    # Display matrix plots
+    if matrixPlot:
+        display_matrix_plots(inputs, normalisedInputData, normalisedOutputs)
 
-    output_files = glob.glob(str(nullDir / "*.nc")) 
+    model = {}
+    model["fastIonSimulation"] = train_data(normalisedInputData, normalisedOutputs["fastIonSimulation"], "RQ", "classify")
 
-    # Input data
-    input_backgroundIonEnergyDensity_delta = []
-    input_electricFieldEnergyDensity_delta = []
-    input_magneticFieldEnergyDensity_delta = []
-    input_E_peakTkSpectralPower = []
-    input_E_peakTkSpectralPowerRatio = []
-    input_B_peakTkSpectralPower = []
-    input_B_peakTkSpectralPowerRatio = []
+    if plotModels:
+        plot_models(model, inNames, normalisedInputData, normalisedOutputs, "classify")
 
-    for simulation in output_files:
+    # Perform SOBOL analysis
+    if sobol:
+        sobol_analysis(model, inNames, normalisedInputData, "classify")
 
-        energyData = xr.open_dataset(
-            simulation,
-            engine="netcdf4",
-            group="Energy"
-        )
-        input_backgroundIonEnergyDensity_delta.append(energyData.backgroundIonEnergyDensity_delta)
-        input_electricFieldEnergyDensity_delta.append(energyData.electricFieldEnergyDensity_delta)
-        input_magneticFieldEnergyDensity_delta.append(energyData.magneticFieldEnergyDensity_delta)
-        del(energyData)
-
-        eFieldData = xr.open_dataset(
-            simulation,
-            engine="netcdf4",
-            group="Electric_Field_Ex"
-        )
-        input_E_peakTkSpectralPower.append(eFieldData.peakTkSpectralPower)
-        input_E_peakTkSpectralPowerRatio.append(eFieldData.peakTkSpectralPowerRatio)
-        del(eFieldData)
-
-        bFieldData = xr.open_dataset(
-            simulation,
-            engine="netcdf4",
-            group="Magnetic_Field_Bz"
-        )
-        input_B_peakTkSpectralPower.append(bFieldData.peakTkSpectralPower)
-        input_B_peakTkSpectralPowerRatio.append(bFieldData.peakTkSpectralPowerRatio)
-        del(bFieldData)
-    
-    inputs = {
-        "bkgd delta KE" : input_backgroundIonEnergyDensity_delta,
-        "E-field delta E" : input_electricFieldEnergyDensity_delta,
-        "B-field delta E" : input_magneticFieldEnergyDensity_delta,
-        "Ex peak power" : input_E_peakTkSpectralPower,
-        "Ex power ratio" : input_E_peakTkSpectralPowerRatio,
-        "Bz peak power" : input_B_peakTkSpectralPower,
-        "Bz power ratio" : input_B_peakTkSpectralPowerRatio
-    }
-
-    # Preprocess inputs (multiple returned as column vector)
-    inNames, nullNormalisedInputData = preprocess_input_data(inputs, [])
-    nullOutputData = np.zeros((1, nullNormalisedInputData.size[1]))
-
-    # Classify
-    kernel = 1.0 * RBF([1.0])
-    #gpc_rbf_isotropic = GaussianProcessClassifier(kernel=kernel).fit(X, y)
-    
+    # Evaluate model
+    if evaluateModels:
+        kernels = ["RBF", "RQ"]
+        evaluate_model(normalisedInputData, normalisedOutputs, kernels, "classify")    
 
 if __name__ == "__main__":
     
@@ -437,27 +430,35 @@ if __name__ == "__main__":
         "--dir",
         action="store",
         help="Directory containing netCDF files of simulation output.",
-        required = True,
+        required = False,
         type=Path
     )
     parser.add_argument(
         "--inputFields",
         action="store",
-        help="Directory containing netCDF files of simulation output.",
+        help="Fields to use for GP input.",
         required = True,
+        type=str,
+        nargs="*"
+    )
+    parser.add_argument(
+        "--logFields",
+        action="store",
+        help="Fields which need log transformation preprocessing.",
+        required = False,
         type=str,
         nargs="*"
     )
     parser.add_argument(
         "--outputFields",
         action="store",
-        help="Directory containing netCDF files of simulation output.",
-        required = True,
+        help="Fields to use for GP output.",
+        required = False,
         type=str,
         nargs="*"
     )
     parser.add_argument(
-        "--test",
+        "--regress",
         action="store_true",
         help="Test regression models.",
         required = False
@@ -475,9 +476,15 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
-        "--evaluateModel",
+        "--evaluate",
         action="store_true",
         help="Evaluate regression models.",
+        required = False
+    )
+    parser.add_argument(
+        "--plotModels",
+        action="store_true",
+        help="Plot regression models.",
         required = False
     )
     parser.add_argument(
@@ -503,7 +510,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    if args.test:
-        process_simulations(args.dir, args.inputFields, args.outputFields, args.matrixPlot, args.sobol, args.evaluateModel)
+    if args.regress:
+        regress_simulations(args.dir, args.inputFields, args.outputFields, args.logFields, args.matrixPlot, args.sobol, args.evaluate, args.plotModels)
     if args.classify:
-        classify(args.irbDir, args.nullDir)
+        classify_simulations(args.irbDir, args.nullDir, args.inputFields, args.logFields, args.matrixPlot, args.sobol, args.evaluate, args.plotModels)
