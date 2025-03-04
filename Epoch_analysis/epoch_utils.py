@@ -18,6 +18,16 @@ class LinearGrowthRate:
     def to_string(self) -> str:
         return f"Wavenumber: {float(self.wavenumber)}, Peak power: {float(self.peakPower)}, Total power: {float(self.totalPower)}, Time (midpoint): {float(self.timeMidpoint)}, Growth rate: {float(self.gamma)}, SoS residual: {float(self.residual)}"
 
+@dataclass
+class SimulationLinearGrowthRate:
+    simulation : str
+    gamma: float
+    time : float
+    yIntercept: float
+    residual: float
+    wavenumber: float
+    peakPower : float
+    totalPower : float
 
 @dataclass
 class LinearGrowthRateByK:

@@ -5,6 +5,7 @@ import pprint
 import random
 import typing
 from matplotlib import pyplot as plt
+from matplotlib import cm
 import numpy as np
 import xarray as xr
 from pathlib import Path
@@ -175,6 +176,37 @@ def plot_models(models : dict, inputNames : list, normalisedInputData : np.ndarr
             ax.set_zlabel(outputName)
             ax.set_title(f"Training data for output {outputName}")
             plt.show()
+            plt.close()
+
+            # Sample homogeneously and plot contours with training data
+            sp = ProblemSpec({
+                'num_vars': len(inputNames),
+                'names': inputNames,
+                'bounds': [[np.min(column), np.max(column)] for column in normalisedInputData.T]
+            })
+            gp_test_values = salsamp.sobol.sample(sp, int(2**9))
+
+            # Training data
+            fig = plt.figure(figsize=(10, 8))
+            ax = fig.add_subplot(projection='3d')
+            ax.scatter(normalisedInputData[:,0], normalisedInputData[:,1], normalisedOutputs[outputName], color="black")
+            ax.set_xlabel(inputNames[0])
+            ax.set_ylabel(inputNames[1])
+            #ax.set_zlabel(outputName)
+
+            # GP predictions
+            if problemType == "regress":
+                gp_z = model.predict(gp_test_values)
+            elif problemType == "classify":
+                gp_z = model.predict_proba(gp_test_values)[:,1]
+            else:
+                raise NotImplementedError("type must be one of regress or classify")
+            gp_x, gp_y = gp_test_values[:,0], gp_test_values[:,1]
+            surf = ax.plot_trisurf(gp_x, gp_y, gp_z, cmap="plasma")
+            plt.colorbar(surf, label=outputName)
+            ax.set_title("Training data and GP prediction surface")
+            plt.show()
+
 
         # Sample values of each input dim keeping others fixed at their mean value
         zScore = abs(norm.ppf(0.975))
@@ -256,8 +288,10 @@ def sobol_analysis(models : dict, inputNames : list, normalisedInputData : np.nd
         print(f"Sobol indices for output {outName}:")
         print(sobol_indices)
         print(f"Sum of SOBOL indices: ST = {np.sum(sobol_indices['ST'])}, S1 = {np.sum(sobol_indices['S1'])}, abs(S1) = {np.sum(abs(sobol_indices['S1']))} S2 = {np.nansum(sobol_indices['S2'])}, abs(S2) = {np.nansum(abs(sobol_indices['S2']))}")
-        plt.rcParams["figure.figsize"] = (12,10)
+        plt.rcParams["figure.figsize"] = (14,10)
+        #fig, ax = plt.subplots()
         sobol_indices.plot()
+        plt.subplots_adjust(bottom=0.3)
         plt.title(f"Output: {outName}")
         #plt.tight_layout()
         plt.show()

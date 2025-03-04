@@ -26,7 +26,8 @@
                 "--inputFields",
                     //"B0strength", "B0angle", "backgroundDensity", "beamFraction",
                     //"B0strength", "backgroundDensity",
-                    "Energy/electricFieldEnergyDensity_delta", "Energy/magneticFieldEnergyDensity_delta", "Energy/backgroundIonEnergyDensity_delta", "Energy/electronEnergyDensity_delta",
+                    "Energy/electricFieldEnergyDensity_delta", "Energy/magneticFieldEnergyDensity_delta",
+                    //"Energy/electricFieldEnergyDensity_delta", "Energy/magneticFieldEnergyDensity_delta", "Energy/backgroundIonEnergyDensity_delta", "Energy/electronEnergyDensity_delta",
                     //"Magnetic_Field_Bz/totalMagnitude", "Magnetic_Field_Bz/meanMagnitude", "Magnetic_Field_Bz/totalDelta", "Magnetic_Field_Bz/meanDelta", "Magnetic_Field_Bz/peakTkSpectralPower", "Magnetic_Field_Bz/meanTkSpectralPower", "Magnetic_Field_Bz/peakTkSpectralPowerRatio", 
                     //"Electric_Field_Ex/totalMagnitude", "Electric_Field_Ex/meanMagnitude", "Electric_Field_Ex/totalDelta", "Electric_Field_Ex/meanDelta", "Electric_Field_Ex/peakTkSpectralPower", "Electric_Field_Ex/meanTkSpectralPower", "Electric_Field_Ex/peakTkSpectralPowerRatio", 
                 "--outputFields",
@@ -35,13 +36,25 @@
                     "Magnetic_Field_Bz/peakTkSpectralPower", "Magnetic_Field_Bz/meanTkSpectralPower", "Magnetic_Field_Bz/peakTkSpectralPowerRatio", 
                     //"Electric_Field_Ex/peakTkSpectralPower", "Electric_Field_Ex/meanTkSpectralPower", "Electric_Field_Ex/peakTkSpectralPowerRatio", 
                 "--logFields",
-                    "backgroundDensity", "beamFraction",
+                    "backgroundDensity", "beamFraction", "Energy/electricFieldEnergyDensity_delta", "Energy/magneticFieldEnergyDensity_delta",
                 //"--regress",
                 "--classify",
                 //"--matrixPlot",
-                //"--plotModels",
+                "--plotModels",
                 //"--sobol",
-                "--evaluate"
+                //"--evaluate"
+            ]
+        },
+        {
+            "name": "Python Debugger: Meta-analysis",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "meta-analysis_processing.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--dir", "/home/era536/Documents/Epoch/Data/irb_scan_analysis/data",
+                "--outputToOriginalFile",
+                //"--outputFile", "/home/era536/Documents/Epoch/Data/irb_scan_analysis/growth_rates.csv"
             ]
         },
         {
