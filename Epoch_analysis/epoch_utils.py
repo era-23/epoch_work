@@ -1,5 +1,6 @@
 import numpy as np
 from scipy import constants
+from sklearn.gaussian_process import GaussianProcessRegressor, GaussianProcessClassifier
 from dataclasses import dataclass
 
 @dataclass
@@ -49,6 +50,17 @@ class MaxGrowthRate:
     time: float
     gamma: float
     yIntercept: float
+
+@dataclass
+class GPModel:
+    kernelName : str
+    inputNames : list
+    normalisedInputs : np.ndarray
+    outputName : str
+    output : np.ndarray
+    regressionModel : GaussianProcessRegressor = None
+    classificationModel : GaussianProcessClassifier = None
+    modelParams : dict = None
 
 # Formerly everything below maxRes percentile, i.e. maxRes == 0.2 --> all values within bottom (best) 20th percentile
 # Now everything at maxRes proportion and below, i.e. maxRes == 0.2 --> bottom (best) 20% of values
