@@ -8,8 +8,8 @@ import copy
 import itertools
 from functools import partial
 from matplotlib import pyplot as plt
-from matplotlib import cm
 from matplotlib import animation
+import matplotlib.colors as mcolors 
 from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
 import xarray as xr
@@ -235,7 +235,12 @@ def train_data(x_train : np.ndarray, y_train : np.ndarray, kernel : str, problem
     if usePreviousModel:
         gp = prevGp
         fit = prevFit
-    print(fit.kernel_)
+    
+    try:
+        print(fit.kernel_)
+    except AttributeError:
+        print("Fitting failed.")
+        return None, None
 
     bestParams = {
         "cv_lower" : cv_lower,
@@ -485,7 +490,7 @@ def evaluate_model(gpModels : list, crossValidate : bool = True, folds : int = 5
             fit = train_data(x_train, y_train, model.kernelName, problemType)
             r_squared = fit.score(x_test, y_test)
             print(f"R^2 for GP ({model.kernelName} kernel) regression of {model.outputName}: {r_squared}")
-            evaluationData[model.outputName]["scores"][model.kernelName].append(r_squared)
+            evaluationData[model.outputName][model.kernelName]["score"] = r_squared
 
     x = 0  # the label locations
     width = 1.0/(len(uniqueKernels) + 1)  # the width of the bars
@@ -493,11 +498,14 @@ def evaluate_model(gpModels : list, crossValidate : bool = True, folds : int = 5
     fig.set_figheight(6)
     fig.set_figwidth(12)
     zScore = abs(norm.ppf(0.975))
+    colors = list(mcolors.TABLEAU_COLORS.keys())
     for _, data in evaluationData.items():
         multiplier = 0
         for kernel, kernelData in data.items():
             offset = width * multiplier
-            rects = ax.bar(x + offset, kernelData["score"], width, label=kernel)
+            rects = ax.bar(x + offset, kernelData["score"], width, color=colors[multiplier])
+            if x==0:
+                rects.set_label(kernel)
             if crossValidate:
                 ax.errorbar(x + offset, kernelData["score"], yerr=zScore*np.array(kernelData["std"]), fmt=' ', color='r')
             ax.bar_label(rects, padding=3, fmt="%.3f")
