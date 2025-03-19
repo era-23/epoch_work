@@ -667,7 +667,7 @@ def run_energy_analysis(
             fastIon_baseline = fastIonKEdensity_mean[0]
             deltaFastIonKEdensity_pct = 100.0 * (deltaFastIonKE_density / fastIon_baseline) # %
             totalMeanEnergyDensity_0 += fastIon_baseline
-            ax.plot(timeCoords, deltaFastIonKEdensity_pct, label = "ion ring beam KE")
+            ax.plot(timeCoords, deltaFastIonKEdensity_pct, label = "ion ring beam KE", color='red')
 
             baseline_E = fastIon_baseline
         else:

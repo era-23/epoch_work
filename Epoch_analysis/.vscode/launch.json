@@ -64,8 +64,11 @@
             "console": "integratedTerminal",
             "args": [
                 "--dir", "/home/era536/Documents/Epoch/Data/irb_scan_analysis/data",
-                "--outputToOriginalFile",
+                //"--outputToOriginalFile",
                 //"--outputFile", "/home/era536/Documents/Epoch/Data/irb_scan_analysis/growth_rates.csv"
+                //"--growthRates",
+                "--energy",
+                //"--debug",
             ]
         },
         {
