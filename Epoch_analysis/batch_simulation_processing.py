@@ -358,11 +358,11 @@ def create_omega_k_plots(
     fig, axs = plt.subplots(figsize=(15, 10))
     spec = spec.sel(wavenumber=spec.wavenumber>0.0)
     spec.plot(ax=axs, cbar_kwargs={'label': f'Spectral power in {field} [{field_unit}]' if not log else f'Log of spectral power in {field}'}, cmap='plasma')
-    axs.plot(spec.coords['wavenumber'].data, spec.coords['wavenumber'].data, 'k--', label=r'$V_A$ branch')
+    axs.plot(spec.coords['wavenumber'].data, spec.coords['wavenumber'].data, 'w--', label=r'$V_A$ branch')
     B0 = inputDeck['constant']['b0_strength']
     bkgd_number_density = float(inputDeck['constant']['background_density'])
     wLH_cyclo = ppf.lower_hybrid_frequency(B0 * u.T, bkgd_number_density * u.m**-3, bkgdSpecies) / ppf.gyrofrequency(B0 * u.T, fastSpecies)
-    axs.axhline(y = wLH_cyclo, color='black', linestyle=':', label=r'Lower hybrid frequency')
+    axs.axhline(y = wLH_cyclo, color='white', linestyle=':', label=r'Lower hybrid frequency')
     axs.legend(loc='upper right')
     axs.set_ylabel(r"Frequency [$\omega_{ci}$]")
     axs.set_xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
