@@ -6,7 +6,7 @@ import numpy as np
 import epoch_utils as utils
 from pathlib import Path
 from scipy.interpolate import make_smoothing_spline
-from scipy.signal import find_peaks, peak_prominences
+from scipy.signal import find_peaks
 from matplotlib import pyplot as plt
 
 def collate_growth_rate_data(dataDir : Path, outputToOriginalFile : bool = True):
@@ -124,7 +124,7 @@ def calculate_energy_metadata(dataDir : Path, debug = False):
         maxExtent = np.max([np.array(v) for v in deltaEnergies.values()])
         minExtent = np.min([np.array(v) for v in deltaEnergies.values()])
         dataRange = maxExtent - minExtent
-        prominence = 0.01 * dataRange # Peak prominence must be at least 0.5% of the data range
+        prominence = 0.01 * dataRange # Peak prominence must be at least 1% of the data range
 
         maxPeakIndices = {}
         minTroughIndices = {}
@@ -195,8 +195,10 @@ def calculate_energy_metadata(dataDir : Path, debug = False):
             
         if debug:
             plt.legend(loc="lower right")
+            plt.xlabel("Time/ion_gyroperiods")
+            plt.ylabel("Percentage change in energy density/%")
             plt.grid()
-            plt.title(f"{simulation.split('/')[-1]} Percentage ED")
+            plt.title(f"{simulation.split('/')[-1]} Percentage change in ED relative to fast ion energy")
             plt.show()
         
         # Specific to IRB transfer

@@ -131,7 +131,7 @@ def plot_growth_rates(
         if display:
             plt.show()
         rank += 1
-        plt.clf()
+        plt.close('all')
 
 def find_max_growth_rates(
         tkSpectrum : xr.DataArray,
@@ -218,7 +218,7 @@ def create_t_k_plots(
     fig.savefig(str(saveDirectory / filename))
     if display:
         plt.show()
-    plt.clf()
+    plt.close('all')
 
 def create_t_k_spectrum(
         originalFftSpectrum : xr.DataArray, 
@@ -323,7 +323,6 @@ def create_omega_k_plots(
     fig.savefig(str(saveDirectory / filename))
     if display:
         plt.show()
-        plt.clf()
         plt.close("all")
 
     # Power in k over all omega
@@ -339,7 +338,6 @@ def create_omega_k_plots(
     fig.savefig(str(saveDirectory / filename))
     if display:
         plt.show()
-        plt.clf()
         plt.close("all")
 
     if log:
@@ -354,7 +352,6 @@ def create_omega_k_plots(
     fig.savefig(str(saveDirectory / filename))
     if display:
         plt.show()
-        plt.clf()
         plt.close("all")
 
     # Positive omega/positive k with vA and lower hybrid frequency
@@ -373,7 +370,6 @@ def create_omega_k_plots(
     fig.savefig(str(saveDirectory / filename))
     if display:
         plt.show()
-        plt.clf()
         plt.close("all")
     
     del(spec)
@@ -641,14 +637,13 @@ def run_energy_analysis(
     ax.plot(timeCoords, totalDeltaMeanEnergyDensity, label = r"Total E", color="black")
     ax.set_xlabel(r'Time [$\tau_{ci}$]')
     ax.set_ylabel(r"Change in energy density [$J/m^3$]")
-    ax.set_title(f"{simName}: Evolution of absolute energy in particles and EM fields")
+    ax.set_title(f"{simName}: Evolution of absolute energy in particles and EM fields", wrap=True)
     ax.legend()
     ax.grid()
     fig.tight_layout()
     fig.savefig(savePlotsFolder / filename)
     if displayPlots:
         plt.show()
-    plt.clf()
     plt.close("all")
 
     if percentage:
@@ -692,14 +687,13 @@ def run_energy_analysis(
         ax.set_xlabel(r'Time [$\tau_{ci}$]')
         ax.set_ylabel("Percentage change in energy density [%]")
         ax.set_title(f"{simName}: Evolution of energy change in particles and EM fields, "
-                     + f"as a percentage of original {'fast ion' if beam else 'total'} energy")
+                     + f"as a percentage of original {'fast ion' if beam else 'total'} energy", wrap=True)
         ax.legend()
         ax.grid()
         fig.tight_layout()
         fig.savefig(savePlotsFolder / filename)
         if displayPlots:
             plt.show()
-        plt.clf()
         plt.close("all")
             
 def process_simulation_batch(
@@ -762,6 +756,11 @@ def process_simulation_batch(
         run_folders.append(directory)
     else: # Multiple simulations
         run_folders = glob.glob(str(directory / "run_*") + os.path.sep) 
+
+    plt.rcParams.update({'axes.labelsize': plotLabelSize})
+    plt.rcParams.update({'axes.titlesize': plotTitleSize})
+    plt.rcParams.update({'xtick.labelsize': plotTickSize})
+    plt.rcParams.update({'ytick.labelsize': plotTickSize})
 
     for simFolder in run_folders:
 
@@ -845,11 +844,6 @@ def process_simulation_batch(
 
             # Dispersion relations
             if createPlots:
-
-                plt.rcParams.update({'axes.labelsize': plotLabelSize})
-                plt.rcParams.update({'axes.titlesize': plotTitleSize})
-                plt.rcParams.update({'xtick.labelsize': plotTickSize})
-                plt.rcParams.update({'ytick.labelsize': plotTickSize})
 
                 create_omega_k_plots(original_spec, fieldStats, field, field_unit, plotFieldFolder, simFolder.name, inputDeck, maxK=maxK, maxW=maxW, log=takeLog, display=displayPlots)
 
@@ -1015,6 +1009,7 @@ if __name__ == "__main__":
     dataFolder, plotsFolder = initialise_folder_structure(args.dir, args.fields, args.createFolders, args.energy, args.saveGammaPlots, args.outputDir)
 
     if args.process:
+        
         if args.runNumber is not None:
             args.dir = Path(os.path.join(args.dir, f"run_{args.runNumber}"))
 
