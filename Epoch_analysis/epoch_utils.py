@@ -11,13 +11,13 @@ class LinearGrowthRate:
     timeMidpointIndex : float = None
     timeMidpoint: float = None
     yIntercept : float = None
-    residual : float = None
+    r_squared : float = None
     wavenumber : float = None
     peakPower : float = None
     totalPower : float = None
 
     def to_string(self) -> str:
-        return f"Wavenumber: {float(self.wavenumber)}, Peak power: {float(self.peakPower)}, Total power: {float(self.totalPower)}, Time (midpoint): {float(self.timeMidpoint)}, Growth rate: {float(self.gamma)}, SoS residual: {float(self.residual)}"
+        return f"Wavenumber: {float(self.wavenumber)}, Peak power: {float(self.peakPower)}, Total power: {float(self.totalPower)}, Time (midpoint): {float(self.timeMidpoint)}, Growth rate: {float(self.gamma)}, SoS residual: {float(self.r_squared)}"
 
 @dataclass
 class SimulationLinearGrowthRate:
