@@ -20,21 +20,21 @@ def collate_growth_rate_data(dataDir : Path, outputToOriginalFile : bool = True)
             engine="netcdf4"
         )
 
-        growthRateGroups = [g for g in data.groups if "growthRates" in g]
+        growthRateGroups = [g for g in data.groups if g.endswith("growthRates/positive") or g.endswith("growthRates/negative")]
         fields = {}
         for groupPath in growthRateGroups:
             fieldData = data[groupPath]
             keyGrowthRates = {}
             keyGrowthRateIndices = {}
-            keyGrowthRateIndices["max"] = np.argmax(fieldData.growthRate.data) 
-            keyGrowthRateIndices["maxInHighPeakPowerK"] = np.argmax(fieldData.peakPower.data)
-            keyGrowthRateIndices["maxInHighTotalPowerK"] = np.argmax(fieldData.totalPower.data)
+            keyGrowthRateIndices["maxFoundInSimulation"] = np.argmax(fieldData.growthRate.data) 
+            keyGrowthRateIndices["bestInHighestPeakPowerK"] = np.argmax(fieldData.peakPower.data)
+            keyGrowthRateIndices["bestInHighestTotalPowerK"] = np.argmax(fieldData.totalPower.data)
             for metric, i in keyGrowthRateIndices.items():
                 keyGrowthRates[metric] = utils.LinearGrowthRate(
                     gamma = float(fieldData.growthRate[i]),
                     timeMidpoint=float(fieldData.time[i]),
                     yIntercept=float(fieldData.yIntercept[i]),
-                    r_squared=float(fieldData.residual[i]),
+                    rSquared=float(fieldData.rSquared[i]),
                     wavenumber=float(fieldData.wavenumber[i]),
                     peakPower=float(fieldData.peakPower[i]),
                     totalPower=float(fieldData.totalPower[i])
@@ -49,7 +49,7 @@ def collate_growth_rate_data(dataDir : Path, outputToOriginalFile : bool = True)
                 metricGroup.growthRate = float(metricData.gamma)
                 metricGroup.time=float(metricData.timeMidpoint)
                 metricGroup.yIntercept=float(metricData.yIntercept)
-                metricGroup.residual=float(metricData.residual)
+                metricGroup.rSquared=float(metricData.rSquared)
                 metricGroup.wavenumber=float(metricData.wavenumber)
                 metricGroup.peakPower=float(metricData.peakPower)
                 metricGroup.totalPower=float(metricData.totalPower)
