@@ -167,7 +167,8 @@ def find_max_growth_rates(
 
             for window in range(len(signal) - (width + 1)): # For each window
 
-                print(f"Width {width}/{gammaWindowMax} in k={signalK}: window {window}/{len(signal) - (width + 1)}....")
+                if debug:
+                    print(f"Width {width}/{gammaWindowMax} in k={signalK}: window {window}/{len(signal) - (width + 1)}....")
 
                 t_k_window = signal[window:(width + window)]
 
