@@ -409,7 +409,7 @@ def create_omega_k_plots(
     B0 = inputDeck['constant']['b0_strength']
     bkgd_number_density = float(inputDeck['constant']['background_density'])
     wLH_cyclo = ppf.lower_hybrid_frequency(B0 * u.T, bkgd_number_density * u.m**-3, bkgdSpecies) / ppf.gyrofrequency(B0 * u.T, fastSpecies)
-    axs.axhline(y = wLH_cyclo, color='gray', linestyle=':', label=r'Lower hybrid frequency')
+    axs.axhline(y = wLH_cyclo, color='white', linestyle=':', label=r'Lower hybrid frequency')
     axs.legend(loc='upper left')
     axs.set_ylabel(r"Frequency [$\omega_{ci}$]")
     axs.set_xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")

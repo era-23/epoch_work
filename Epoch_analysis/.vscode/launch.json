@@ -235,7 +235,7 @@
                 //"--createFolders",
                 "--process",
                 "--beam",
-                "--growthRates",
+                //"--growthRates",
                 "--maxK", "25.0",
                 //"--numGrowthRatesToPlot", "5",
                 "--minGammaFitWindow", "9.8",
@@ -248,7 +248,7 @@
                 "--createPlots",
                 "--bigLabels",
                 "--noTitle",
-                "--takeLog",
+                //"--takeLog",
                 "--debug",
             ]
         }
