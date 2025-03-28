@@ -8,7 +8,7 @@ from plasmapy.formulary import frequencies as ppf
 from plasmapy.formulary import speeds as pps
 from plasmapy.formulary import lengths as ppl
 import astropy.units as u
-import epoch_utils as utils
+import epoch_utils as e_utils
 import netCDF4 as nc
 import xarray as xr
 import glob
@@ -90,11 +90,12 @@ def create_netCDF_fieldVariable_structure(
 def plot_growth_rates(
         tkSpectrum : xr.DataArray,
         field : str,
-        growthRateData : list[utils.LinearGrowthRate],
+        growthRateData : list[e_utils.LinearGrowthRate],
         numToPlot : int,
         selectionMetric : str,
         save : bool = False,
         display : bool = False,
+        noTitle : bool = False,
         saveFolder : Path = None,
         runName : str = None
 ):
@@ -127,7 +128,8 @@ def plot_growth_rates(
         ax.set_ylabel(f"Log of {field} signal power")
         ax.grid()
         ax.legend()
-        plt.title(f'{runName}_{field}_{signString}_growth_k_{g.wavenumber:.3f}_{selectionMetric}_power_rank_{rank}')
+        if not noTitle:
+            plt.title(f'{runName}_{field}_{signString}_growth_k_{g.wavenumber:.3f}_{selectionMetric}_power_rank_{rank}')
         if save:
             plt.savefig(saveFolder / Path(f"{runName}_{field}_{signString}_growth_k_{g.wavenumber:.3f}_{selectionMetric}Power_rank_{rank}.png"))
         if display:
@@ -138,7 +140,8 @@ def plot_growth_rates(
 def find_max_growth_rates(
         tkSpectrum : xr.DataArray,
         gammaWindowMin : int,
-        gammaWindowMax
+        gammaWindowMax : int,
+        skipIndices : int = 1
 ):
 
     print("Finding max growth rates....")
@@ -158,17 +161,29 @@ def find_max_growth_rates(
         signalPeak=float(signal.max())
         signalTotal=float(signal.sum())
 
+        windowWidths = range(gammaWindowMin, gammaWindowMax + 1, skipIndices)
+        len_widths = len(windowWidths)
+
         best_pos_params = None
         best_neg_params = None
         best_pos_r_squared = float('-inf')
         best_neg_r_squared = float('-inf')
 
-        for width in range(gammaWindowMin, gammaWindowMax + 1): # For each possible window width
+        width_count = 0
+        for width in windowWidths: # For each possible window width
+            
+            windowStarts = range(0, len(signal) - (width + 1), skipIndices)
 
-            for window in range(len(signal) - (width + 1)): # For each window
+            if debug:
+                width_count += 1
+                len_windows = len(windowStarts)
+                window_count = 0
 
+            for window in windowStarts: # For each window
+                
                 if debug:
-                    print(f"Width {width}/{gammaWindowMax} in k={signalK}: window {window}/{len(signal) - (width + 1)}....")
+                    window_count += 1
+                    print(f"Processing width {width} starting at {window} in k={signalK}. Width {width_count}/{len_widths} window {window_count}/{len_windows}....")
 
                 t_k_window = signal[window:(width + window)]
 
@@ -188,7 +203,7 @@ def find_max_growth_rates(
         if best_pos_params is not None:
             gamma, y_int, window_width, windowStart, r_sqrd = best_pos_params
             best_pos_growth_rates.append(
-                utils.LinearGrowthRate(timeStartIndex=windowStart,
+                e_utils.LinearGrowthRate(timeStartIndex=windowStart,
                                     timeEndIndex=(windowStart + window_width),
                                     timeMidpointIndex=windowStart+(int(window_width/2)),
                                     gamma=gamma,
@@ -202,7 +217,7 @@ def find_max_growth_rates(
         if best_neg_params is not None:
             gamma, y_int, window_width, windowStart, r_sqrd = best_neg_params
             best_neg_growth_rates.append(
-                utils.LinearGrowthRate(timeStartIndex=windowStart,
+                e_utils.LinearGrowthRate(timeStartIndex=windowStart,
                                     timeEndIndex=(windowStart + window_width),
                                     timeMidpointIndex=windowStart+(int(window_width/2)),
                                     gamma=gamma,
@@ -394,8 +409,8 @@ def create_omega_k_plots(
     B0 = inputDeck['constant']['b0_strength']
     bkgd_number_density = float(inputDeck['constant']['background_density'])
     wLH_cyclo = ppf.lower_hybrid_frequency(B0 * u.T, bkgd_number_density * u.m**-3, bkgdSpecies) / ppf.gyrofrequency(B0 * u.T, fastSpecies)
-    axs.axhline(y = wLH_cyclo, color='white', linestyle=':', label=r'Lower hybrid frequency')
-    axs.legend(loc='upper right')
+    axs.axhline(y = wLH_cyclo, color='gray', linestyle=':', label=r'Lower hybrid frequency')
+    axs.legend(loc='upper left')
     axs.set_ylabel(r"Frequency [$\omega_{ci}$]")
     axs.set_xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
     filename = Path(f'{runName}_{field.replace("_", "")}_wk_positiveK_log-{log}_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
@@ -524,8 +539,8 @@ def run_energy_analysis(
     simName : str,
     savePlotsFolder : Path,
     statsFile : nc.Dataset,
-    fields : list = ['Magnetic_Field_Bx', 'Magnetic_Field_By', 'Magnetic_Field_Bz', 'Electric_Field_Ex', 'Electric_Field_Ey', 'Electric_Field_Ez'],
     displayPlots : bool = False,
+    noTitle : bool = False,
     beam : bool = True,
     percentage : bool = True
 ):
@@ -662,14 +677,15 @@ def run_energy_analysis(
     energyStats.magneticFieldEnergyDensity_delta = deltaMeanMagneticEnergyDensity[-1]
 
     # Main plotting
-    ax.plot(timeCoords, deltaProtonKE_density, label = r"background proton KE", color="orange")
-    ax.plot(timeCoords, deltaElectronKE_density, label = r"background electron KE", color="blue")
-    ax.plot(timeCoords, deltaMeanMagneticEnergyDensity, label = r"Magnetic field E", color="purple", linestyle="--")
-    ax.plot(timeCoords, deltaMeanElectricEnergyDensity, label = r"Electric field E", color="green", linestyle="--")
+    ax.plot(timeCoords, deltaProtonKE_density, label = r"Bkgd Proton KE", color="orange")
+    ax.plot(timeCoords, deltaElectronKE_density, label = r"Bkgd Electron KE", color="blue")
+    ax.plot(timeCoords, deltaMeanMagneticEnergyDensity, label = r"B-field E", color="purple", linestyle="--")
+    ax.plot(timeCoords, deltaMeanElectricEnergyDensity, label = r"E-field E", color="green", linestyle="--")
     ax.plot(timeCoords, totalDeltaMeanEnergyDensity, label = r"Total E", color="black")
     ax.set_xlabel(r'Time [$\tau_{ci}$]')
     ax.set_ylabel(r"Change in energy density [$J/m^3$]")
-    ax.set_title(f"{simName}: Evolution of absolute energy in particles and EM fields", wrap=True)
+    if not noTitle: 
+        ax.set_title(f"{simName}: Evolution of absolute energy in particles and EM fields", wrap=True)
     ax.legend()
     ax.grid()
     fig.tight_layout()
@@ -694,7 +710,7 @@ def run_energy_analysis(
             fastIon_baseline = fastIonKEdensity_mean[0]
             deltaFastIonKEdensity_pct = 100.0 * (deltaFastIonKE_density / fastIon_baseline) # %
             totalMeanEnergyDensity_0 += fastIon_baseline
-            ax.plot(timeCoords, deltaFastIonKEdensity_pct, label = "ion ring beam KE", color='red')
+            ax.plot(timeCoords, deltaFastIonKEdensity_pct, label = "Fast Ion KE", color='red')
 
             baseline_E = fastIon_baseline
         else:
@@ -710,16 +726,17 @@ def run_energy_analysis(
         if beam:
             totalDeltaMeanEnergyDensity_pct += deltaFastIonKEdensity_pct
 
-        ax.plot(timeCoords, deltaProtonKEdensity_pct, label = "background proton KE", color="orange")
-        ax.plot(timeCoords, deltaElectronKEdensity_pct, label = "background electron KE", color="blue")
-        ax.plot(timeCoords, deltaMeanMagneticEnergyDensity_pct, label = "Magnetic field E", color="purple", linestyle="--")
-        ax.plot(timeCoords, deltaMeanElectricEnergyDensity_pct, label = "Electric field E", color="green", linestyle="--")
+        ax.plot(timeCoords, deltaProtonKEdensity_pct, label = "Bkgd Proton KE", color="orange")
+        ax.plot(timeCoords, deltaElectronKEdensity_pct, label = "Bkgd Electron KE", color="blue")
+        ax.plot(timeCoords, deltaMeanMagneticEnergyDensity_pct, label = "B-field E", color="purple", linestyle="--")
+        ax.plot(timeCoords, deltaMeanElectricEnergyDensity_pct, label = "E-field E", color="green", linestyle="--")
         ax.plot(timeCoords, totalDeltaMeanEnergyDensity_pct, label = "Total E", color="black")
-        ax.set_yscale('symlog')
+        #ax.set_yscale('symlog')
         ax.set_xlabel(r'Time [$\tau_{ci}$]')
-        ax.set_ylabel("Percentage change in energy density [%]")
-        ax.set_title(f"{simName}: Evolution of energy change in particles and EM fields, "
-                     + f"as a percentage of original {'fast ion' if beam else 'total'} energy", wrap=True)
+        ax.set_ylabel("Change in energy density [%]")
+        if not noTitle:
+            ax.set_title(f"{simName}: Evolution of energy change in particles and EM fields, "
+                        + f"as a percentage of original {'fast ion' if beam else 'total'} energy", wrap=True)
         ax.legend()
         ax.grid()
         fig.tight_layout()
@@ -739,15 +756,15 @@ def process_simulation_batch(
         maxResPct : float = 0.1,
         maxResidual : float = 0.1, # IMPLEMENT THIS ONCE BASELINED
         gammaWindowPctMin : float = 5.0,
-        gammaWindowPctMax : float = 20.0,
+        gammaWindowPctMax : float = 15.0,
+        gammaWindowSkipIndices : float = 5,
         minSignalPower : float = 0.08, # IMPLEMENT THIS ONCE BASELINED
         takeLog = False, 
         beam = True,
         fastSpecies : str = 'p+',
         bkgdSpecies : str = 'p+',
-        plotTitleSize : float = 18.0,
-        plotLabelSize : float = 16.0,
-        plotTickSize : float = 14.0,
+        bigLabels : bool = False,
+        noTitle : bool = False,
         createPlots = False,
         displayPlots = False,
         saveGrowthRatePlots = False,
@@ -789,10 +806,19 @@ def process_simulation_batch(
     else: # Multiple simulations
         run_folders = glob.glob(str(directory / "run_*") + os.path.sep) 
 
-    plt.rcParams.update({'axes.labelsize': plotLabelSize})
-    plt.rcParams.update({'axes.titlesize': plotTitleSize})
-    plt.rcParams.update({'xtick.labelsize': plotTickSize})
-    plt.rcParams.update({'ytick.labelsize': plotTickSize})
+    if bigLabels:
+        plt.rcParams.update({'axes.titlesize': 26.0})
+        plt.rcParams.update({'axes.labelsize': 24.0})
+        plt.rcParams.update({'xtick.labelsize': 20.0})
+        plt.rcParams.update({'ytick.labelsize': 20.0})
+        plt.rcParams.update({'legend.fontsize': 18.0})
+    else:
+        plt.rcParams.update({'axes.titlesize': 18.0})
+        plt.rcParams.update({'axes.labelsize': 16.0})
+        plt.rcParams.update({'xtick.labelsize': 14.0})
+        plt.rcParams.update({'ytick.labelsize': 14.0})
+        plt.rcParams.update({'legend.fontsize': 14.0})
+    
 
     for simFolder in run_folders:
 
@@ -827,7 +853,7 @@ def process_simulation_batch(
         # Energy analysis
         if energy:
             energyPlotFolder = plotsFolder / "energy"
-            run_energy_analysis(ds, inputDeck, simFolder.name, energyPlotFolder, statsRoot, displayPlots = displayPlots, beam = beam, percentage = True)
+            run_energy_analysis(ds, inputDeck, simFolder.name, energyPlotFolder, statsRoot, displayPlots = displayPlots, noTitle=noTitle, beam = beam, percentage = True)
 
         if "all" in fields:
             fields = [str(f) for f in ds.data_vars.keys() if str(f).startswith("Electric_Field") or str(f).startswith("Magnetic_Field")]
@@ -886,9 +912,9 @@ def process_simulation_batch(
                 
                 if saveGrowthRatePlots:
                     gammaPlotFolder = plotFieldFolder / "growth_rates"
-                    plot_growth_rates(tk_spec, field, max_pos_gammas, numGrowthRatesToPlot, "peak", saveGrowthRatePlots, displayPlots, gammaPlotFolder, simFolder.name)
+                    plot_growth_rates(tk_spec, field, max_pos_gammas, numGrowthRatesToPlot, "peak", saveGrowthRatePlots, displayPlots, noTitle, gammaPlotFolder, simFolder.name)
                     gammaPlotFolder = plotFieldFolder / "growth_rates"
-                    plot_growth_rates(tk_spec, field, max_neg_gammas, numGrowthRatesToPlot, "peak", saveGrowthRatePlots, displayPlots, gammaPlotFolder, simFolder.name)
+                    plot_growth_rates(tk_spec, field, max_neg_gammas, numGrowthRatesToPlot, "peak", saveGrowthRatePlots, displayPlots, noTitle, gammaPlotFolder, simFolder.name)
 
                 maxNumGammas = np.max([len(max_pos_gammas), len(max_neg_gammas)])
                 gammaNc : nc.Dataset = create_netCDF_fieldVariable_structure(fieldStats, maxNumGammas)
@@ -983,6 +1009,13 @@ if __name__ == "__main__":
         type=float
     )
     parser.add_argument(
+        "--skipIndices",
+        action="store",
+        help="Number of indices to skip at a time when fitting gamma windows, e.g. every n window lengths will be fit starting at every n indices between max and min. Required to make analysis tractable.",
+        required = False,
+        type=int
+    )
+    parser.add_argument(
         "--runNumber",
         action="store",
         help="Run number to analyse (folder must be in directory and named \'run_##\' where ## is runNumber).",
@@ -1017,6 +1050,18 @@ if __name__ == "__main__":
         "--displayPlots",
         action="store_true",
         help="Display plots in addition to saving to file.",
+        required = False
+    )
+    parser.add_argument(
+        "--bigLabels",
+        action="store_true",
+        help="Large labels on plots for posters, presentations etc.",
+        required = False
+    )
+    parser.add_argument(
+        "--noTitle",
+        action="store_true",
+        help="No title on plots for posters, papers etc. which will include captions instead.",
         required = False
     )
     parser.add_argument(
@@ -1065,10 +1110,13 @@ if __name__ == "__main__":
             growthRates=args.growthRates,
             gammaWindowPctMin=args.minGammaFitWindow,
             gammaWindowPctMax=args.maxGammaFitWindow,
+            
             numGrowthRatesToPlot=args.numGrowthRatesToPlot, 
             takeLog=args.takeLog, 
             beam = args.beam,
             createPlots=args.createPlots, 
             displayPlots=args.displayPlots,
+            bigLabels=args.bigLabels,
+            noTitle=args.noTitle,
             saveGrowthRatePlots=args.saveGammaPlots,
             energy=args.energy)

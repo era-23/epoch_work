@@ -8,7 +8,7 @@ import astropy.units as u
 from plasmapy.formulary import frequencies as ppf
 #import xrscipy as xrscipy
 #import xrscipy.fft
-import epoch_utils as utils
+import epoch_utils as e_utils
 import pandas as pd
 import epydeck
 import numpy as np
@@ -140,7 +140,7 @@ def plot_growth_rate_data(
     print(f"NORMALISED: Sim L in vA*Tci: {simL_vATci}vA*Tci")
     print(f"NORMALISED: Sampling frequency in Wci/vA: {num_cells/simL_vATci}Wci/vA")
     print(f"NORMALISED: Nyquist frequency in Wci/vA: {num_cells/(2.0 *simL_vATci)}Wci/vA")
-    w_LH_Wci = utils.calculate_lower_hybrid_frequency(ion_bkgd_charge, ion_bkgd_mass, bkgd_number_density, B0, 'cyc')
+    w_LH_Wci = e_utils.calculate_lower_hybrid_frequency(ion_bkgd_charge, ion_bkgd_mass, bkgd_number_density, B0, 'cyc')
     print(f"NORMALISED: Lower Hybrid frequency in Wci: {w_LH_Wci}Wci")
 
     # Clean data and take FFT
@@ -278,11 +278,11 @@ def plot_growth_rate_data(
             for i in tqdm(range(len(t_k) - (gammaWindow + 1))): # For each window
                 t_k_window = t_k[i:(i + gammaWindow)]
                 fit, res, _, _, _ = np.polyfit(x = t_k.coords["time"][i:(i + gammaWindow)], y = np.log(t_k_window), deg = 1, full = True)
-                all_gammas.append(utils.LinearGrowthRateByT(time = t_k.coords["time"][i:(i + gammaWindow)][int(gammaWindow/2)], gamma = float(fit[0]), yIntercept=float(fit[1]), residual = float(res[0])))
+                all_gammas.append(e_utils.LinearGrowthRateByT(time = t_k.coords["time"][i:(i + gammaWindow)][int(gammaWindow/2)], gamma = float(fit[0]), yIntercept=float(fit[1]), residual = float(res[0])))
                 all_residuals.append(float(res[0]))
             
             # Normalise residuals and filter
-            filtered = utils.filter_by_residuals(all_gammas, all_residuals, maxRes)
+            filtered = e_utils.filter_by_residuals(all_gammas, all_residuals, maxRes)
 
             filtered_times = []
             filtered_gammas = []
@@ -463,16 +463,16 @@ def calculate_max_growth_rate_in_simulation(
             #     plt.plot(t_k.coords["time"][i:(i + gammaWindow)], fit[0] * t_k.coords["time"][i:(i + gammaWindow)] + fit[1])
             # plt.title(f'k = {float(k):.3f}')
             # plt.show()
-            all_gammas.append(utils.LinearGrowthRateByT(time = float(t_k.coords["time"][i:(i + gammaWindow)][int(gammaWindow/2)]), gamma = float(fit[0]), yIntercept=float(fit[1]), residual = float(res[0])))
+            all_gammas.append(e_utils.LinearGrowthRateByT(time = float(t_k.coords["time"][i:(i + gammaWindow)][int(gammaWindow/2)]), gamma = float(fit[0]), yIntercept=float(fit[1]), residual = float(res[0])))
             all_residuals.append(float(res[0]))
         
         # Normalise residuals and filter
-        filtered = utils.filter_by_residuals(all_gammas, all_residuals, maxRes)
+        filtered = e_utils.filter_by_residuals(all_gammas, all_residuals, maxRes)
 
         if filtered.size != 0:
             filtered_gammas = [lgr.gamma for lgr in filtered]
             max_gamma_id = np.nanargmax(filtered_gammas)
-            max_growth_rates.append(utils.MaxGrowthRate(wavenumber=float(k), time=filtered[max_gamma_id].time, gamma=filtered[max_gamma_id].gamma, yIntercept=filtered[max_gamma_id].yIntercept))
+            max_growth_rates.append(e_utils.MaxGrowthRate(wavenumber=float(k), time=filtered[max_gamma_id].time, gamma=filtered[max_gamma_id].gamma, yIntercept=filtered[max_gamma_id].yIntercept))
 
     all_max_gammas = [mgr.gamma for mgr in max_growth_rates]
     max_gamma_in_sim = max_growth_rates[np.nanargmax(all_max_gammas)]

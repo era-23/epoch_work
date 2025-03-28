@@ -3,7 +3,7 @@ import glob
 import xarray as xr
 import netCDF4 as nc
 import numpy as np
-import epoch_utils as utils
+import epoch_utils as e_utils
 from pathlib import Path
 from scipy.interpolate import make_smoothing_spline
 from scipy.signal import find_peaks
@@ -30,7 +30,7 @@ def collate_growth_rate_data(dataDir : Path, outputToOriginalFile : bool = True)
             keyGrowthRateIndices["bestInHighestPeakPowerK"] = np.argmax(fieldData.peakPower.data)
             keyGrowthRateIndices["bestInHighestTotalPowerK"] = np.argmax(fieldData.totalPower.data)
             for metric, i in keyGrowthRateIndices.items():
-                keyGrowthRates[metric] = utils.LinearGrowthRate(
+                keyGrowthRates[metric] = e_utils.LinearGrowthRate(
                     gamma = float(fieldData.growthRate[i]),
                     timeMidpoint=float(fieldData.time[i]),
                     yIntercept=float(fieldData.yIntercept[i]),
@@ -57,9 +57,22 @@ def collate_growth_rate_data(dataDir : Path, outputToOriginalFile : bool = True)
 
         print(f"Done {simulation}")
 
-def calculate_energy_metadata(dataDir : Path, debug = False):
+def calculate_energy_metadata(dataDir : Path, runNumber = None, bigLabels : bool = False, noTitle : bool = False,  debug = False):
 
-    dataFiles = glob.glob(str(dataDir / "*.nc"))
+    if bigLabels:
+        plt.rcParams.update({'axes.titlesize': 26.0})
+        plt.rcParams.update({'axes.labelsize': 24.0})
+        plt.rcParams.update({'xtick.labelsize': 20.0})
+        plt.rcParams.update({'ytick.labelsize': 20.0})
+        plt.rcParams.update({'legend.fontsize': 16.0})
+    else:
+        plt.rcParams.update({'axes.titlesize': 18.0})
+        plt.rcParams.update({'axes.labelsize': 16.0})
+        plt.rcParams.update({'xtick.labelsize': 14.0})
+        plt.rcParams.update({'ytick.labelsize': 14.0})
+        plt.rcParams.update({'legend.fontsize': 14.0})
+
+    dataFiles = glob.glob(str(dataDir / f"{f'run_{runNumber}_stats' if runNumber is not None else '*'}.nc"))
 
     for simulation in dataFiles:
 
@@ -165,8 +178,14 @@ def calculate_energy_metadata(dataDir : Path, debug = False):
                 print(f"Has troughs: {hasTroughs}")
                 print(f"Time series length: {len(smoothDeltaData)}, index max: {np.argmax(smoothDeltaData)}, maxAtSimEnd: {maxAtSimEnd}")
                 print(f"Time series length: {len(smoothDeltaData)}, index min: {np.argmin(smoothDeltaData)}, minAtSimEnd: {minAtSimEnd}")
-                plt.plot(timeCoords, percentageED,  label=variable)
-                plt.plot(timeCoords, smoothPctData, label=f"Smoothed {variable}", linestyle="--")
+                colour = next((e_utils.E_TRACE_SPECIES_COLOUR_MAP[c] for c in e_utils.E_TRACE_SPECIES_COLOUR_MAP.keys() if c in variable), False)
+                if colour:
+                    plt.plot(timeCoords, percentageED,  label=e_utils.SPECIES_NAME_MAP[variable], alpha=0.4, color = colour)
+                    plt.plot(timeCoords, smoothPctData, label=f"Smoothed {e_utils.SPECIES_NAME_MAP[variable]}", linestyle="--", color = colour)
+                else:
+                    plt.plot(timeCoords, percentageED,  label=e_utils.SPECIES_NAME_MAP[variable], alpha=0.4)
+                    plt.plot(timeCoords, smoothPctData, label=f"Smoothed {e_utils.SPECIES_NAME_MAP[variable]}", linestyle="--")
+                
             energyGroup[variable].hasPeaks = int(hasPeaks)
             energyGroup[variable].hasTroughs = int(hasTroughs)
             
@@ -178,7 +197,7 @@ def calculate_energy_metadata(dataDir : Path, debug = False):
                 if debug:
                     print(f"Peaks: {smoothDeltaData[ed_peaks]} ({smoothPctData[ed_peaks]}%) at {ed_peaks}")
                     print(f"Time of peaks: {[float(t) for t in timeCoords[ed_peaks]]}")
-                    plt.scatter(timeCoords[ed_peaks], smoothPctData[ed_peaks], marker="x")
+                    plt.scatter(timeCoords[ed_peaks], smoothPctData[ed_peaks], marker="x", color="black")
                 maxPeakIndices[variable] = ed_peaks[np.argmax([smoothPctData[p] for p in ed_peaks])]
             
             if hasTroughs:
@@ -189,16 +208,17 @@ def calculate_energy_metadata(dataDir : Path, debug = False):
                 if debug:
                     print(f"Troughs: {smoothDeltaData[ed_troughs]} ({smoothPctData[ed_troughs]}%) at {ed_troughs}")
                     print(f"Time of troughs: {[float(t) for t in timeCoords[ed_troughs]]}")
-                    plt.scatter(timeCoords[ed_troughs], smoothPctData[ed_troughs], marker="+")
+                    plt.scatter(timeCoords[ed_troughs], smoothPctData[ed_troughs], marker="+", color="black")
                     print("...................................................................................")
                 minTroughIndices[variable] = ed_troughs[np.argmin([smoothPctData[p] for p in ed_troughs])]
             
         if debug:
-            plt.legend(loc="lower right")
-            plt.xlabel("Time/ion_gyroperiods")
-            plt.ylabel("Percentage change in energy density/%")
+            plt.legend()
+            plt.xlabel(r"Time [$\tau_{ci}$]")
+            plt.ylabel("Change in energy density [%]")
             plt.grid()
-            plt.title(f"{simulation.split('/')[-1]} Percentage change in ED relative to fast ion energy")
+            if not noTitle:
+                plt.title(f"{simulation.split('/')[-1]} Percentage change in ED relative to fast ion energy")
             plt.show()
         
         # Specific to IRB transfer
@@ -304,6 +324,25 @@ if __name__ == "__main__":
         type=str
     )
     parser.add_argument(
+        "--runNumber",
+        action="store",
+        help="Optional run number to only process one run.",
+        required = False,
+        type=str
+    )
+    parser.add_argument(
+        "--bigLabels",
+        action="store_true",
+        help="Large labels on plots for posters, presentations etc.",
+        required = False
+    )
+    parser.add_argument(
+        "--noTitle",
+        action="store_true",
+        help="No title on plots for posters, papers etc. which will include captions instead.",
+        required = False
+    )
+    parser.add_argument(
         "--debug",
         action="store_true",
         help="Display debug info/plots",
@@ -315,4 +354,4 @@ if __name__ == "__main__":
     if args.growthRates:
         collate_growth_rate_data(args.dir, args.outputToOriginalFile)
     if args.energy:
-        calculate_energy_metadata(args.dir, args.debug)
+        calculate_energy_metadata(args.dir, args.runNumber, args.bigLabels, args.noTitle, args.debug)

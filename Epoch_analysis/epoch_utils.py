@@ -62,6 +62,22 @@ class GPModel:
     classificationModel : GaussianProcessClassifier = None
     modelParams : dict = None
 
+E_TRACE_SPECIES_COLOUR_MAP = {
+    "proton" : "orange",
+    "electron" : "blue",
+    "magneticField" : "purple",
+    "electricField" : "green",
+    "fastIon" : "red"
+}
+
+SPECIES_NAME_MAP = {
+    "protonMeanEnergyDensity" : "Bkgd proton",
+    "electronMeanEnergyDensity" : "Bkgd electron",
+    "magneticFieldMeanEnergyDensity" : "B-field",
+    "electricFieldMeanEnergyDensity" : "E-field",
+    "fastIonMeanEnergyDensity" : "Fast ion"
+}
+
 # Formerly everything below maxRes percentile, i.e. maxRes == 0.2 --> all values within bottom (best) 20th percentile
 # Now everything at maxRes proportion and below, i.e. maxRes == 0.2 --> bottom (best) 20% of values
 def filter_by_residuals(x, residuals, maxRes):
