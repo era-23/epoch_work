@@ -70,20 +70,25 @@ def create_netCDF_fieldVariable_structure(
     negGrowthRateGrp = growth_rate_group.createGroup("negative")
     groups = [posGrowthRateGrp, negGrowthRateGrp]
     
+    # NOTE: This will skip adding fields if the "wavenumber" dimension is already present, so this assumes no changes to the variable creation below is required.
+    #       A more sophisticated diff would be better.
     for group in groups:
-        group.createDimension("wavenumber", numGrowthRates)
+        if "wavenumber" in group.dimensions.keys():
+            continue
+        else:
+            group.createDimension("wavenumber", numGrowthRates)
 
-        k_var = group.createVariable("wavenumber", datatype="f4", dimensions=("wavenumber",))
-        k_var.units = "wCI/vA"
-        group.createVariable("peakPower", datatype="f4", dimensions=("wavenumber",))
-        group.createVariable("totalPower", datatype="f4", dimensions=("wavenumber",))
-        t_var = group.createVariable("time", datatype="f4", dimensions=("wavenumber",))
-        t_var.units = "tCI"
-        gamma_var = group.createVariable("growthRate", datatype="f8", dimensions=("wavenumber",))
-        gamma_var.units = "wCI"
-        gamma_var.standard_name = "linear_growth_rate"
-        group.createVariable("rSquared", datatype="f4", dimensions=("wavenumber",))
-        group.createVariable("yIntercept", datatype="f4", dimensions=("wavenumber",))
+            k_var = group.createVariable("wavenumber", datatype="f4", dimensions=("wavenumber",))
+            k_var.units = "wCI/vA"
+            group.createVariable("peakPower", datatype="f4", dimensions=("wavenumber",))
+            group.createVariable("totalPower", datatype="f4", dimensions=("wavenumber",))
+            t_var = group.createVariable("time", datatype="f4", dimensions=("wavenumber",))
+            t_var.units = "tCI"
+            gamma_var = group.createVariable("growthRate", datatype="f8", dimensions=("wavenumber",))
+            gamma_var.units = "wCI"
+            gamma_var.standard_name = "linear_growth_rate"
+            group.createVariable("rSquared", datatype="f4", dimensions=("wavenumber",))
+            group.createVariable("yIntercept", datatype="f4", dimensions=("wavenumber",))
 
     return growth_rate_group
     
@@ -460,6 +465,7 @@ def calculate_simulation_metadata(
     outputNcRoot.debyeLength_m = debye_length.value
     sim_L_dl = sim_L / debye_length
     outputNcRoot.simLength_dL = sim_L_dl
+    outputNcRoot.cellWidth_dL = sim_L_dl / num_cells
 
     number_density_bkgd = background_density * (1.0 - beam_frac)
     if beam:
@@ -478,6 +484,23 @@ def calculate_simulation_metadata(
 
     alfven_velocity = pps.Alfven_speed(B0 * u.T, number_density_bkgd / u.m**3, bkgdSpecies)
     outputNcRoot.alfvenSpeed = alfven_velocity.value
+
+    # Lengths
+    if beam:
+        irb_v_perp = inputDeck['constant']['v_perp_ratio'] * alfven_velocity
+        irb_gyroradius = proton_gyroradius = ppl.gyroradius(B = B0 * u.T, particle = "p", Vperp=irb_v_perp)
+        outputNcRoot.fastIonGyroradius = irb_gyroradius.value
+        outputNcRoot.simLength_rLfi = sim_L.value / irb_gyroradius.value
+        outputNcRoot.cellWidth_rLfi = (sim_L.value / irb_gyroradius.value) / num_cells
+    proton_gyroradius = ppl.gyroradius(B = B0 * u.T, particle = "p", T=inputDeck['constant']['background_temp'] * u.K)
+    outputNcRoot.protonGyroradius = proton_gyroradius.value
+    outputNcRoot.simLength_rLp = sim_L.value / proton_gyroradius.value
+    outputNcRoot.cellWidth_rLp = (sim_L.value / proton_gyroradius.value) / num_cells
+    electron_gyroradius = ppl.gyroradius(B = B0 * u.T, particle = "e", T=inputDeck['constant']['background_temp'] * u.K)
+    outputNcRoot.electronGyroradius = electron_gyroradius.value
+    outputNcRoot.simLength_rLe = sim_L.value / electron_gyroradius.value
+    outputNcRoot.cellWidth_rLe = (sim_L.value / electron_gyroradius.value) / num_cells
+    
     sim_L_vA_Tci = sim_L / (ion_gyroperiod_s * alfven_velocity)
 
     # Normalised units
@@ -504,7 +527,17 @@ def calculate_simulation_metadata(
         print(f"B0z = {B0 * np.sin(B0_angle * (np.pi / 180.0))}")
 
         print(f"Debye length: {debye_length}")
+        print(f"Background ion gyroradius: {proton_gyroradius}")
+        print(f"Background electron gyroradius: {electron_gyroradius}")
+        if beam: 
+            print(f"Fast ion gyroradius: {irb_gyroradius}")
         print(f"Sim length in Debye lengths: {sim_L_dl}")
+        cell_width_dl = sim_L_dl /num_cells
+        cell_width = cell_width_dl * debye_length
+        if beam:
+            print(f"Cell width: {cell_width_dl:.3f} debye lengths ({cell_width/proton_gyroradius:.3f} proton gyroradii, {cell_width/electron_gyroradius:.3f} electron gyroradii, {cell_width/irb_gyroradius:.3f} fast ion gyroradii)")
+        else:
+            print(f"Cell width: {cell_width_dl/num_cells:.3f} debye lengths ({cell_width/proton_gyroradius:.3f} proton gyroradii, {cell_width/electron_gyroradius:.3f} electron gyroradii)")
 
         print(f"Ion gyrofrequency: {ion_gyrofrequency}")
         print(f"Ion gyroperiod: {ion_gyroperiod}")
@@ -544,10 +577,23 @@ def run_energy_analysis(
     beam : bool = True,
     percentage : bool = True
 ):
-    # Create stats group
-    energyStats = statsFile.createGroup("Energy")
-    energyStats.createDimension("time", dataset.coords["time"].size)
-    time_var = energyStats.createVariable("time", "f8", ("time",))
+    # Create stats group if not already existing
+    if "Energy" not in statsFile.groups.keys():
+        energyStats = statsFile.createGroup("Energy")
+        energyStats.createDimension("time", dataset.coords["time"].size)
+        time_var = energyStats.createVariable("time", "f8", ("time",))
+        ped = energyStats.createVariable("protonMeanEnergyDensity", "f8", ("time",))
+        eed = energyStats.createVariable("electronMeanEnergyDensity", "f8", ("time",))
+        efd = energyStats.createVariable("electricFieldMeanEnergyDensity", "f8", ("time",))
+        mfd = energyStats.createVariable("magneticFieldMeanEnergyDensity", "f8", ("time",))
+    else:
+        energyStats = statsFile.groups["Energy"]
+        time_var = energyStats.variables["time"]
+        ped = energyStats.variables["protonMeanEnergyDensity"]
+        eed = energyStats.variables["electronMeanEnergyDensity"]
+        efd = energyStats.variables["electricFieldMeanEnergyDensity"]
+        mfd = energyStats.variables["magneticFieldMeanEnergyDensity"]
+    
     time_var[:] = dataset.coords["time"].data
     energyStats.long_name = "Particle and field energy data"
 
@@ -563,7 +609,7 @@ def run_energy_analysis(
     protonKEdensity_mean = protonKE_mean * proton_density # J / m^3
     del(proton_KE)
     del(protonKE_mean)
-    ped = energyStats.createVariable("protonMeanEnergyDensity", "f8", ("time",))
+    
     ped[:] = protonKEdensity_mean
 
     electron_KE : xr.DataArray = dataset['Derived_Average_Particle_Energy_electron'].load()
@@ -571,7 +617,7 @@ def run_energy_analysis(
     electronKEdensity_mean = electronKE_mean * electron_density # J / m^3
     del(electron_KE)
     del(electronKE_mean)
-    eed = energyStats.createVariable("electronMeanEnergyDensity", "f8", ("time",))
+    
     eed[:] = electronKEdensity_mean
 
     Ex : xr.DataArray = dataset['Electric_Field_Ex'].load()
@@ -582,7 +628,7 @@ def run_energy_analysis(
     electricFieldEnergyDensity : xr.DataArray = (constants.epsilon_0 * electricFieldStrength**2) / 2.0 # J / m^3
     electricFieldDensity_mean = electricFieldEnergyDensity.mean(dim="x_space").data # J / m^3
     del(electricFieldEnergyDensity)
-    efd = energyStats.createVariable("electricFieldMeanEnergyDensity", "f8", ("time",))
+    
     efd[:] = electricFieldDensity_mean
 
     Bx : xr.DataArray = dataset['Magnetic_Field_Bx'].load()
@@ -593,7 +639,7 @@ def run_energy_analysis(
     magneticFieldEnergyDensity : xr.DataArray = (magneticFieldStrength**2 / (2.0 * constants.mu_0)) # J / m^3
     magneticFieldEnergyDensity_mean = magneticFieldEnergyDensity.mean(dim = "x_space").data # J / m^3
     del(magneticFieldEnergyDensity)
-    mfd = energyStats.createVariable("magneticFieldMeanEnergyDensity", "f8", ("time",))
+    
     mfd[:] = magneticFieldEnergyDensity_mean
 
     # Calculate B and E energy and convert others to to J/m3
@@ -619,7 +665,10 @@ def run_energy_analysis(
         fastIonKEdensity_mean = fastIonKE_mean * fastIonDensity # J / m^3
         del(fastIonKE)
         del(fastIonKE_mean)
-        fed = energyStats.createVariable("fastIonMeanEnergyDensity", "f8", ("time",))
+        if "fastIonMeanEnergyDensity" not in energyStats.variables.keys():
+            fed = energyStats.createVariable("fastIonMeanEnergyDensity", "f8", ("time",))
+        else:
+            fed = energyStats.variables["fastIonMeanEnergyDensity"]
         fed[:] = fastIonKEdensity_mean
         deltaFastIonKE_density = fastIonKEdensity_mean - fastIonKEdensity_mean[0] # J / m^3
         totalDeltaMeanEnergyDensity += deltaFastIonKE_density
@@ -749,7 +798,7 @@ def process_simulation_batch(
         directory : Path,
         dataFolder : Path,
         plotsFolder : Path,
-        fields : list = ['Magnetic_Field_Bz'],
+        fields : list,
         maxK : float = None,
         maxW : float = None,
         growthRates : bool = True,
@@ -844,7 +893,7 @@ def process_simulation_batch(
         
         statsFilename = simFolder.name + "_stats.nc"
         statsFilepath = os.path.join(dataFolder, statsFilename)
-        statsRoot = nc.Dataset(statsFilepath, "w", format="NETCDF4")
+        statsRoot = nc.Dataset(statsFilepath, "a", format="NETCDF4")
 
         ion_gyroperiod, alfven_velocity = calculate_simulation_metadata(inputDeck, ds, statsRoot, beam, fastSpecies, bkgdSpecies)
 
@@ -956,7 +1005,7 @@ if __name__ == "__main__":
         "--fields",
         action="store",
         help="EPOCH fields to use for analysis.",
-        required = True,
+        required = False,
         type=str,
         nargs="*"
     )
@@ -1104,13 +1153,12 @@ if __name__ == "__main__":
             directory=args.dir, 
             dataFolder=dataFolder,
             plotsFolder=plotsFolder,
-            fields=args.fields,
+            fields=args.fields if args.fields is not None else [],
             maxK=args.maxK,
             maxW=args.maxW,
             growthRates=args.growthRates,
             gammaWindowPctMin=args.minGammaFitWindow,
             gammaWindowPctMax=args.maxGammaFitWindow,
-            
             numGrowthRatesToPlot=args.numGrowthRatesToPlot, 
             takeLog=args.takeLog, 
             beam = args.beam,

@@ -3,6 +3,7 @@ import epoch_utils as e_utils
 import numpy as np
 import itertools
 from scipy.stats import norm
+from scipy.interpolate import griddata
 from functools import partial
 from matplotlib import animation
 from inference.plotting import matrix_plot
@@ -10,21 +11,30 @@ from SALib import ProblemSpec
 import SALib.sample as salsamp
 
 fieldNameToText_dict = {
-    "Energy/electricFieldEnergyDensity_delta" : "E_deltaEnergy",
-    "Energy/magneticFieldEnergyDensity_delta" : "B_deltaEnergy", 
-    "Energy/backgroundIonEnergyDensity_delta" : "bkgdIon_deltaEnergy", 
-    "Energy/electronEnergyDensity_delta" : "e_deltaEnergy",
-    "Energy/fastIonEnergyDensity_max" : "fastIon_maxEnergy", 
-    "Energy/fastIonEnergyDensity_timeMax" : "fastIon_timeMaxEnergy", 
-    "Energy/fastIonEnergyDensity_min" : "fastIon_minEnergy", 
-    "Energy/fastIonEnergyDensity_timeMin" : "fastIon_timeMinEnergy", 
-    "Energy/fastIonEnergyDensity_delta" : "fastIon_deltaEnergy",
+    "Energy/electricFieldEnergyDensity_delta" : "E_deltaE",
+    "Energy/magneticFieldEnergyDensity_delta" : "B_deltaE", 
+    "Energy/backgroundIonEnergyDensity_delta" : "background\ndelta KE", 
+    "Energy/electronEnergyDensity_delta" : "e_deltaKE",
+    "Energy/fastIonEnergyDensity_max" : "fast ion\nmax KE", 
+    "Energy/fastIonEnergyDensity_timeMax" : "FI_timeMaxKE", 
+    "Energy/fastIonEnergyDensity_min" : "fast ion\nmin KE", 
+    "Energy/fastIonEnergyDensity_timeMin" : "fast ion\nmin time", 
+    "Energy/fastIonEnergyDensity_delta" : "fast ion\ndelta KE",
+    "Energy/backgroundIonEnergyDensity_max" : "background\nmax KE",
+    "Energy/backgroundIonEnergyDensity_timeMax" : "background\npeak time",
+    "Energy/electronEnergyDensity_timeMax" : "electron_timeMaxKE",
+    "Energy/electricFieldEnergyDensity_timeMax" : "Ex_timeMaxE",
+    "Energy/magneticFieldEnergyDensity_timeMax" : "Bz_timeMaxE",
+    "Energy/backgroundIonEnergyDensity_timeMin" : "bkgdIon_timeMinKE",
+    "Energy/electronEnergyDensity_timeMin" : "electron_timeMinKE",
+    "Energy/electricFieldEnergyDensity_timeMin" : "Ex_timeMinE",
+    "Energy/magneticFieldEnergyDensity_timeMin" : "Bz_timeMinE",
     "Magnetic_Field_Bz/totalMagnitude" : "Bz_totalPower", 
     "Magnetic_Field_Bz/meanMagnitude" : "Bz_meanPower", 
     "Magnetic_Field_Bz/totalDelta" : "Bz_deltaTotalPower", 
     "Magnetic_Field_Bz/meanDelta" : "Bz_deltaMeanPower", 
-    "Magnetic_Field_Bz/peakTkSpectralPower" : "Bz_peakTkPower", 
-    "Magnetic_Field_Bz/meanTkSpectralPower" : "Bz_meanTkPower", 
+    "Magnetic_Field_Bz/peakTkSpectralPower" : "Bz (peak)", 
+    "Magnetic_Field_Bz/meanTkSpectralPower" : "Bz (mean)", 
     "Magnetic_Field_Bz/peakTkSpectralPowerRatio" : "Bz_tkPowerRatio", 
     "Magnetic_Field_Bz/growthRates/max/growthRate" : "Bz_maxGamma",
     "Magnetic_Field_Bz/growthRates/max/peakPower" : "Bz_maxGammaPeakPower",
@@ -48,8 +58,8 @@ fieldNameToText_dict = {
     "Electric_Field_Ex/meanMagnitude" : "Ex_meanPower", 
     "Electric_Field_Ex/totalDelta" : "Ex_deltaTotalPower", 
     "Electric_Field_Ex/meanDelta" : "Ex_deltaMeanPower", 
-    "Electric_Field_Ex/peakTkSpectralPower" : "Ex_peakTkPower", 
-    "Electric_Field_Ex/meanTkSpectralPower" : "Ex_meanTkPower", 
+    "Electric_Field_Ex/peakTkSpectralPower" : "Ex (peak)", 
+    "Electric_Field_Ex/meanTkSpectralPower" : "Ex (mean)", 
     "Electric_Field_Ex/peakTkSpectralPowerRatio" : "Ex_tkPowerRatio",
     "Electric_Field_Ex/growthRates/max/growthRate" : "Ex_maxGamma",
     "Electric_Field_Ex/growthRates/max/peakPower" : "Ex_maxGammaPeakPower",
@@ -69,10 +79,10 @@ fieldNameToText_dict = {
     "Electric_Field_Ex/growthRates/maxInHighTotalPowerK/time" : "Ex_totalKmaxGammaTime",
     "Electric_Field_Ex/growthRates/maxInHighTotalPowerK/totalPower" : "Ex_totalKmaxGammaTotalPower",
     "Electric_Field_Ex/growthRates/maxInHighTotalPowerK/wavenumber" : "Ex_totalKmaxGammaK",
-    "B0strength" : "B0strength", 
-    "B0angle" : "B0angle", 
-    "backgroundDensity" : "backgroundDensity", 
-    "beamFraction" : "beamFraction",
+    "B0strength" : "B0", 
+    "B0angle" : "B0 angle", 
+    "backgroundDensity" : "density", 
+    "beamFraction" : "beam frac",
 }
 
 def anim_init(fig, ax, xx, yy, zz):
@@ -111,18 +121,19 @@ def parse_commandLine_netCDFpaths(paths : list) -> dict:
 
     return formattedPaths
 
-def plot_three_dimensions(input_1_index : int, input_2_index : int, gpModel : e_utils.GPModel, showModels = True, saveAnimation = False):
+def plot_three_dimensions(input_1_index : int, input_2_index : int, gpModel : e_utils.GPModel, showModels = True, saveAnimation = False, noTitle = False):
     
-    if showModels:
-        fig = plt.figure()
-        ax = fig.add_subplot(projection='3d')
-        ax.scatter(gpModel.normalisedInputs[:,input_1_index], gpModel.normalisedInputs[:,input_2_index], gpModel.output)
-        ax.set_xlabel(fieldNameToText(gpModel.inputNames[input_1_index]))
-        ax.set_ylabel(fieldNameToText(gpModel.inputNames[input_2_index]))
-        ax.set_zlabel(fieldNameToText(gpModel.outputName))
-        ax.set_title(f"Training data for output {fieldNameToText(gpModel.outputName)} ({gpModel.kernelName} kernel)")
+    # if showModels:
+    #     fig = plt.figure()
+    #     ax = fig.add_subplot(projection='3d')
+    #     ax.scatter(gpModel.normalisedInputs[:,input_1_index], gpModel.normalisedInputs[:,input_2_index], gpModel.output)
+    #     ax.set_xlabel(fieldNameToText(gpModel.inputNames[input_1_index]))
+    #     ax.set_ylabel(fieldNameToText(gpModel.inputNames[input_2_index]))
+    #     ax.set_zlabel(fieldNameToText(gpModel.outputName))
+    #     if not noTitle:
+    #         ax.set_title(f"Training data for output {fieldNameToText(gpModel.outputName)} ({gpModel.kernelName} kernel)")
 
-        plt.show()
+    #     plt.show()
     plt.close()
 
     # Sample homogeneously and plot contours with training data
@@ -131,7 +142,7 @@ def plot_three_dimensions(input_1_index : int, input_2_index : int, gpModel : e_
         'names': gpModel.inputNames,
         'bounds': [[np.min(column), np.max(column)] for column in gpModel.normalisedInputs.T]
     })
-    gp_test_values = salsamp.sobol.sample(sp, int(2**9))
+    gp_test_values = salsamp.sobol.sample(sp, int(2**10))
     for column in range(gp_test_values.shape[1]):
         if column is not input_1_index and column is not input_2_index:
             mean = np.mean(np.array(gp_test_values[:,column]))
@@ -139,12 +150,10 @@ def plot_three_dimensions(input_1_index : int, input_2_index : int, gpModel : e_
 
     # Training data
     fig = plt.figure(figsize=(10, 8))
-    ax = fig.add_subplot(projection='3d')
-    #ax = Axes3D(fig)
-    #ax.scatter(allNormalisedInputs[:,input_1_index], allNormalisedInputs[:,input_2_index], output, color="black")
-    ax.set_xlabel(fieldNameToText(gpModel.inputNames[input_1_index]))
-    ax.set_ylabel(fieldNameToText(gpModel.inputNames[input_2_index]))
-    ax.set_zlabel(gpModel.outputName)
+    #ax = fig.add_subplot(projection='3d')
+    #ax.set_xlabel('\n' + fieldNameToText(gpModel.inputNames[input_1_index]))
+    #ax.set_ylabel('\n' + fieldNameToText(gpModel.inputNames[input_2_index]))
+    #ax.set_zlabel('\n' + fieldNameToText(gpModel.outputName))
 
     # GP predictions
     if gpModel.regressionModel:
@@ -154,32 +163,41 @@ def plot_three_dimensions(input_1_index : int, input_2_index : int, gpModel : e_
     else:
         raise NotImplementedError("type must be one of regress or classify")
     gp_x, gp_y = gp_test_values[:,input_1_index], gp_test_values[:,input_2_index]
-    ax.plot_trisurf(gp_x, gp_y, gp_z, cmap="plasma")
-    #plt.colorbar(surf, label=output_name)
-    ax.set_title(f"Training data and GP prediction surface ({gpModel.kernelName})")
-    #plt.show()
-
-    if saveAnimation:
-        # Animate
-        anim = animation.FuncAnimation(
-            fig, 
-            partial(anim_animate, fig=fig, ax=ax), 
-            init_func=partial(anim_init, fig=fig, ax=ax, xx=gpModel.normalisedInputs[:,input_1_index], yy=gpModel.normalisedInputs[:,input_2_index], zz=gpModel.output),
-            frames=360, 
-            interval=20, 
-            blit=False)
-        # Save
-        anim.save(f'/home/era536/Documents/for_discussion/2025.02.27/{gpModel.inputNames[input_1_index].replace("/", "-")}_and_{gpModel.inputNames[input_2_index].replace("/", "-")}_vs{gpModel.outputName.replace("/", "-")}_{gpModel.kernelName}.mp4', fps=30, extra_args=['-vcodec', 'libx264'])
-    
+    #ax.plot_trisurf(gp_x, gp_y, gp_z, cmap="plasma")
+    X, Y = np.meshgrid(np.linspace(min(gp_x), max(gp_x), len(gp_x)), np.linspace(min(gp_y), max(gp_y), len(gp_y)))
+    Z = griddata((gp_x, gp_y), gp_z, (X, Y), method='cubic')
+    plt.imshow(Z, extent=[gp_x.min(), gp_x.max(), gp_y.min(), gp_y.max()], origin='lower', cmap='plasma', aspect='auto')
+    plt.colorbar(label=fieldNameToText(gpModel.outputName))
+    plt.xlabel(fieldNameToText(gpModel.inputNames[input_1_index]))
+    plt.ylabel(fieldNameToText(gpModel.inputNames[input_2_index]))
+    if not noTitle:
+        #ax.set_title(f"Training data and GP prediction surface ({gpModel.kernelName})")
+        plt.title(f"Training data and GP prediction surface ({gpModel.kernelName})")
+    if showModels:
+        plt.show()
     plt.close()
 
-def display_matrix_plots(inputs : dict, normalisedInputs : np.ndarray, outputs: dict, normalisedOutputs : dict = {}):
+    # if saveAnimation:
+    #     # Animate
+    #     anim = animation.FuncAnimation(
+    #         fig, 
+    #         partial(anim_animate, fig=fig, ax=ax), 
+    #         init_func=partial(anim_init, fig=fig, ax=ax, xx=gpModel.normalisedInputs[:,input_1_index], yy=gpModel.normalisedInputs[:,input_2_index], zz=gpModel.output),
+    #         frames=360, 
+    #         interval=20, 
+    #         blit=False)
+    #     # Save
+    #     anim.save(f'/home/era536/Documents/for_discussion/2025.02.27/{gpModel.inputNames[input_1_index].replace("/", "-")}_and_{gpModel.inputNames[input_2_index].replace("/", "-")}_vs{gpModel.outputName.replace("/", "-")}_{gpModel.kernelName}.mp4', fps=30, extra_args=['-vcodec', 'libx264'])
+    # plt.close()
+
+def display_matrix_plots(inputs : dict, normalisedInputs : np.ndarray, outputs: dict, normalisedOutputs : dict = {}, noTitle : bool = False):
 
     for outName, outData in outputs.items():
         data = [outData] + list(inputs.values())
         labels = [fieldNameToText(outName)] + [fieldNameToText(i) for i in inputs.keys()]
         matrix_plot(data, labels, show=False)
-        plt.title("Raw data")
+        if not noTitle:
+            plt.title("Raw data")
         plt.tight_layout()
         plt.show()
 
@@ -188,13 +206,14 @@ def display_matrix_plots(inputs : dict, normalisedInputs : np.ndarray, outputs: 
             data.insert(0, list(normalisedOutputs[outName]))
             labels = [fieldNameToText(outName)] + [fieldNameToText(i) for i in inputs.keys()]
             matrix_plot(data, labels, show=False)
-            plt.title("Normalised data")
+            if not noTitle:
+                plt.title("Normalised data")
             plt.tight_layout()
             plt.show()
 
     plt.close()
 
-def plot_models(gpModels : list, showModels : bool = True, saveAnimation : bool = False):
+def plot_models(gpModels : list, showModels : bool = True, saveAnimation : bool = False, noTitle : bool = False):
     
     for model in gpModels:
         model : e_utils.GPModel
@@ -203,7 +222,7 @@ def plot_models(gpModels : list, showModels : bool = True, saveAnimation : bool 
         for inputPair in allInputCombos:
             i1 = inputPair[0]
             i2 = inputPair[1]
-            plot_three_dimensions(i1, i2, model, showModels, saveAnimation)
+            plot_three_dimensions(i1, i2, model, showModels, saveAnimation, noTitle)
 
         # Sample values of each input dim keeping others fixed at their mean value
         zScore = abs(norm.ppf(0.975))
@@ -256,5 +275,6 @@ def plot_models(gpModels : list, showModels : bool = True, saveAnimation : bool 
             plt.ylabel(fieldNameToText(model.outputName))
             plt.legend()
             #plt.tight_layout()
-            plt.title(f"GP predictions for {fieldNameToText(model.outputName)} ({model.kernelName} kernel), all other input dimensions fixed to mean value", wrap=True)
+            if not noTitle:
+                plt.title(f"GP predictions for {fieldNameToText(model.outputName)} ({model.kernelName} kernel), all other input dimensions fixed to mean value", wrap=True)
             plt.show()

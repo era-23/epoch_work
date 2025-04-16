@@ -2,7 +2,6 @@ import argparse
 import glob
 import copy
 from matplotlib import pyplot as plt
-import matplotlib.colors as mcolors 
 import numpy as np
 import xarray as xr
 from pathlib import Path
@@ -10,8 +9,8 @@ from scipy.stats import norm
 from sklearn.preprocessing import StandardScaler
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
-from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.gaussian_process import GaussianProcessClassifier, GaussianProcessRegressor
+from sklearn.model_selection import train_test_split, cross_val_score, KFold
+from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, RationalQuadratic, WhiteKernel, ConstantKernel, Matern
 from sklearn.exceptions import ConvergenceWarning
 from SALib import ProblemSpec
@@ -48,7 +47,7 @@ def preprocess_output_data(outputData : list, arcsinh = False):
     outputData_shaped = np.array(outputData).reshape(-1, 1)
     return StandardScaler().fit(outputData_shaped).transform(outputData_shaped)
 
-def untrained_GP(kernel : str, type : str, cv_lower = 1e-5, cv_upper = 1e5, ls_lower = 1e-5, ls_upper=1e5, a_lower = 1e-5, a_upper = 1e5, nl_lower = 1e-5, nl_upper = 1e5):
+def untrained_GP(kernel : str, cv_lower = 1e-5, cv_upper = 1e5, ls_lower = 1e-5, ls_upper=1e5, a_lower = 1e-5, a_upper = 1e5, nl_lower = 1e-5, nl_upper = 1e5):
     if kernel == 'RQ':
         k = (ConstantKernel(constant_value=1.0, constant_value_bounds=(cv_lower, cv_upper)) * 
              RationalQuadratic(length_scale=1.0, length_scale_bounds=(ls_lower, ls_upper), alpha=1.0, alpha_bounds=(a_lower, a_upper)) +
@@ -62,14 +61,9 @@ def untrained_GP(kernel : str, type : str, cv_lower = 1e-5, cv_upper = 1e5, ls_l
              Matern(length_scale=1.0, length_scale_bounds=(ls_lower, ls_upper), nu=2.5) +
              WhiteKernel(noise_level=1e-3, noise_level_bounds=(nl_lower, nl_upper)))
 
-    if type == "regress":
-        return GaussianProcessRegressor(k, n_restarts_optimizer=50)
-    elif type == "classify":
-        return GaussianProcessClassifier(k, n_restarts_optimizer=0)
-    else:
-        raise NotImplementedError("type must be one of regress or classify")
+    return GaussianProcessRegressor(k, n_restarts_optimizer=50)
 
-def train_data(x_train : np.ndarray, y_train : np.ndarray, kernel : str, problemType : str):
+def train_data(x_train : np.ndarray, y_train : np.ndarray, kernel : str):
 
     # Promote convergence warnings to errors
     warnings.filterwarnings("error", category=ConvergenceWarning)
@@ -90,7 +84,7 @@ def train_data(x_train : np.ndarray, y_train : np.ndarray, kernel : str, problem
     usePreviousModel = True
     for i in range(maxIter):
         try:
-            gp = untrained_GP(kernel, problemType, cv_lower, cv_upper, ls_lower, ls_upper, a_lower, a_upper, nl_lower, nl_upper)
+            gp = untrained_GP(kernel, cv_lower, cv_upper, ls_lower, ls_upper, a_lower, a_upper, nl_lower, nl_upper)
             fit = gp.fit(x_train, y_train,)
         except ConvergenceWarning as e:
             print(repr(e))
@@ -163,7 +157,7 @@ def read_data(dataFiles, data_dict : dict) -> dict:
 
     return data_dict
 
-def sobol_analysis(gpModels : list):
+def sobol_analysis(gpModels : list, noTitle : bool = False):
 
     formattedNames = [gp_utils.fieldNameToText(i) for i in gpModels[0].inputNames]
     # SALib SOBOL indices
@@ -194,12 +188,13 @@ def sobol_analysis(gpModels : list):
         #fig, ax = plt.subplots()
         sobol_indices.plot()
         plt.subplots_adjust(bottom=0.3)
-        plt.title(f"Output: {gp_utils.fieldNameToText(model.outputName)}")
-        #plt.tight_layout()
+        if not noTitle:
+            plt.title(f"{model.kernelName} kernel: {gp_utils.fieldNameToText(model.outputName)}")
+        plt.tight_layout()
         plt.show()
         plt.close()
 
-def evaluate_model(gpModels : list, crossValidate : bool = True, folds : int = 5):
+def evaluate_model(gpModels : list, crossValidate : bool = True, folds : int = 5, noTitle : bool = False):
     
     uniqueKernels = set([m.kernelName for m in gpModels])
     uniqueOutputNames = set([m.outputName for m in gpModels])
@@ -207,11 +202,9 @@ def evaluate_model(gpModels : list, crossValidate : bool = True, folds : int = 5
     for model in gpModels:
         model : e_utils.GPModel
         if crossValidate:
-            problemType = "regress" if model.regressionModel else "classify"
             if model.modelParams:
-                retrainedModel = untrained_GP(
+                untrainedModel = untrained_GP(
                     model.kernelName, 
-                    problemType, 
                     model.modelParams["cv_lower"], 
                     model.modelParams["cv_upper"],
                     model.modelParams["ls_lower"],
@@ -221,7 +214,7 @@ def evaluate_model(gpModels : list, crossValidate : bool = True, folds : int = 5
                     model.modelParams["nl_lower"],
                     model.modelParams["nl_upper"]
                 )
-            all_cv_scores = cross_val_score(retrainedModel, model.normalisedInputs, model.output, cv=folds)
+            all_cv_scores = cross_val_score(untrainedModel, model.normalisedInputs, model.output, cv=KFold(shuffle=True))
             print(f"R^2 for GP ({model.kernelName} kernel) regression of {model.outputName} across {folds}-fold cross-validation: {all_cv_scores.mean()} (std: {all_cv_scores.std()})")
             evaluationData[model.outputName][model.kernelName]["score"] = all_cv_scores.mean()
             evaluationData[model.outputName][model.kernelName]["std"] = all_cv_scores.std()
@@ -229,19 +222,20 @@ def evaluate_model(gpModels : list, crossValidate : bool = True, folds : int = 5
             x_train, x_test, y_train, y_test = train_test_split(model.normalisedInputs, model.output, test_size=0.2)
             
             # Retrain without test data
-            fit = train_data(x_train, y_train, model.kernelName, problemType)
+            fit = train_data(x_train, y_train, model.kernelName)
             r_squared = fit.score(x_test, y_test)
             print(f"R^2 for GP ({model.kernelName} kernel) regression of {model.outputName}: {r_squared}")
             evaluationData[model.outputName][model.kernelName]["score"] = r_squared
 
+    alphabeticalEvalData = dict(sorted(evaluationData.items()))
     x = 0  # the label locations
     width = 1.0/(len(uniqueKernels) + 1)  # the width of the bars
     fig, ax = plt.subplots(layout='constrained')
     fig.set_figheight(6)
     fig.set_figwidth(12)
     zScore = abs(norm.ppf(0.975))
-    colors = list(mcolors.TABLEAU_COLORS.keys())
-    for _, data in evaluationData.items():
+    colors = ['tab:blue','tab:purple','tab:green','tab:orange','tab:yellow']
+    for _, data in alphabeticalEvalData.items():
         multiplier = 0
         for kernel, kernelData in data.items():
             offset = width * multiplier
@@ -250,14 +244,16 @@ def evaluate_model(gpModels : list, crossValidate : bool = True, folds : int = 5
                 rects.set_label(kernel)
             if crossValidate:
                 ax.errorbar(x + offset, kernelData["score"], yerr=zScore*np.array(kernelData["std"]), fmt=' ', color='r')
-            ax.bar_label(rects, padding=3, fmt="%.3f")
+            #ax.bar_label(rects, padding=3, fmt="%.3f")
+            ax.bar_label(rects, label_type='center', fmt="%.3f", fontsize=16)
             multiplier += 1
         x += 1
     ax.set_ylabel(r'$R^2$')
-    ax.set_title('R-squared scores by GP/output and kernel')
+    if not noTitle:
+        ax.set_title('R-squared scores by GP/output and kernel')
     nameLocs = np.arange(len(uniqueOutputNames))
-    ax.set_xticks(nameLocs + ((len(uniqueKernels)-1)*0.5*width), [gp_utils.fieldNameToText(n) for n in evaluationData.keys()])
-    ax.legend(loc='upper left')
+    ax.set_xticks(nameLocs + ((len(uniqueKernels)-1)*0.5*width), [gp_utils.fieldNameToText(n) for n in alphabeticalEvalData.keys()])
+    ax.legend()
     ax.set_ylim(0.0, 1.0)
     plt.tight_layout()
     plt.show()
@@ -273,6 +269,8 @@ def regress_simulations(
         evaluateModels : bool = False,
         plotModels : bool = False,
         showModels : bool = False,
+        bigLabels : bool = False,
+        noTitle : bool = False,
         saveAnimation : bool = False
         ):
     """
@@ -287,6 +285,19 @@ def regress_simulations(
         inputFields: dict -- List of paths of netcdf group name and field names to use for GP input.
         outputFields: dict -- List of paths of netcdf group name and field names to use for GP  output.
     """
+
+    if bigLabels:
+        plt.rcParams.update({'axes.titlesize': 26.0})
+        plt.rcParams.update({'axes.labelsize': 24.0})
+        plt.rcParams.update({'xtick.labelsize': 20.0})
+        plt.rcParams.update({'ytick.labelsize': 20.0})
+        plt.rcParams.update({'legend.fontsize': 18.0})
+    else:
+        plt.rcParams.update({'axes.titlesize': 18.0})
+        plt.rcParams.update({'axes.labelsize': 16.0})
+        plt.rcParams.update({'xtick.labelsize': 14.0})
+        plt.rcParams.update({'ytick.labelsize': 14.0})
+        plt.rcParams.update({'legend.fontsize': 14.0})
 
     output_files = glob.glob(str(directory / "*.nc")) 
 
@@ -315,7 +326,7 @@ def regress_simulations(
     models = []
     for k in kernels:
         for outputName, outputData in normalisedOutputs.items():
-            regressionModel, modelParams = train_data(normalisedInputData, outputData, k, "regress")
+            regressionModel, modelParams = train_data(normalisedInputData, outputData, k)
             models.append(e_utils.GPModel(
                 regressionModel=regressionModel,
                 modelParams=modelParams,
@@ -327,15 +338,15 @@ def regress_simulations(
             ))
 
     if plotModels:
-        gp_utils.plot_models(models, showModels, saveAnimation)
-
-    # Perform SOBOL analysis
-    if sobol:
-        sobol_analysis(models)
+        gp_utils.plot_models(models, showModels, saveAnimation, noTitle)
 
     # Evaluate model
     if evaluateModels:
-        evaluate_model(models)
+        evaluate_model(models, noTitle=noTitle)
+
+    # Perform SOBOL analysis
+    if sobol:
+        sobol_analysis(models, noTitle=noTitle)
 
 if __name__ == "__main__":
     
@@ -402,6 +413,18 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
+        "--bigLabels",
+        action="store_true",
+        help="Large labels on plots for posters, presentations etc.",
+        required = False
+    )
+    parser.add_argument(
+        "--noTitle",
+        action="store_true",
+        help="No title on plots for posters, papers etc. which will include captions instead.",
+        required = False
+    )
+    parser.add_argument(
         "--saveAnimation",
         action="store_true",
         help="Save animation of model data.",
@@ -410,4 +433,17 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    regress_simulations(args.dir, args.inputFields, args.outputFields, args.logFields, args.matrixPlot, args.sobol, args.evaluate, args.plotModels, args.showModels, args.saveAnimation)
+    regress_simulations(
+        args.dir, 
+        args.inputFields, 
+        args.outputFields, 
+        args.logFields, 
+        args.matrixPlot, 
+        args.sobol, 
+        args.evaluate, 
+        args.plotModels, 
+        args.showModels, 
+        args.bigLabels,
+        args.noTitle,
+        args.saveAnimation
+    )

@@ -1,6 +1,8 @@
+import glob
 from sdf_xarray import SDFPreprocess
 from pathlib import Path
 from scipy import constants
+from scipy.stats import linregress
 import matplotlib.pyplot as plt
 import epydeck
 import numpy as np
@@ -153,6 +155,33 @@ def calculate_energy(directory : Path, irb : bool, pct : bool):
     E_end = total_E_density[-1]
     print(f"Change in overall energy density: E t=start: {E_start:.4f}, E t=end: {E_end:.4f} (+{((E_end - E_start)/E_start)*100.0:.4f}%)")
         
+def analyse_electron_heating(analysisDirectory : Path):
+
+    electronDeltaPct = []
+    cellWidth_rLe = []
+
+    dataFiles = glob.glob(str(analysisDirectory / "*.nc"))
+    
+    for simulation in dataFiles:
+
+        data = xr.open_datatree(
+            simulation,
+            engine="netcdf4"
+        )
+
+        cellWidth_rLe.append(data.attrs["cellWidth_rLe"])
+
+        energyStats = data["Energy"]
+        electronDeltaPct.append(((energyStats.electronEnergyDensity_end - energyStats.electronEnergyDensity_start) / energyStats.electronEnergyDensity_start) * 100.0)
+    
+    res = linregress(cellWidth_rLe, electronDeltaPct)
+    plt.scatter(cellWidth_rLe, electronDeltaPct)
+    x = np.linspace(0.0, np.max(cellWidth_rLe), 1000)
+    plt.plot(x, res.intercept + res.slope*x, "r", label=f"R^2 = {res.rvalue**2:.5f}")
+    plt.legend()
+    plt.xlabel("Cell width / electron gyroradii")
+    plt.ylabel("Change in electron energy density by end of simulation / %")
+    plt.show()
 
 if __name__ == "__main__":
 
@@ -163,6 +192,12 @@ if __name__ == "__main__":
         help="Directory containing all sdf files from simulation.",
         required = True,
         type=Path
+    )
+    parser.add_argument(
+        "--electronHeating",
+        action="store_true",
+        help="Analyse electron heating.",
+        required = False
     )
     parser.add_argument(
         "--log",
@@ -192,4 +227,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    calculate_energy(args.dir, args.irb, args.pct)
+    if args.electronHeating:
+        analyse_electron_heating(args.dir)
+    else:
+        calculate_energy(args.dir, args.irb, args.pct)
