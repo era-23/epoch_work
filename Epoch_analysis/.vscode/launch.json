@@ -128,15 +128,15 @@
             "program": "meta-analysis_processing.py",
             "console": "integratedTerminal",
             "args": [
-                "--dir", "/home/era536/Documents/Epoch/Data/irb_debug_15_65/more_macro/analysis/data/",
+                "--dir", "/home/era536/Documents/Epoch/Data/null_analysis/data",
                 "--outputToOriginalFile",
                 //"--outputFile", "/home/era536/Documents/Epoch/Data/irb_scan_analysis/growth_rates.csv"
                 //"--growthRates",
                 "--energy",
-                "--bigLabels",
-                "--noTitle",
-                "--runNumber", "65",
-                "--debug",
+                //"--bigLabels",
+                //"--noTitle",
+                //"--runNumber", "65",
+                //"--debug",
             ]
         },
         {
@@ -147,7 +147,7 @@
             "console": "integratedTerminal",
             "args": [
                 "--dir", "/home/era536/Documents/Epoch/Data/irb_scan_analysis/data",
-                //"--irb",
+                "--irb",
                 "--electronHeating",
             ]
         },
@@ -206,11 +206,11 @@
             "program": "bicoherence.py",
             "console": "integratedTerminal",
             "args": [
-                "--dir", "/home/era536/Documents/Epoch/Data/irb_max_highres/",
+                "--dir", "/home/era536/Documents/Epoch/Data/irb_debug_15_65/more_macro/deltaF/run_65/",
                 "--field", "Magnetic_Field_Bz",
                 //"--plotTk",
-                "--time", "1.0",
-                "--irb"
+                "--time", "10.0",
+                //"--irb"
             ]
         },
         {
@@ -242,9 +242,9 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "args": [
-                "--dir", "/home/era536/Documents/Epoch/Data/irb_scan_highRes/",
-                "--outputDir", "/home/era536/Documents/Epoch/Data/irb_scan_analysis/",
-                //"--fields", "Magnetic_Field_Bz", "Electric_Field_Ex",
+                "--dir", "/home/era536/Documents/Epoch/Data/irb_debug_15_65/dist_funcs/",
+                "--outputDir", "/home/era536/Documents/Epoch/Data/irb_debug_15_65/dist_funcs/analysis",
+                "--fields", "Magnetic_Field_Bz", "Electric_Field_Ex",
                 //"--createFolders",
                 "--process",
                 "--beam",
@@ -254,15 +254,15 @@
                 //"--minGammaFitWindow", "9.8",
                 //"--maxGammaFitWindow", "10.2",
                 //"--skipIndices", "30",
-                "--runNumber", "74",
+                "--runNumber", "15",
                 //"--saveGammaPlots",
                 //"--displayPlots",
-                //"--energy",
-                //"--createPlots",
-                //"--bigLabels",
+                "--energy",
+                "--createPlots",
+                "--bigLabels",
                 //"--noTitle",
                 //"--takeLog",
-                //"--debug",
+                "--debug",
             ]
         }
     ]

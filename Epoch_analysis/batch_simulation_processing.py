@@ -242,82 +242,6 @@ def find_max_growth_rates(
 
     return best_pos_growth_rates, best_neg_growth_rates
 
-def create_t_k_plots(
-        tkSpectrum : xr.DataArray,
-        field : str,
-        field_unit : str,
-        saveDirectory : Path,
-        runName : str,
-        maxK : float = None,
-        log : bool = False,
-        display : bool = False):
-    
-    print("Generating t-k plot....")
-
-    if log:
-        tkSpectrum = np.log(tkSpectrum)
-    if maxK is not None:
-        tkSpectrum = tkSpectrum.sel(wavenumber=tkSpectrum.wavenumber<=maxK)
-        tkSpectrum = tkSpectrum.sel(wavenumber=tkSpectrum.wavenumber>=-maxK)
-
-    # Time-wavenumber
-    fig, axs = plt.subplots(figsize=(15, 10))
-    tkSpectrum.plot(ax=axs, x = "wavenumber", y = "time", cbar_kwargs={'label': f'Spectral power in {field} [{field_unit}]' if not log else f'Log of spectral power in {field}'}, cmap='plasma')
-    axs.grid()
-    axs.set_xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
-    axs.set_ylabel(r"Time [$\tau_{ci}$]")
-    filename = Path(f'{runName}_{field.replace("_", "")}_tk_log-{log}_maxK-{maxK if maxK is not None else "all"}.png')
-    fig.savefig(str(saveDirectory / filename))
-    if display:
-        plt.show()
-    plt.close('all')
-
-def create_t_k_spectrum(
-        originalFftSpectrum : xr.DataArray, 
-        statsFile : nc.Dataset,
-        maxK : float = None,
-        load : bool = True
-) -> xr.DataArray :
-    
-    tk_spec = originalFftSpectrum.where(originalFftSpectrum.frequency>0.0, 0.0)
-    original_zero_freq_amplitude = tk_spec.sel(wavenumber=0.0)
-    # Double spectrum to conserve E
-    tk_spec = np.sqrt(2.0) * tk_spec # <---- Should this be sqrt(2)?
-    tk_spec.loc[dict(wavenumber=0.0)] = original_zero_freq_amplitude # Restore original 0-freq amplitude
-    tk_spec = xrft.xrft.ifft(tk_spec, dim="frequency")
-    tk_spec = tk_spec.rename(freq_frequency="time")
-    tk_spec = abs(tk_spec)
-
-    # Log stats on spectrum
-    tk_sum = float(tk_spec.sum())
-    statsFile.totalTkSpectralPower = tk_sum
-
-    tk_squared = float((np.abs(tk_spec)**2).sum())
-    parseval_tk = tk_squared  * tk_spec.coords['wavenumber'].spacing * tk_spec.coords['time'].spacing
-    statsFile.parsevalTk = parseval_tk
-    
-    tk_peak = float(np.nanmax(tk_spec))
-    statsFile.peakTkSpectralPower = tk_peak
-    
-    tk_mean = float(tk_spec.mean())
-    statsFile.meanTkSpectralPower = tk_mean
-
-    statsFile.peakTkSpectralPowerRatio = tk_peak/tk_mean
-    
-    if debug:
-        print(f"Sum of t-k squared * dk * dt: {parseval_tk}")
-        print(f"Max peak in t-k: {tk_peak}")
-        print(f"Mean of t-k: {tk_mean}")
-        print(f"Ratio of peak to mean in t-k: {tk_peak/tk_mean}")
-
-    tk_spec = tk_spec.sel(wavenumber=tk_spec.wavenumber<=maxK)
-    tk_spec = tk_spec.sel(wavenumber=tk_spec.wavenumber>=-maxK)
-
-    if load:
-        tk_spec = tk_spec.load()
-
-    return tk_spec
-
 def create_omega_k_plots(
         fftSpectrum : xr.DataArray,
         statsFile : nc.Dataset,
@@ -946,12 +870,12 @@ def process_simulation_batch(
             # Remove zero-frequency component
             original_spec = original_spec.where(original_spec.wavenumber!=0.0, None)
 
-            tk_spec = create_t_k_spectrum(original_spec, fieldStats, maxK, load=True)
+            tk_spec = e_utils.create_t_k_spectrum(original_spec, fieldStats, maxK, load=True, debug=debug)
 
             # Dispersion relations
             if createPlots:
                 create_omega_k_plots(original_spec, fieldStats, field, field_unit, plotFieldFolder, simFolder.name, inputDeck, maxK=maxK, maxW=maxW, log=takeLog, display=displayPlots)
-                create_t_k_plots(tk_spec, field, field_unit, plotFieldFolder, simFolder.name, maxK, takeLog, displayPlots)
+                e_utils.create_t_k_plot(tk_spec, field, field_unit, plotFieldFolder, simFolder.name, maxK, takeLog, displayPlots)
 
             # Linear growth rates
             if growthRates:

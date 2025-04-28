@@ -1,6 +1,12 @@
 from sdf_xarray import SDFPreprocess
 from pathlib import Path
 from scipy import constants
+from plasmapy.formulary import frequencies as ppf
+from plasmapy.formulary import speeds as pps
+from plasmapy.formulary import lengths as ppl
+import astropy.units as u
+import pybispectra as pbs
+import epoch_utils as utils
 #from spectrum import bicoherence, plot_bicoherence, bicoherencex, plot_bicoherencex, bispectrumd, bispectrumi, plot_bispectrumd, plot_bispectrumi
 from spectrum import bispectrumd
 from matplotlib import pyplot as plt
@@ -207,6 +213,89 @@ def plot_bicoherence_spectra(directory : Path, field : str, time_pt : float, plo
     Bspec_all = Bspec_mask_pos + Bspec_mask_neg
     my_plot_bispectrumd(Bspec_all, waxis*2.0*my_new_nyq_k, r"Wavenumber [$\omega_{ci}/V_A$]", True)
 
+def manual_autobispectrum(directory : Path, time_Tci : float, field : str = "Magnetic_Field_Bz"):
+    # Read dataset
+    ds = xr.open_mfdataset(
+        str(directory / "*.sdf"),
+        data_vars='minimal', 
+        coords='minimal', 
+        compat='override', 
+        preprocess=SDFPreprocess()
+    )
+
+    # Drop initial conditions because they may not represent a solution
+    ds = ds.sel(time=ds.coords["time"]>ds.coords["time"][0])
+
+    # Load data
+    field_data_array : xr.DataArray = ds[field]
+    field_data = field_data_array.load()
+
+    # Interpolate data onto evenly-spaced coordinates
+    evenly_spaced_time = np.linspace(ds.coords["time"][0].data, ds.coords["time"][-1].data, len(ds.coords["time"].data))
+    field_data = field_data.interp(time=evenly_spaced_time)
+
+    # Read input deck
+    input = {}
+    with open(str(directory / "input.deck")) as id:
+        input = epydeck.loads(id.read())
+
+    TWO_PI = 2.0 * np.pi
+    B0 = input['constant']['b0_strength']
+    ion_gyroperiod = TWO_PI / ppf.gyrofrequency(B = B0 * u.T, particle = "p")
+    Tci = evenly_spaced_time / ion_gyroperiod
+    ion_ring_frac = input['constant']['frac_beam']
+    mass_density = input['constant']['background_density'] * (1.0 - ion_ring_frac) * constants.proton_mass
+    alfven_velo = B0 / (np.sqrt(constants.mu_0 * mass_density))
+    vA_Tci = ds.coords["X_Grid_mid"] / (ion_gyroperiod * alfven_velo)
+    data = xr.DataArray(field_data, coords=[Tci, vA_Tci], dims=["time", "X_Grid_mid"])
+    data = data.rename(X_Grid_mid="x_space")
+
+    # Take fft
+    og_spec : xr.DataArray = xrft.xrft.fft(data, true_amplitude=True, true_phase=True, window=None)
+    og_spec = og_spec.rename(freq_time="frequency", freq_x_space="wavenumber")
+    # Remove zero-frequency component
+    og_spec = og_spec.where(og_spec.wavenumber!=0.0, None)
+    # Get t-k
+    tk_spec = utils.create_t_k_spectrum(og_spec, maxK = 100.0)
+    # tk_spec = np.log(tk_spec)
+    utils.create_t_k_plot(tk_spec, field, field_unit = "T", maxK = 100.0, display = True)
+    
+    # Make bispectrum
+    spec = tk_spec.sel(time = time_Tci, method = "nearest").to_numpy()[::5]
+    nfft = spec.size
+    # Create all combinations of k1 and k2
+    k = np.arange(nfft)
+    K1, K2 = np.meshgrid(k, k)
+    K3 = (K1 + K2) % nfft
+
+    # Use broadcasting to access X[k1], X[k2], X[k1 + k2]
+    bispec = spec[K1] * spec[K2] * np.conj(spec[K3])
+    # bispec = np.fft.fftshift(bispec)
+    bispec = np.abs(bispec)
+    # bispec = np.log(bispec)
+    # bispec = np.tril(bispec)
+    plt.imshow(bispec, extent=[-100.0, 100.0, -100.0, 100.0], origin="lower", cmap="plasma")
+    plt.xlabel('Wavenumber $k_1$')
+    plt.ylabel('Wavenumber $k_2$')
+    plt.colorbar(label='Magnitude')
+    plt.grid(False)
+    plt.show()
+
+    utils.create_t_k_plot(tk_spec, field, field_unit = "T", maxK = 100.0, log = True, display = True)
+
+    plt.imshow(np.log(bispec), extent=[-100.0, 100.0, -100.0, 100.0], origin="lower", cmap="plasma")
+    plt.xlabel('Wavenumber $k_1$')
+    plt.ylabel('Wavenumber $k_2$')
+    plt.colorbar(label='Log Magnitude')
+    plt.grid(False)
+    plt.show()
+
+    # Lower triangle mask
+    lower_mask = np.tri(data.shape[0], data.shape[1], k=-1)
+
+    # Upper triangle mask
+    upper_mask = lower_mask.T
+
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser("parser")
@@ -247,4 +336,5 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    plot_bicoherence_spectra(args.dir, args.field, args.time, args.plotTk, args.irb)
+    manual_autobispectrum(args.dir, args.time, args.field)
+    #plot_bicoherence_spectra(args.dir, args.field, args.time, args.plotTk, args.irb)

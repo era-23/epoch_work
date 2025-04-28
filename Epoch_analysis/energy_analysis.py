@@ -175,16 +175,17 @@ def analyse_electron_heating(analysisDirectory : Path):
         energyStats = data["Energy"]
         #electronDeltaEnergy = ((energyStats.electronEnergyDensity_end - energyStats.electronEnergyDensity_start) / energyStats.electronEnergyDensity_start) * 100.0
         electronDeltaEnergy = 100.0 * (energyStats.electronEnergyDensity_delta/energyStats.electronEnergyDensity_start)
-        #electronDeltaEnergy = energyStats.electronEnergyDensity_delta
+        # electronDeltaEnergy = energyStats.electronEnergyDensity_delta
         electronDeltaPct.append(electronDeltaEnergy)
         totalConservationPct.append(energyStats.totalEnergyDensityConservation_pct)
 
         print(f"{simulation.split('/')[-1]}: cell width: {data.attrs['cellWidth_rLe']:.4f} electron gyroradii (B0: {data.attrs['B0strength']:.4f}, background density: {data.attrs['backgroundDensity']:.4E}), electron delta energy: {electronDeltaEnergy:.4f}%, total energy change: {energyStats.totalEnergyDensityConservation_pct:.4f}")
     
-    res = linregress(cellWidth_rLe, electronDeltaPct)
+    # res = linregress(cellWidth_rLe, electronDeltaPct)
     plt.scatter(cellWidth_rLe, electronDeltaPct, color="blue", label="electrons")
-    x = np.linspace(0.0, np.max(cellWidth_rLe), 1000)
-    plt.plot(x, res.intercept + res.slope*x, "g--", label=f"R^2 = {res.rvalue**2:.5f}")
+    # x = np.linspace(0.0, np.max(cellWidth_rLe), 1000)
+    # plt.plot(x, res.intercept + res.slope*x, "g--", label=f"R^2 = {res.rvalue**2:.5f}")
+    plt.yscale("log")
     plt.legend()
     plt.xlabel("Cell width / electron gyroradii")
     plt.ylabel("Change in energy density by end of simulation / %")
@@ -194,6 +195,7 @@ def analyse_electron_heating(analysisDirectory : Path):
     plt.scatter(cellWidth_rLe, totalConservationPct, color="orange", label="total")
     # x = np.linspace(0.0, np.max(cellWidth_rLe), 1000)
     # plt.plot(x, res.intercept + res.slope*x, "r--", label=f"R^2 = {res.rvalue**2:.5f}")
+    plt.yscale("log")
     plt.legend()
     plt.xlabel("Cell width / electron gyroradii")
     plt.ylabel("Change in energy density by end of simulation / %")
@@ -205,7 +207,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dir",
         action="store",
-        help="Directory containing all sdf files from simulation.",
+        help="Directory.",
         required = True,
         type=Path
     )
