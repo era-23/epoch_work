@@ -2,13 +2,11 @@ from sdf_xarray import SDFPreprocess
 from pathlib import Path
 from scipy import constants
 from plasmapy.formulary import frequencies as ppf
-from plasmapy.formulary import speeds as pps
-from plasmapy.formulary import lengths as ppl
 import astropy.units as u
 import pybispectra as pbs
 import epoch_utils as utils
-#from spectrum import bicoherence, plot_bicoherence, bicoherencex, plot_bicoherencex, bispectrumd, bispectrumi, plot_bispectrumd, plot_bispectrumi
-from spectrum import bispectrumd
+from spectrum import bicoherence, plot_bicoherence, bicoherencex, plot_bicoherencex, bispectrumd, bispectrumi, plot_bispectrumd, plot_bispectrumi
+#from spectrum import bispectrumd, bispectrumi
 from matplotlib import pyplot as plt
 import epydeck
 import numpy as np
@@ -47,7 +45,7 @@ def my_plot_bispectrumd(
         plt.grid()
     plt.show()
 
-def plot_bicoherence_spectra(directory : Path, field : str, time_pt : float, plotTk : bool, irb : bool = True):
+def hosa_autobispectrum(directory : Path, field : str, time_pt : float, plotTk : bool, irb : bool = True):
 
     # Read dataset
     ds = xr.open_mfdataset(
@@ -170,7 +168,8 @@ def plot_bicoherence_spectra(directory : Path, field : str, time_pt : float, plo
         plt.show()
 
     jump_factor = 8 # Sample only every this many points from bispectrum
-    Bspec, waxis = bispectrumd(positive_data.sel(time = time_pt, method='nearest').to_numpy()[::jump_factor, None], overlap = 0, nfft = 1000)
+    pos_spec = positive_data.sel(time = time_pt, method='nearest').to_numpy()[::jump_factor, None]
+    Bspec, waxis = bispectrumd(pos_spec, overlap = 0, nfft = 1000)
     #Bspec, waxis = bicoherence(data.sel(time = time_pt, method='nearest').to_numpy()[::jump_factor, None], overlap = 0, nfft = 1000)
     waxis = waxis[2:]
 
@@ -212,8 +211,30 @@ def plot_bicoherence_spectra(directory : Path, field : str, time_pt : float, plo
 
     Bspec_all = Bspec_mask_pos + Bspec_mask_neg
     my_plot_bispectrumd(Bspec_all, waxis*2.0*my_new_nyq_k, r"Wavenumber [$\omega_{ci}/V_A$]", True)
+    my_plot_bispectrumd(np.log(Bspec_all), waxis*2.0*my_new_nyq_k, r"Wavenumber [$\omega_{ci}/V_A$]", True)
 
-def manual_autobispectrum(directory : Path, time_Tci : float, field : str = "Magnetic_Field_Bz"):
+def manual_bispectrum(tkSpectrum : xr.DataArray, maxK : float, plot : bool = True) -> np.ndarray:
+    nfft = tkSpectrum.size
+    # Create all combinations of k1 and k2
+    k = np.arange(nfft)
+    K1, K2 = np.meshgrid(k, k)
+    K3 = (K1 + K2) % nfft
+
+    # Use broadcasting to access X[k1], X[k2], X[k1 + k2]
+    bispec = tkSpectrum[K1] * tkSpectrum[K2] * np.conj(tkSpectrum[K3])
+    # bispec = np.fft.fftshift(bispec)
+    bispec = np.abs(bispec)
+
+    # Lower triangle mask
+    lower_mask = np.tri(bispec.shape[0], bispec.shape[1], k=-1)
+    bs_masked = np.ma.array(bispec, mask = lower_mask)
+
+    return bs_masked
+
+def all_autobispectra(directory : Path, time_Tci : float, field : str = "Magnetic_Field_Bz", plotTk = True):
+    
+    maxK = 100.0
+
     # Read dataset
     ds = xr.open_mfdataset(
         str(directory / "*.sdf"),
@@ -256,45 +277,62 @@ def manual_autobispectrum(directory : Path, time_Tci : float, field : str = "Mag
     # Remove zero-frequency component
     og_spec = og_spec.where(og_spec.wavenumber!=0.0, None)
     # Get t-k
-    tk_spec = utils.create_t_k_spectrum(og_spec, maxK = 100.0)
+    tk_spec = utils.create_t_k_spectrum(og_spec, maxK = 100.0, takeAbs=False)
     # tk_spec = np.log(tk_spec)
-    utils.create_t_k_plot(tk_spec, field, field_unit = "T", maxK = 100.0, display = True)
+    if plotTk:
+        utils.create_t_k_plot(tk_spec, field, field_unit = "T", maxK = 100.0, display = True)
     
     # Make bispectrum
-    spec = tk_spec.sel(time = time_Tci, method = "nearest").to_numpy()[::5]
-    nfft = spec.size
-    # Create all combinations of k1 and k2
-    k = np.arange(nfft)
-    K1, K2 = np.meshgrid(k, k)
-    K3 = (K1 + K2) % nfft
-
-    # Use broadcasting to access X[k1], X[k2], X[k1 + k2]
-    bispec = spec[K1] * spec[K2] * np.conj(spec[K3])
-    # bispec = np.fft.fftshift(bispec)
+    spec = tk_spec.sel(time = time_Tci, method = "nearest").to_numpy()
+    spec = np.nan_to_num(spec)
+    
+    ##### HOSA
+    h_spec = spec.reshape(-1, 1)
+    bispec, waxis = bispectrumd(h_spec, nfft = 1024, nsamp = h_spec.size // 2, overlap = 10)
+    # bispec, waxis = bispectrumd(h_spec, nfft = 512, nsamp = h_spec.size // 4, overlap = 10)
     bispec = np.abs(bispec)
-    # bispec = np.log(bispec)
-    # bispec = np.tril(bispec)
-    plt.imshow(bispec, extent=[-100.0, 100.0, -100.0, 100.0], origin="lower", cmap="plasma")
+    # Lower triangle mask
+    lower_mask = np.tri(bispec.shape[0], bispec.shape[1], k=-1)
+    bs_masked = np.ma.array(bispec, mask = lower_mask)
+    # my_plot_bispectrumd(bs_masked, waxis[1:-1]*2.0*maxK, "Wavenumber", grid=True)
+    plt.imshow(bs_masked, extent=[-maxK, maxK, -maxK, maxK], origin="lower", cmap="plasma")
+    plt.title("HOSA bispectrum implementation")
     plt.xlabel('Wavenumber $k_1$')
     plt.ylabel('Wavenumber $k_2$')
     plt.colorbar(label='Magnitude')
     plt.grid(False)
     plt.show()
 
-    utils.create_t_k_plot(tk_spec, field, field_unit = "T", maxK = 100.0, log = True, display = True)
-
-    plt.imshow(np.log(bispec), extent=[-100.0, 100.0, -100.0, 100.0], origin="lower", cmap="plasma")
+    plt.imshow(np.log(bs_masked), extent=[-maxK, maxK, -maxK, maxK], origin="lower", cmap="plasma")
+    plt.title("HOSA bispectrum implementation")
     plt.xlabel('Wavenumber $k_1$')
     plt.ylabel('Wavenumber $k_2$')
     plt.colorbar(label='Log Magnitude')
     plt.grid(False)
     plt.show()
 
-    # Lower triangle mask
-    lower_mask = np.tri(data.shape[0], data.shape[1], k=-1)
+    ##### Manual
+    spec = spec[::3]
+    bs_masked = manual_bispectrum(spec, maxK = maxK)
 
-    # Upper triangle mask
-    upper_mask = lower_mask.T
+    plt.imshow(bs_masked, extent=[-maxK, maxK, -maxK, maxK], origin="lower", cmap="plasma")
+    plt.title("Manual bispectrum implementation")
+    plt.xlabel('Wavenumber $k_1$')
+    plt.ylabel('Wavenumber $k_2$')
+    plt.colorbar(label='Magnitude')
+    plt.grid(False)
+    plt.show()
+
+    utils.create_t_k_plot(tk_spec, field, field_unit = "T", maxK = 100.0, log = True, display = plotTk)
+
+    plt.imshow(np.log(bs_masked), extent=[-100.0, 100.0, -100.0, 100.0], origin="lower", cmap="plasma")
+    plt.title("Manual bispectrum implementation")
+    plt.xlabel('Wavenumber $k_1$')
+    plt.ylabel('Wavenumber $k_2$')
+    plt.colorbar(label='Log Magnitude')
+    plt.grid(False)
+    plt.show()
+
 
 if __name__ == "__main__":
     
@@ -336,5 +374,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    manual_autobispectrum(args.dir, args.time, args.field)
+    all_autobispectra(args.dir, args.time, args.field, args.plotTk)
+    # hosa_autobispectrum(args.dir, args.field, args.time, args.plotTk, args.irb)
     #plot_bicoherence_spectra(args.dir, args.field, args.time, args.plotTk, args.irb)

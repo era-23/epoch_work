@@ -2,7 +2,6 @@ import glob
 from sdf_xarray import SDFPreprocess
 from pathlib import Path
 from scipy import constants
-from scipy.stats import linregress
 import matplotlib.pyplot as plt
 import epydeck
 import numpy as np
@@ -159,6 +158,7 @@ def analyse_electron_heating(analysisDirectory : Path):
 
     electronDeltaPct = []
     cellWidth_rLe = []
+    cellWidth_dl = []
     totalConservationPct = []
 
     dataFiles = glob.glob(str(analysisDirectory / "*.nc"))
@@ -170,6 +170,7 @@ def analyse_electron_heating(analysisDirectory : Path):
             engine="netcdf4"
         )
 
+        cellWidth_dl.append(data.attrs["cellWidth_dL"])
         cellWidth_rLe.append(data.attrs["cellWidth_rLe"])
 
         energyStats = data["Energy"]
@@ -179,26 +180,39 @@ def analyse_electron_heating(analysisDirectory : Path):
         electronDeltaPct.append(electronDeltaEnergy)
         totalConservationPct.append(energyStats.totalEnergyDensityConservation_pct)
 
-        print(f"{simulation.split('/')[-1]}: cell width: {data.attrs['cellWidth_rLe']:.4f} electron gyroradii (B0: {data.attrs['B0strength']:.4f}, background density: {data.attrs['backgroundDensity']:.4E}), electron delta energy: {electronDeltaEnergy:.4f}%, total energy change: {energyStats.totalEnergyDensityConservation_pct:.4f}")
+        print(f"{simulation.split('/')[-1]}: cell width: {data.attrs['cellWidth_dL']:.4f} Debye lengths/{data.attrs['cellWidth_rLe']:.4f} electron gyroradii (B0: {data.attrs['B0strength']:.4f}, background density: {data.attrs['backgroundDensity']:.4E}), electron delta energy: {electronDeltaEnergy:.4f}%, total energy change: {energyStats.totalEnergyDensityConservation_pct:.4f}")
     
+    fig = plt.figure()
+    ax1 = fig.add_subplot()
+    ax2 = ax1.twiny()
+    ax1.scatter(cellWidth_rLe, electronDeltaPct, color="blue")
     # res = linregress(cellWidth_rLe, electronDeltaPct)
-    plt.scatter(cellWidth_rLe, electronDeltaPct, color="blue", label="electrons")
+    ax2.scatter(cellWidth_dl, electronDeltaPct, color="blue")
     # x = np.linspace(0.0, np.max(cellWidth_rLe), 1000)
     # plt.plot(x, res.intercept + res.slope*x, "g--", label=f"R^2 = {res.rvalue**2:.5f}")
-    plt.yscale("log")
-    plt.legend()
-    plt.xlabel("Cell width / electron gyroradii")
-    plt.ylabel("Change in energy density by end of simulation / %")
+    # plt.yscale("log")
+    # plt.legend()
+    ax1.set_xlabel("Cell width / electron gyroradii")
+    ax2.set_xlabel("Cell width / Debye lengths")
+    plt.title("Electrons - run 33 (B0: 0.9549, background density: 7.7898E+19)")
+    ax1.set_ylabel("Change in energy density by end of simulation / %")
+    plt.tight_layout()
     plt.show()
 
+    fig = plt.figure()
+    ax1 = fig.add_subplot()
+    ax2 = ax1.twiny()
     # res = linregress(cellWidth_rLe, totalConservationPct)
-    plt.scatter(cellWidth_rLe, totalConservationPct, color="orange", label="total")
+    ax1.scatter(cellWidth_rLe, totalConservationPct, color="orange")
+    ax2.scatter(cellWidth_dl, totalConservationPct, color="orange")
     # x = np.linspace(0.0, np.max(cellWidth_rLe), 1000)
     # plt.plot(x, res.intercept + res.slope*x, "r--", label=f"R^2 = {res.rvalue**2:.5f}")
-    plt.yscale("log")
-    plt.legend()
-    plt.xlabel("Cell width / electron gyroradii")
-    plt.ylabel("Change in energy density by end of simulation / %")
+    # plt.yscale("log")
+    ax1.set_xlabel("Cell width / electron gyroradii")
+    ax2.set_xlabel("Cell width / Debye lengths")
+    ax1.set_ylabel("Change in energy density by end of simulation / %")
+    plt.title("Total energy - (B0: 0.9549, background density: 7.7898E+19)")
+    plt.tight_layout()
     plt.show()
 
 if __name__ == "__main__":

@@ -3,7 +3,9 @@ import os
 from pathlib import Path
 from matplotlib import pyplot as plt
 from sdf_xarray import SDFPreprocess
-from scipy import constants, stats
+from scipy import constants
+from scipy.interpolate import make_smoothing_spline
+from scipy.signal import find_peaks
 from plasmapy.formulary import frequencies as ppf
 from plasmapy.formulary import speeds as pps
 from plasmapy.formulary import lengths as ppl
@@ -32,14 +34,15 @@ def initialise_folder_structure(
     
     if outFileDirectory is None:
         outFileDirectory = dataDirectory / "analysis"
-
-    if debug:
-        print(f"Creating folder structure in {outFileDirectory}....")
-            
+   
     dataFolder = outFileDirectory / "data"
     plotsFolder = outFileDirectory / "plots"
                 
     if create:
+
+        if debug:
+            print(f"Creating folder structure in {outFileDirectory}....")
+
         if os.path.exists(outFileDirectory):
             sh.rmtree(outFileDirectory)
         os.mkdir(outFileDirectory)
@@ -60,295 +63,6 @@ def initialise_folder_structure(
 
     
     return dataFolder, plotsFolder
-
-def create_netCDF_fieldVariable_structure(
-        fieldRoot : nc.Dataset,
-        numGrowthRates : int
-) -> nc.Dataset:
-    growth_rate_group = fieldRoot.createGroup("growthRates")
-    posGrowthRateGrp = growth_rate_group.createGroup("positive")
-    negGrowthRateGrp = growth_rate_group.createGroup("negative")
-    groups = [posGrowthRateGrp, negGrowthRateGrp]
-    
-    # NOTE: This will skip adding fields if the "wavenumber" dimension is already present, so this assumes no changes to the variable creation below is required.
-    #       A more sophisticated diff would be better.
-    for group in groups:
-        if "wavenumber" in group.dimensions.keys():
-            continue
-        else:
-            group.createDimension("wavenumber", numGrowthRates)
-
-            k_var = group.createVariable("wavenumber", datatype="f4", dimensions=("wavenumber",))
-            k_var.units = "wCI/vA"
-            group.createVariable("peakPower", datatype="f4", dimensions=("wavenumber",))
-            group.createVariable("totalPower", datatype="f4", dimensions=("wavenumber",))
-            t_var = group.createVariable("time", datatype="f4", dimensions=("wavenumber",))
-            t_var.units = "tCI"
-            gamma_var = group.createVariable("growthRate", datatype="f8", dimensions=("wavenumber",))
-            gamma_var.units = "wCI"
-            gamma_var.standard_name = "linear_growth_rate"
-            group.createVariable("rSquared", datatype="f4", dimensions=("wavenumber",))
-            group.createVariable("yIntercept", datatype="f4", dimensions=("wavenumber",))
-
-    return growth_rate_group
-    
-def plot_growth_rates(
-        tkSpectrum : xr.DataArray,
-        field : str,
-        growthRateData : list[e_utils.LinearGrowthRate],
-        numToPlot : int,
-        selectionMetric : str,
-        save : bool = False,
-        display : bool = False,
-        noTitle : bool = False,
-        saveFolder : Path = None,
-        runName : str = None
-):
-    # Short-circuit
-    if numToPlot == 0:
-        return
-    
-    signString = "positive" if growthRateData[0].gamma > 0.0 else "negative"
-    
-    if debug:
-        print(f"Plotting best {signString} growth rates in {field} of {numToPlot} {selectionMetric} power wavenumbers....")
-    
-    if selectionMetric == "peak":
-        # Find n highest peak or total powers
-        growth_rates_to_plot = sorted(growthRateData, key=lambda gamma: gamma.peakPower, reverse=True)[:numToPlot]
-    elif selectionMetric == "total":
-        growth_rates_to_plot = sorted(growthRateData, key=lambda gamma: gamma.totalPower, reverse=True)[:numToPlot]
-    else:
-        raise NotImplementedError("Only \'peak\' or \'total\' power selection criteria implemented.")
-    
-    rank = 0
-    for g in growth_rates_to_plot:
-        signal = tkSpectrum.sel(wavenumber=g.wavenumber)
-        timeVals = signal.coords['time'][g.timeStartIndex:g.timeEndIndex]
-        plt.close("all")
-        fig, ax = plt.subplots(figsize=(12, 8))
-        np.log(signal).plot(ax=ax)
-        ax.plot(timeVals, g.gamma * timeVals + g.yIntercept, label = r"$\gamma = $" + f"{g.gamma:.3f}" + r"$\omega_{ci}$")
-        ax.set_xlabel(r"Time [$\tau_{ci}$]")
-        ax.set_ylabel(f"Log of {field} signal power")
-        ax.grid()
-        ax.legend()
-        if not noTitle:
-            plt.title(f'{runName}_{field}_{signString}_growth_k_{g.wavenumber:.3f}_{selectionMetric}_power_rank_{rank}')
-        if save:
-            plt.savefig(saveFolder / Path(f"{runName}_{field}_{signString}_growth_k_{g.wavenumber:.3f}_{selectionMetric}Power_rank_{rank}.png"))
-        if display:
-            plt.show()
-        rank += 1
-        plt.close('all')
-
-def find_max_growth_rates(
-        tkSpectrum : xr.DataArray,
-        gammaWindowMin : int,
-        gammaWindowMax : int,
-        skipIndices : int = 1
-):
-
-    print("Finding max growth rates....")
-
-    best_pos_growth_rates = []
-    best_neg_growth_rates = []
-
-    num_wavenumbers = tkSpectrum.sizes["wavenumber"]
-
-    for index in range(0, num_wavenumbers):
-
-        # Must load data here for quick iteration over windows
-        # Changed: this is pre-loaded in create_t_k_spectrum()
-        signal = tkSpectrum.isel(wavenumber=index)
-
-        signalK=float(tkSpectrum.coords['wavenumber'][index])
-        signalPeak=float(signal.max())
-        signalTotal=float(signal.sum())
-
-        windowWidths = range(gammaWindowMin, gammaWindowMax + 1, skipIndices)
-        len_widths = len(windowWidths)
-
-        best_pos_params = None
-        best_neg_params = None
-        best_pos_r_squared = float('-inf')
-        best_neg_r_squared = float('-inf')
-
-        width_count = 0
-        for width in windowWidths: # For each possible window width
-            
-            windowStarts = range(0, len(signal) - (width + 1), skipIndices)
-
-            if debug:
-                width_count += 1
-                len_windows = len(windowStarts)
-                window_count = 0
-
-            for window in windowStarts: # For each window
-                
-                if debug:
-                    window_count += 1
-                    print(f"Processing width {width} starting at {window} in k={signalK}. Width {width_count}/{len_widths} window {window_count}/{len_windows}....")
-
-                t_k_window = signal[window:(width + window)]
-
-                slope, intercept, r_value, _, _ = stats.linregress(signal.coords["time"][window:(width + window)], np.log(t_k_window))
-                r_squared = r_value ** 2
-                
-                if not np.isnan(slope):
-                    if slope > 0.0:
-                        if r_squared > best_pos_r_squared:
-                            best_pos_r_squared = r_squared
-                            best_pos_params = (slope, intercept, width, window, r_squared)
-                    else:
-                        if r_squared > best_neg_r_squared:
-                            best_neg_r_squared = r_squared
-                            best_neg_params = (slope, intercept, width, window, r_squared)
-
-        if best_pos_params is not None:
-            gamma, y_int, window_width, windowStart, r_sqrd = best_pos_params
-            best_pos_growth_rates.append(
-                e_utils.LinearGrowthRate(timeStartIndex=windowStart,
-                                    timeEndIndex=(windowStart + window_width),
-                                    timeMidpointIndex=windowStart+(int(window_width/2)),
-                                    gamma=gamma,
-                                    yIntercept=y_int,
-                                    rSquared=r_sqrd,
-                                    wavenumber=signalK,
-                                    timeMidpoint=float(tkSpectrum.coords['time'][windowStart+(int(window_width/2))]),
-                                    peakPower = signalPeak,
-                                    totalPower = signalTotal))
-            
-        if best_neg_params is not None:
-            gamma, y_int, window_width, windowStart, r_sqrd = best_neg_params
-            best_neg_growth_rates.append(
-                e_utils.LinearGrowthRate(timeStartIndex=windowStart,
-                                    timeEndIndex=(windowStart + window_width),
-                                    timeMidpointIndex=windowStart+(int(window_width/2)),
-                                    gamma=gamma,
-                                    yIntercept=y_int,
-                                    rSquared=r_sqrd,
-                                    wavenumber=signalK,
-                                    timeMidpoint=float(tkSpectrum.coords['time'][windowStart+(int(window_width/2))]),
-                                    peakPower = signalPeak,
-                                    totalPower = signalTotal))
-        del(signal)
-        
-        if debug: 
-            if best_pos_params is not None:
-                print(f"Max positive gamma found: {best_pos_growth_rates[-1].to_string()}")
-            if best_neg_params is not None:
-                print(f"Max negative gamma found: {best_neg_growth_rates[-1].to_string()}")
-
-    return best_pos_growth_rates, best_neg_growth_rates
-
-def create_omega_k_plots(
-        fftSpectrum : xr.DataArray,
-        statsFile : nc.Dataset,
-        field : str,
-        field_unit : str,
-        saveDirectory : Path,
-        runName : str,
-        inputDeck : dict,
-        bkgdSpecies : str = 'p+',
-        fastSpecies : str = 'p+',
-        maxK : float = None,
-        maxW : float = None,
-        log : bool = False,
-        display : bool = False):
-
-    print("Generating w-k plots....")
-
-    spec = abs(fftSpectrum.load())
-
-    # Select positive temporal frequencies
-    spec = spec.sel(frequency=spec.frequency>=0.0)
-
-    # Trim to max wavenumber and frequency, if specified
-    if maxK is not None:
-        spec = spec.sel(wavenumber=spec.wavenumber<=maxK)
-        spec = spec.sel(wavenumber=spec.wavenumber>=-maxK)
-    if maxW is not None:
-        spec = spec.sel(frequency=spec.frequency<=maxW)
-
-    # Log stats on spectrum
-    spec_sum = float(spec.sum())
-    statsFile.totalWkSpectralPower = spec_sum 
-    squared_sum = float((np.abs(spec)**2).sum())
-    parseval_wk = squared_sum * spec.coords['frequency'].spacing * spec.coords['wavenumber'].spacing * 2.0 # Double because half the energy is outside the range we care about 
-    statsFile.parsevalWk = parseval_wk
-    spec_peak = float(np.nanmax(spec))
-    statsFile.peakWkSpectralPower = spec_peak
-    spec_mean = float(spec.mean())
-    statsFile.meanWkSpectralPower = spec_mean
-    
-    if debug:
-        print(f"Sum of omega-k sqared * dw * dk: {parseval_wk}")
-        print(f"Max peak in omega-k: {spec_peak}")
-        print(f"Mean of omega-k: {spec_mean}")
-
-    # Power in omega over all k
-    fig, axs = plt.subplots(figsize=(15, 10))
-    power_trace = spec.sum(dim = "wavenumber")
-    power_trace.plot(ax=axs)
-    axs.set_xticks(ticks=np.arange(np.floor(power_trace.coords['frequency'][0]), np.ceil(power_trace.coords['frequency'][-1])+1.0, 1.0), minor=True)
-    axs.grid(which='both', axis='x')
-    axs.set_xlabel(r"Frequency [$\omega_{ci}$]")
-    axs.set_ylabel(f"Sum of power in {field} over all k [{field_unit}]")
-    filename = Path(f'{runName}_{field.replace("_", "")}_powerByOmega_log-{log}_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
-    fig.savefig(str(saveDirectory / filename))
-    if display:
-        plt.show()
-        plt.close("all")
-
-    # Power in k over all omega
-    fig, axs = plt.subplots(figsize=(15, 10))
-    power_trace = spec.sum(dim = "frequency")
-    power_trace.plot(ax=axs)
-    axs.set_xticks(ticks=np.arange(np.floor(power_trace.coords['wavenumber'][0]), np.ceil(power_trace.coords['wavenumber'][-1])+1.0, 1.0), minor=True)
-    axs.grid(which='both', axis='x')
-    axs.set_xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
-    omega = r'$\omega_{ci}$'
-    axs.set_ylabel(f"Sum of power in {field} over all {omega} [{field_unit}]")
-    filename = Path(f'{runName}_{field.replace("_", "")}_powerByK_log-{log}_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
-    fig.savefig(str(saveDirectory / filename))
-    if display:
-        plt.show()
-        plt.close("all")
-
-    if log:
-        spec = np.log(spec)
-
-    # Full dispersion relation for positive omega
-    fig, axs = plt.subplots(figsize=(15, 10))
-    spec.plot(ax=axs, cbar_kwargs={'label': f'Spectral power in {field} [{field_unit}]' if not log else f'Log of spectral power in {field}'}, cmap='plasma')
-    axs.set_ylabel(r"Frequency [$\omega_{ci}$]")
-    axs.set_xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
-    filename = Path(f'{runName}_{field.replace("_", "")}_wk_log-{log}_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
-    fig.savefig(str(saveDirectory / filename))
-    if display:
-        plt.show()
-        plt.close("all")
-
-    # Positive omega/positive k with vA and lower hybrid frequency
-    fig, axs = plt.subplots(figsize=(15, 10))
-    spec = spec.sel(wavenumber=spec.wavenumber>0.0)
-    spec.plot(ax=axs, cbar_kwargs={'label': f'Spectral power in {field} [{field_unit}]' if not log else f'Log of spectral power in {field}'}, cmap='plasma')
-    axs.plot(spec.coords['wavenumber'].data, spec.coords['wavenumber'].data, 'w--', label=r'$V_A$ branch')
-    B0 = inputDeck['constant']['b0_strength']
-    bkgd_number_density = float(inputDeck['constant']['background_density'])
-    wLH_cyclo = ppf.lower_hybrid_frequency(B0 * u.T, bkgd_number_density * u.m**-3, bkgdSpecies) / ppf.gyrofrequency(B0 * u.T, fastSpecies)
-    axs.axhline(y = wLH_cyclo, color='white', linestyle=':', label=r'Lower hybrid frequency')
-    axs.legend(loc='upper left')
-    axs.set_ylabel(r"Frequency [$\omega_{ci}$]")
-    axs.set_xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
-    filename = Path(f'{runName}_{field.replace("_", "")}_wk_positiveK_log-{log}_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
-    fig.savefig(str(saveDirectory / filename))
-    if display:
-        plt.show()
-        plt.close("all")
-    
-    del(spec)
 
 def calculate_simulation_metadata(
         inputDeck : dict,
@@ -498,8 +212,7 @@ def run_energy_analysis(
     statsFile : nc.Dataset,
     displayPlots : bool = False,
     noTitle : bool = False,
-    beam : bool = True,
-    percentage : bool = True
+    beam : bool = True
 ):
     # Create stats group if not already existing
     if "Energy" not in statsFile.groups.keys():
@@ -572,12 +285,9 @@ def run_energy_analysis(
     deltaProtonKE_density = protonKEdensity_mean - protonKEdensity_mean[0] # J / m^3
     deltaElectronKE_density = electronKEdensity_mean - electronKEdensity_mean[0] # J / m^3
 
+    totalAbsoluteMeanEnergyDensity = protonKEdensity_mean + electronKEdensity_mean + magneticFieldEnergyDensity_mean + electricFieldDensity_mean
     totalDeltaMeanEnergyDensity = deltaProtonKE_density + deltaElectronKE_density + deltaMeanMagneticEnergyDensity + deltaMeanElectricEnergyDensity
     timeCoords = dataset.coords['time']
-
-    # Initialise plotting
-    fig, ax = plt.subplots(figsize=(12, 8))
-    filename = Path(f"{simName}_absolute_energy_change.png")
 
     # Write stats
     # Start, end and peak energy densities, and times of maximum and minimum
@@ -595,6 +305,7 @@ def run_energy_analysis(
             fed = energyStats.variables["fastIonMeanEnergyDensity"]
         fed[:] = fastIonKEdensity_mean
         deltaFastIonKE_density = fastIonKEdensity_mean - fastIonKEdensity_mean[0] # J / m^3
+        totalAbsoluteMeanEnergyDensity += fastIonKEdensity_mean
         totalDeltaMeanEnergyDensity += deltaFastIonKE_density
 
         energyStats.fastIonEnergyDensity_start = fastIonKEdensity_mean[0]
@@ -606,8 +317,6 @@ def run_energy_analysis(
         energyStats.fastIonEnergyDensity_min = fastIonKEdensity_mean[index]
         energyStats.fastIonEnergyDensity_timeMin = timeCoords[index]
         energyStats.fastIonEnergyDensity_delta = deltaFastIonKE_density[-1]
-
-        ax.plot(timeCoords, deltaFastIonKE_density, label = r"ion ring beam KE", color="red")
 
     energyStats.backgroundIonEnergyDensity_start = protonKEdensity_mean[0]
     energyStats.backgroundIonEnergyDensity_end = protonKEdensity_mean[-1]
@@ -649,16 +358,200 @@ def run_energy_analysis(
     energyStats.magneticFieldEnergyDensity_timeMin = timeCoords[index]
     energyStats.magneticFieldEnergyDensity_delta = deltaMeanMagneticEnergyDensity[-1]
 
-    # Main plotting
-    ax.plot(timeCoords, deltaProtonKE_density, label = r"Bkgd Proton KE", color="orange")
-    ax.plot(timeCoords, deltaElectronKE_density, label = r"Bkgd Electron KE", color="blue")
-    ax.plot(timeCoords, deltaMeanMagneticEnergyDensity, label = r"B-field E", color="purple", linestyle="--")
-    ax.plot(timeCoords, deltaMeanElectricEnergyDensity, label = r"E-field E", color="green", linestyle="--")
-    ax.plot(timeCoords, totalDeltaMeanEnergyDensity, label = r"Total E", color="black")
+    # Totals
+    energyStats.totalEnergyDensity_start = float(totalAbsoluteMeanEnergyDensity[0])
+    energyStats.totalEnergyDensity_end = float(totalAbsoluteMeanEnergyDensity[-1])
+    pctConservation = float(100.0 * ((totalAbsoluteMeanEnergyDensity[-1]-totalAbsoluteMeanEnergyDensity[0])/totalAbsoluteMeanEnergyDensity[0]))
+    energyStats.totalEnergyDensityConservation_pct = pctConservation
+
+    if debug:
+        print(f"---------------------- ENERGY: {simName} ---------------------")
+        print(f"Total energy start: {float(totalAbsoluteMeanEnergyDensity[0])}")
+        print(f"Total energy end: {float(totalAbsoluteMeanEnergyDensity[-1])}")
+        print(f"Total energy conservation: {pctConservation}%")
+
+    deltaEnergies = {
+        "protonMeanEnergyDensity" : deltaProtonKE_density,
+        "electronMeanEnergyDensity" : deltaElectronKE_density,
+        "magneticFieldMeanEnergyDensity" : deltaMeanMagneticEnergyDensity,
+        "electricFieldMeanEnergyDensity" : deltaMeanElectricEnergyDensity
+    }
+    percentageBaseline = float(totalAbsoluteMeanEnergyDensity[0])
+    if beam:
+        deltaEnergies["fastIonMeanEnergyDensity"] = deltaFastIonKE_density
+        percentageBaseline = float(fastIonKEdensity_mean[0])
+
+    maxPeakIndices = {}
+    minTroughIndices = {}
+    pctEnergies = {}
+
+    maxExtent = np.max([np.array(v) for v in deltaEnergies.values()])
+    minExtent = np.min([np.array(v) for v in deltaEnergies.values()])
+    dataRange = maxExtent - minExtent
+    prominence = 0.01 * dataRange # Peak prominence must be at least 1% of the data range
+
+    # Initialise plotting
+    fig, ax = plt.subplots(figsize=(12, 8))
+    filename = Path(f"{simName}_percentage_energy_change.png")
+
+    # Iterate deltas
+    for variable, deltaED in deltaEnergies.items():
+        
+        # Smooth curve
+        smoothDeltaED = make_smoothing_spline(timeCoords, deltaED, lam=1.0)
+        smoothDeltaData = smoothDeltaED(timeCoords)
+        
+        # Find stationary points
+        ed_peaks, _ = find_peaks(smoothDeltaData, distance=50, prominence=prominence)
+        ed_troughs, _ = find_peaks(-smoothDeltaData, distance=50, prominence=prominence)
+        ed_troughs = np.array([int(t) for t in ed_troughs if smoothDeltaData[t] < 0.0]) # Filter for only negative troughs
+
+        # Calculate percentage change relative to baseline
+        percentageED = 100.0 * (deltaED / percentageBaseline) # %
+        pctEnergies[variable] = percentageED
+
+        # Record
+        smoothPctData = 100.0 * (smoothDeltaData / percentageBaseline)
+        hasPeaks = bool(ed_peaks.size > 0)
+        hasTroughs = bool(ed_troughs.size > 0)
+
+        maxAtSimEnd = bool((len(smoothDeltaData)-1)-np.argmax(smoothDeltaData) < 5)
+        minAtSimEnd = bool((len(smoothDeltaData)-1)-np.argmin(smoothDeltaData) < 5)
+        energyStats[variable].maxAtSimEnd = int(maxAtSimEnd)
+        energyStats[variable].minAtSimEnd = int(minAtSimEnd)     
+
+        if debug:
+            print(f"Variable: {variable}")
+            print(f"Has peaks: {hasPeaks}")
+            print(f"Has troughs: {hasTroughs}")
+            print(f"Time series length: {len(smoothDeltaData)}, index max: {np.argmax(smoothDeltaData)}, maxAtSimEnd: {maxAtSimEnd}")
+            print(f"Time series length: {len(smoothDeltaData)}, index min: {np.argmin(smoothDeltaData)}, minAtSimEnd: {minAtSimEnd}")
+            colour = next((e_utils.E_TRACE_SPECIES_COLOUR_MAP[c] for c in e_utils.E_TRACE_SPECIES_COLOUR_MAP.keys() if c in variable), False)
+            if colour:
+                ax.plot(timeCoords, percentageED,  label=e_utils.SPECIES_NAME_MAP[variable], alpha=0.4, color = colour)
+                ax.plot(timeCoords, smoothPctData, label=f"Smoothed {e_utils.SPECIES_NAME_MAP[variable]}", linestyle="--", color = colour)
+            else:
+                ax.plot(timeCoords, percentageED,  label=e_utils.SPECIES_NAME_MAP[variable], alpha=0.4)
+                ax.plot(timeCoords, smoothPctData, label=f"Smoothed {e_utils.SPECIES_NAME_MAP[variable]}", linestyle="--")
+            
+        energyStats[variable].hasPeaks = int(hasPeaks)
+        energyStats[variable].hasTroughs = int(hasTroughs)
+        
+        if hasPeaks:
+            energyStats[variable].peakIndices = ed_peaks
+            energyStats[variable].peakValues_delta = smoothDeltaData[ed_peaks]
+            energyStats[variable].peakValues_pct = smoothPctData[ed_peaks]
+            energyStats[variable].peakTimes = [float(t) for t in timeCoords[ed_peaks]]
+            if debug:
+                print(f"Peaks: {smoothDeltaData[ed_peaks]} ({smoothPctData[ed_peaks]}%) at {ed_peaks}")
+                print(f"Time of peaks: {[float(t) for t in timeCoords[ed_peaks]]}")
+                ax.scatter(timeCoords[ed_peaks], smoothPctData[ed_peaks], marker="x", color="black")
+            maxPeakIndices[variable] = ed_peaks[np.argmax([smoothPctData[p] for p in ed_peaks])]
+        
+        if hasTroughs:
+            energyStats[variable].troughIndices = ed_troughs
+            energyStats[variable].troughValues_delta = smoothDeltaData[ed_troughs]
+            energyStats[variable].troughValues_pct = smoothPctData[ed_troughs]
+            energyStats[variable].troughTimes = [float(t) for t in timeCoords[ed_troughs]]
+            if debug:
+                print(f"Troughs: {smoothDeltaData[ed_troughs]} ({smoothPctData[ed_troughs]}%) at {ed_troughs}")
+                print(f"Time of troughs: {[float(t) for t in timeCoords[ed_troughs]]}")
+                ax.scatter(timeCoords[ed_troughs], smoothPctData[ed_troughs], marker="+", color="black")
+                print("...................................................................................")
+            minTroughIndices[variable] = ed_troughs[np.argmin([smoothPctData[p] for p in ed_troughs])]
+        
+    ax.legend()
+    ax.set_xlabel(r"Time [$\tau_{ci}$]")
+    ax.set_ylabel("Change in energy density [%]")
+    ax.grid()
+    if not noTitle:
+        if beam:
+            ax.set_title(f"{simName}: Percentage change in ED relative to fast ion energy")
+        else:
+            ax.set_title(f"{simName}: Percentage change in ED relative to total starting energy")
+    fig.tight_layout()
+    fig.savefig(savePlotsFolder / filename)
+    if displayPlots:
+        plt.show()
+    plt.close("all")
+    
+    # Specific to IRB transfer
+    if beam:
+        fastVar = "fastIonMeanEnergyDensity"
+        protVar = "protonMeanEnergyDensity"
+        elecVar = "electronMeanEnergyDensity"
+        fast = deltaEnergies[fastVar]
+        fast_pct = pctEnergies[fastVar]
+        proton = deltaEnergies[protVar]
+        proton_pct = pctEnergies[protVar]
+        electron = deltaEnergies[elecVar]
+        electron_pct = pctEnergies[elecVar]
+
+        hasFastIonGain = bool(fast[-1] > 0.0) or energyStats[fastVar].hasPeaks
+        hasBkgdIonGain = bool(proton[-1] > 0.0)
+        hasBkgdElectronGain = bool(electron[-1] > 0.0)
+
+        energyStats.hasOverallFastIonGain = int(hasFastIonGain)
+        energyStats.hasOverallBkgdIonGain = int(hasBkgdIonGain)
+        energyStats.hasOverallBkgdElectronGain = int(hasBkgdElectronGain)
+
+        if debug:
+            print(f"Overall fast ion gain: {hasFastIonGain}") # bool
+            print(f"Overall background proton gain: {hasBkgdIonGain}") # bool
+            print(f"Overall background electron gain: {hasBkgdElectronGain}") # bool
+
+        if fastVar in minTroughIndices.keys():
+
+            pGainAtFiTrough = float(proton[minTroughIndices[fastVar]])
+            pGainAtFiTrough_pct = float(proton_pct[minTroughIndices[fastVar]])
+            eGainAtFiTrough = float(electron[minTroughIndices[fastVar]])
+            eGainAtFiTrough_pct = float(electron_pct[minTroughIndices[fastVar]])
+
+            energyStats.bkgdIonChangeAtFastIonTrough = pGainAtFiTrough
+            energyStats.bkgdIonChangeAtFastIonTrough_pct = pGainAtFiTrough_pct
+            energyStats.bkgdElectronChangeAtFastIonTrough = eGainAtFiTrough
+            energyStats.bkgdElectronChangeAtFastIonTrough_pct = eGainAtFiTrough_pct
+
+            if debug:
+                print(f"Fast ion trough: {minTroughIndices[fastVar]}") # numeric and already recorded above
+                print(f"Proton gain at fast ion trough: {pGainAtFiTrough} ({pGainAtFiTrough_pct}%)") # numeric
+                print(f"Electron gain at fast ion trough: {eGainAtFiTrough} ({eGainAtFiTrough_pct}%)")# numeric
+
+        if protVar in maxPeakIndices.keys():
+            fiLossAtProtonPeak = float(fast[maxPeakIndices[protVar]])
+            fiLossAtProtonPeak_pct = float(fast_pct[maxPeakIndices[protVar]])
+            energyStats.fastIonChangeAtBkgdIonPeak = fiLossAtProtonPeak
+            energyStats.fastIonChangeAtBkgdIonPeak_pct = fiLossAtProtonPeak_pct
+
+            if debug:
+                print(f"Fast ion loss at proton peak: {fiLossAtProtonPeak} ({fiLossAtProtonPeak_pct}%)") # numeric
+        
+        if elecVar in maxPeakIndices.keys():
+            fiLossAtElectronPeak = float(fast[maxPeakIndices[elecVar]])
+            fiLossAtElectronPeak_pct = float(fast_pct[maxPeakIndices[elecVar]])
+            energyStats.fastIonChangeAtBkgdElectronPeak = fiLossAtElectronPeak
+            energyStats.fastIonChangeAtBkgdElectronPeak_pct = fiLossAtElectronPeak_pct
+
+            if debug:
+                print(f"Fast ion loss at electron peak: {fiLossAtElectronPeak} ({fiLossAtElectronPeak_pct}%)") # numeric
+
+        if debug:
+            print("------------------------------------------------------------------------------------")
+ 
+    # Initialise absolute energy plotting
+    fig, ax = plt.subplots(figsize=(12, 8))
+    filename = Path(f"{simName}_absolute_energy_change.png")
+    if beam:
+        ax.plot(timeCoords, deltaFastIonKE_density, label = r"Fast ion", color="red")
+    ax.plot(timeCoords, deltaProtonKE_density, label = r"Bkgd proton", color="orange")
+    ax.plot(timeCoords, deltaElectronKE_density, label = r"Bkgd electron", color="blue")
+    ax.plot(timeCoords, deltaMeanMagneticEnergyDensity, label = r"B-field", color="purple", linestyle="--")
+    ax.plot(timeCoords, deltaMeanElectricEnergyDensity, label = r"E-field", color="green", linestyle="--")
+    ax.plot(timeCoords, totalDeltaMeanEnergyDensity, label = r"Total", color="black")
     ax.set_xlabel(r'Time [$\tau_{ci}$]')
     ax.set_ylabel(r"Change in energy density [$J/m^3$]")
     if not noTitle: 
-        ax.set_title(f"{simName}: Evolution of absolute energy in particles and EM fields", wrap=True)
+        ax.set_title(f"{simName}: Absolute energy in particles and EM fields", wrap=True)
     ax.legend()
     ax.grid()
     fig.tight_layout()
@@ -666,57 +559,6 @@ def run_energy_analysis(
     if displayPlots:
         plt.show()
     plt.close("all")
-
-    if percentage:
-
-        totalMeanEnergyDensity_0 = (
-            magneticFieldEnergyDensity_mean[0] 
-            + electricFieldDensity_mean[0] 
-            + protonKEdensity_mean[0]
-            + electronKEdensity_mean[0]
-        )
-
-        fig, ax = plt.subplots(figsize=(12, 8))
-        filename = Path(f"{simName}_percentage_energy_change.png")
-
-        if beam:
-            fastIon_baseline = fastIonKEdensity_mean[0]
-            deltaFastIonKEdensity_pct = 100.0 * (deltaFastIonKE_density / fastIon_baseline) # %
-            totalMeanEnergyDensity_0 += fastIon_baseline
-            ax.plot(timeCoords, deltaFastIonKEdensity_pct, label = "Fast Ion KE", color='red')
-
-            baseline_E = fastIon_baseline
-        else:
-            baseline_E = totalMeanEnergyDensity_0
-
-        deltaMeanMagneticEnergyDensity_pct = 100.0 * (deltaMeanMagneticEnergyDensity / baseline_E) # %
-        deltaMeanElectricEnergyDensity_pct = 100.0 * (deltaMeanElectricEnergyDensity / baseline_E) # %
-        deltaProtonKEdensity_pct = 100.0 * (deltaProtonKE_density / baseline_E) # %
-        deltaElectronKEdensity_pct = 100.0 * (deltaElectronKE_density / baseline_E) # %
-
-        totalDeltaMeanEnergyDensity_pct = deltaMeanMagneticEnergyDensity_pct + deltaMeanElectricEnergyDensity_pct + deltaProtonKEdensity_pct + deltaElectronKEdensity_pct
-        
-        if beam:
-            totalDeltaMeanEnergyDensity_pct += deltaFastIonKEdensity_pct
-
-        ax.plot(timeCoords, deltaProtonKEdensity_pct, label = "Bkgd Proton KE", color="orange")
-        ax.plot(timeCoords, deltaElectronKEdensity_pct, label = "Bkgd Electron KE", color="blue")
-        ax.plot(timeCoords, deltaMeanMagneticEnergyDensity_pct, label = "B-field E", color="purple", linestyle="--")
-        ax.plot(timeCoords, deltaMeanElectricEnergyDensity_pct, label = "E-field E", color="green", linestyle="--")
-        ax.plot(timeCoords, totalDeltaMeanEnergyDensity_pct, label = "Total E", color="black")
-        #ax.set_yscale('symlog')
-        ax.set_xlabel(r'Time [$\tau_{ci}$]')
-        ax.set_ylabel("Change in energy density [%]")
-        if not noTitle:
-            ax.set_title(f"{simName}: Evolution of energy change in particles and EM fields, "
-                        + f"as a percentage of original {'fast ion' if beam else 'total'} energy", wrap=True)
-        ax.legend()
-        ax.grid()
-        fig.tight_layout()
-        fig.savefig(savePlotsFolder / filename)
-        if displayPlots:
-            plt.show()
-        plt.close("all")
             
 def process_simulation_batch(
         directory : Path,
@@ -792,7 +634,6 @@ def process_simulation_batch(
         plt.rcParams.update({'ytick.labelsize': 14.0})
         plt.rcParams.update({'legend.fontsize': 14.0})
     
-
     for simFolder in run_folders:
 
         simFolder = Path(simFolder)
@@ -826,7 +667,7 @@ def process_simulation_batch(
         # Energy analysis
         if energy:
             energyPlotFolder = plotsFolder / "energy"
-            run_energy_analysis(ds, inputDeck, simFolder.name, energyPlotFolder, statsRoot, displayPlots = displayPlots, noTitle=noTitle, beam = beam, percentage = True)
+            run_energy_analysis(ds, inputDeck, simFolder.name, energyPlotFolder, statsRoot, displayPlots = displayPlots, noTitle=noTitle, beam = beam)
 
         if "all" in fields:
             fields = [str(f) for f in ds.data_vars.keys() if str(f).startswith("Electric_Field") or str(f).startswith("Magnetic_Field")]
@@ -864,53 +705,24 @@ def process_simulation_batch(
             del(delta)
             del(squared_delta)
 
-            # Take FFT
-            original_spec : xr.DataArray = xrft.xrft.fft(ds[field], true_amplitude=True, true_phase=True, window=None)
-            original_spec = original_spec.rename(freq_time="frequency", freq_x_space="wavenumber")
-            # Remove zero-frequency component
-            original_spec = original_spec.where(original_spec.wavenumber!=0.0, None)
+            if createPlots or growthRates:
+                # Take FFT
+                original_spec : xr.DataArray = xrft.xrft.fft(ds[field], true_amplitude=True, true_phase=True, window=None)
+                original_spec = original_spec.rename(freq_time="frequency", freq_x_space="wavenumber")
+                # Remove zero-frequency component
+                original_spec = original_spec.where(original_spec.wavenumber!=0.0, None)
 
-            tk_spec = e_utils.create_t_k_spectrum(original_spec, fieldStats, maxK, load=True, debug=debug)
+                tk_spec = e_utils.create_t_k_spectrum(original_spec, fieldStats, maxK, load=True, debug=debug)
 
-            # Dispersion relations
-            if createPlots:
-                create_omega_k_plots(original_spec, fieldStats, field, field_unit, plotFieldFolder, simFolder.name, inputDeck, maxK=maxK, maxW=maxW, log=takeLog, display=displayPlots)
-                e_utils.create_t_k_plot(tk_spec, field, field_unit, plotFieldFolder, simFolder.name, maxK, takeLog, displayPlots)
+                # Dispersion relations
+                if createPlots:
+                    e_utils.create_omega_k_plots(original_spec, fieldStats, field, field_unit, plotFieldFolder, simFolder.name, inputDeck, bkgdSpecies, fastSpecies, maxK=maxK, maxW=maxW, log=takeLog, display=displayPlots, debug=debug)
+                    e_utils.create_t_k_plot(tk_spec, field, field_unit, plotFieldFolder, simFolder.name, maxK, takeLog, displayPlots)
 
-            # Linear growth rates
-            if growthRates:
-                gammaWindowIndicesMin = int((gammaWindowPctMin / 100.0) * tk_spec.coords['time'].size)
-                gammaWindowIndicesMax = int((gammaWindowPctMax / 100.0) * tk_spec.coords['time'].size)
-                max_pos_gammas, max_neg_gammas = find_max_growth_rates(tk_spec, gammaWindowIndicesMin, gammaWindowIndicesMax)
-                
-                if saveGrowthRatePlots:
-                    gammaPlotFolder = plotFieldFolder / "growth_rates"
-                    plot_growth_rates(tk_spec, field, max_pos_gammas, numGrowthRatesToPlot, "peak", saveGrowthRatePlots, displayPlots, noTitle, gammaPlotFolder, simFolder.name)
-                    gammaPlotFolder = plotFieldFolder / "growth_rates"
-                    plot_growth_rates(tk_spec, field, max_neg_gammas, numGrowthRatesToPlot, "peak", saveGrowthRatePlots, displayPlots, noTitle, gammaPlotFolder, simFolder.name)
-
-                maxNumGammas = np.max([len(max_pos_gammas), len(max_neg_gammas)])
-                gammaNc : nc.Dataset = create_netCDF_fieldVariable_structure(fieldStats, maxNumGammas)
-                for i in range(len(max_pos_gammas)):
-                    posGammaNc = gammaNc.groups["positive"]
-                    gamma = max_pos_gammas[i]
-                    posGammaNc.variables["wavenumber"][i] = gamma.wavenumber
-                    posGammaNc.variables["peakPower"][i] = gamma.peakPower
-                    posGammaNc.variables["totalPower"][i] = gamma.totalPower
-                    posGammaNc.variables["time"][i] = gamma.timeMidpoint
-                    posGammaNc.variables["growthRate"][i] = gamma.gamma
-                    posGammaNc.variables["rSquared"][i] = gamma.r_squared
-                    posGammaNc.variables["yIntercept"][i] = gamma.yIntercept
-                for i in range(len(max_neg_gammas)):
-                    negGammaNc = gammaNc.groups["negative"]
-                    gamma = max_neg_gammas[i]
-                    negGammaNc.variables["wavenumber"][i] = gamma.wavenumber
-                    negGammaNc.variables["peakPower"][i] = gamma.peakPower
-                    negGammaNc.variables["totalPower"][i] = gamma.totalPower
-                    negGammaNc.variables["time"][i] = gamma.timeMidpoint
-                    negGammaNc.variables["growthRate"][i] = gamma.gamma
-                    negGammaNc.variables["rSquared"][i] = gamma.r_squared
-                    negGammaNc.variables["yIntercept"][i] = gamma.yIntercept
+                # Linear growth rates
+                if growthRates:
+                    e_utils.process_growth_rates(tk_spec, fieldStats, plotFieldFolder, simFolder, field, gammaWindowPctMin, gammaWindowPctMax, gammaWindowSkipIndices, saveGrowthRatePlots, numGrowthRatesToPlot, displayPlots, noTitle, debug)
+    
 
         statsRoot.close()
         ds.close()

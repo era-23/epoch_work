@@ -146,8 +146,9 @@
             "program": "energy_analysis.py",
             "console": "integratedTerminal",
             "args": [
-                "--dir", "/home/era536/Documents/Epoch/Data/irb_scan_analysis/data",
-                "--irb",
+                "--dir", "/home/era536/Documents/Epoch/Data/debug_cellWidths/6000ppc_analysis/data/",
+                //"--dir", "/home/era536/Documents/Epoch/Data/null_analysis/data",
+                // "--irb",
                 "--electronHeating",
             ]
         },
@@ -205,12 +206,14 @@
             "request": "launch",
             "program": "bicoherence.py",
             "console": "integratedTerminal",
+            "justMyCode": false,
             "args": [
-                "--dir", "/home/era536/Documents/Epoch/Data/irb_debug_15_65/more_macro/deltaF/run_65/",
+                //"--dir", "/home/era536/Documents/Epoch/Data/irb_scan_highRes/run_22/",
+                "--dir", "/home/era536/Documents/Epoch/Data/irb_debug_15_65/more_macro/deltaF/run_15/",
                 "--field", "Magnetic_Field_Bz",
-                //"--plotTk",
+                "--plotTk",
                 "--time", "10.0",
-                //"--irb"
+                "--irb"
             ]
         },
         {
@@ -220,8 +223,8 @@
             "program": "velocity_distribution.py",
             "console": "integratedTerminal",
             "args": [
-                "--dir", "/home/era536/Documents/Epoch/Data/irb_lowRes_alfvenic/",
-                "--field", "Velocity_vx"
+                "--dir", "/home/era536/Documents/Epoch/Data/irb_debug_15_65/dist_funcs/run_15/",
+                "--files", "0000", "0250", "0500", "0750", "1000"
             ]
         },
         {
@@ -242,21 +245,21 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "args": [
-                "--dir", "/home/era536/Documents/Epoch/Data/irb_debug_15_65/dist_funcs/",
-                "--outputDir", "/home/era536/Documents/Epoch/Data/irb_debug_15_65/dist_funcs/analysis",
+                "--dir", "/home/era536/Documents/Epoch/Data/irb_debug_15_65/more_macro/deltaF/",
+                "--outputDir", "/home/era536/Documents/Epoch/Data/irb_debug_15_65/more_macro/deltaF/analysis",
                 "--fields", "Magnetic_Field_Bz", "Electric_Field_Ex",
                 //"--createFolders",
                 "--process",
                 "--beam",
                 //"--growthRates",
                 "--maxK", "100.0",
-                //"--numGrowthRatesToPlot", "5",
-                //"--minGammaFitWindow", "9.8",
-                //"--maxGammaFitWindow", "10.2",
-                //"--skipIndices", "30",
-                "--runNumber", "15",
-                //"--saveGammaPlots",
-                //"--displayPlots",
+                "--numGrowthRatesToPlot", "1",
+                "--minGammaFitWindow", "9.8",
+                "--maxGammaFitWindow", "10.2",
+                "--skipIndices", "30",
+                //"--runNumber", "15",
+                "--saveGammaPlots",
+                "--displayPlots",
                 "--energy",
                 "--createPlots",
                 "--bigLabels",
