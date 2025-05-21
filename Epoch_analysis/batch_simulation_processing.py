@@ -426,13 +426,14 @@ def run_energy_analysis(
             print(f"Has troughs: {hasTroughs}")
             print(f"Time series length: {len(smoothDeltaData)}, index max: {np.argmax(smoothDeltaData)}, maxAtSimEnd: {maxAtSimEnd}")
             print(f"Time series length: {len(smoothDeltaData)}, index min: {np.argmin(smoothDeltaData)}, minAtSimEnd: {minAtSimEnd}")
-            colour = next((e_utils.E_TRACE_SPECIES_COLOUR_MAP[c] for c in e_utils.E_TRACE_SPECIES_COLOUR_MAP.keys() if c in variable), False)
-            if colour:
-                ax.plot(timeCoords, percentageED,  label=e_utils.SPECIES_NAME_MAP[variable], alpha=0.4, color = colour)
-                ax.plot(timeCoords, smoothPctData, label=f"Smoothed {e_utils.SPECIES_NAME_MAP[variable]}", linestyle="--", color = colour)
-            else:
-                ax.plot(timeCoords, percentageED,  label=e_utils.SPECIES_NAME_MAP[variable], alpha=0.4)
-                ax.plot(timeCoords, smoothPctData, label=f"Smoothed {e_utils.SPECIES_NAME_MAP[variable]}", linestyle="--")
+        
+        colour = next((e_utils.E_TRACE_SPECIES_COLOUR_MAP[c] for c in e_utils.E_TRACE_SPECIES_COLOUR_MAP.keys() if c in variable), False)
+        if colour:
+            ax.plot(timeCoords, percentageED,  label=e_utils.SPECIES_NAME_MAP[variable], alpha=0.4, color = colour)
+            ax.plot(timeCoords, smoothPctData, label=f"Smoothed {e_utils.SPECIES_NAME_MAP[variable]}", linestyle="--", color = colour)
+        else:
+            ax.plot(timeCoords, percentageED,  label=e_utils.SPECIES_NAME_MAP[variable], alpha=0.4)
+            ax.plot(timeCoords, smoothPctData, label=f"Smoothed {e_utils.SPECIES_NAME_MAP[variable]}", linestyle="--")
             
         energyStats[variable].hasPeaks = int(hasPeaks)
         energyStats[variable].hasTroughs = int(hasTroughs)
@@ -445,7 +446,8 @@ def run_energy_analysis(
             if debug:
                 print(f"Peaks: {smoothDeltaData[ed_peaks]} ({smoothPctData[ed_peaks]}%) at {ed_peaks}")
                 print(f"Time of peaks: {[float(t) for t in timeCoords[ed_peaks]]}")
-                ax.scatter(timeCoords[ed_peaks], smoothPctData[ed_peaks], marker="x", color="black")
+            
+            ax.scatter(timeCoords[ed_peaks], smoothPctData[ed_peaks], marker="x", color="black")
             maxPeakIndices[variable] = ed_peaks[np.argmax([smoothPctData[p] for p in ed_peaks])]
         
         if hasTroughs:
@@ -456,8 +458,8 @@ def run_energy_analysis(
             if debug:
                 print(f"Troughs: {smoothDeltaData[ed_troughs]} ({smoothPctData[ed_troughs]}%) at {ed_troughs}")
                 print(f"Time of troughs: {[float(t) for t in timeCoords[ed_troughs]]}")
-                ax.scatter(timeCoords[ed_troughs], smoothPctData[ed_troughs], marker="+", color="black")
                 print("...................................................................................")
+            ax.scatter(timeCoords[ed_troughs], smoothPctData[ed_troughs], marker="+", color="black")
             minTroughIndices[variable] = ed_troughs[np.argmin([smoothPctData[p] for p in ed_troughs])]
         
     ax.legend()
