@@ -122,34 +122,17 @@
             ]
         },
         {
-            "name": "Python Debugger: Meta-analysis",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "meta-analysis_processing.py",
-            "console": "integratedTerminal",
-            "args": [
-                "--dir", "/home/era536/Documents/Epoch/Data/null_analysis/data",
-                "--outputToOriginalFile",
-                //"--outputFile", "/home/era536/Documents/Epoch/Data/irb_scan_analysis/growth_rates.csv"
-                //"--growthRates",
-                "--energy",
-                //"--bigLabels",
-                //"--noTitle",
-                //"--runNumber", "65",
-                //"--debug",
-            ]
-        },
-        {
             "name": "Python Debugger: Energy Analysis",
             "type": "debugpy",
             "request": "launch",
             "program": "energy_analysis.py",
             "console": "integratedTerminal",
             "args": [
-                "--dir", "/home/era536/Documents/Epoch/Data/debug_cellWidths/6000ppc_analysis/data/",
+                "--dir", "/home/era536/Documents/Epoch/Data/irb_scan_analysis/data",
                 //"--dir", "/home/era536/Documents/Epoch/Data/null_analysis/data",
                 // "--irb",
-                "--electronHeating",
+                //"--electronHeating",
+                "--correlate",
             ]
         },
         {
@@ -209,11 +192,15 @@
             "justMyCode": false,
             "args": [
                 //"--dir", "/home/era536/Documents/Epoch/Data/irb_scan_highRes/run_22/",
-                "--dir", "/home/era536/Documents/Epoch/Data/irb_debug_15_65/more_macro/deltaF/run_15/",
+                "--dir", "/home/era536/Documents/Epoch/Data/irb_debug_15_65/more_macro/deltaF/run_65/",
                 "--field", "Magnetic_Field_Bz",
-                "--plotTk",
+                "--showPlots",
                 "--time", "10.0",
-                "--irb"
+                "--totalTimeWindow", "4.0",
+                "--fftTimeWindow", "0.25",
+                "--fftOverlap", "0.5",
+                "--maxK", "100.0",
+                "--evaluate",
             ]
         },
         {
@@ -224,7 +211,9 @@
             "console": "integratedTerminal",
             "args": [
                 "--dir", "/home/era536/Documents/Epoch/Data/irb_debug_15_65/dist_funcs/run_15/",
-                "--files", "0000", "0250", "0500", "0750", "1000"
+                "--files", "0000", "0250", "0500", "0750", "1000",
+                "--saveFolder", "/home/era536/Documents/for_discussion/2025.05.15/distribution_functions/",
+                //"--log",
             ]
         },
         {
@@ -234,7 +223,7 @@
             "program": "debugging.py",
             "console": "integratedTerminal",
             "args": [
-                "--dir", "/home/era536/Documents/Epoch/Data/irb_lowRes_alfvenic/"
+                "--dir", "/home/era536/Documents/Epoch/Data/irb_debug_15_65/more_macro/deltaF/run_65/"
             ]
         },
         {

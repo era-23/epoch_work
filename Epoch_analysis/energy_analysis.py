@@ -2,6 +2,7 @@ import glob
 from sdf_xarray import SDFPreprocess
 from pathlib import Path
 from scipy import constants
+import pandas as pd
 import matplotlib.pyplot as plt
 import epydeck
 import numpy as np
@@ -215,6 +216,124 @@ def analyse_electron_heating(analysisDirectory : Path):
     plt.tight_layout()
     plt.show()
 
+def correlate_cellWidth_energy_transer(analysisDirectory : Path, logColourbar : bool = False):
+
+    # Axes
+    rLe_cellWidth_ratio = []
+    beamFraction = []
+    B0_str = []
+    density = []
+
+    # Colour data
+    hasOverallFiLossBiGain = []
+    hasFiTroughBiPeak = []
+    bkgdIonChangeAtFastIonTrough_pct = []
+    fiTroughEnergy_pct = []
+    fiDelta_pct = []
+    biDelta_pct = []
+    netFiToBiDelta = []
+
+    dataFiles = glob.glob(str(analysisDirectory / "*.nc"))
+    
+    for simulation in dataFiles:
+
+        data = xr.open_datatree(
+            simulation,
+            engine="netcdf4"
+        )
+
+        # Independent vars
+        rLe_cellWidth_ratio.append(float(data.cellWidth_rLe/data.cellWidth_dL))
+        beamFraction.append(data.beamFraction)
+        B0_str.append(data.B0strength)
+        density.append(data.backgroundDensity)
+
+        # Dependent vars
+        energyStats = data["Energy"]
+        hasOverallFiLossBiGain.append(True if (not energyStats.hasOverallFastIonGain) and energyStats.hasOverallBkgdIonGain else False)
+        hasFiTroughBiPeak.append(True if energyStats["fastIonMeanEnergyDensity"].hasTroughs and energyStats["protonMeanEnergyDensity"].hasPeaks else False)
+        try:
+            bkgdIonChangeAtFastIonTrough_pct.append(energyStats.bkgdIonChangeAtFastIonTrough_pct)
+        except AttributeError:
+            bkgdIonChangeAtFastIonTrough_pct.append(0.0)
+        try:
+            fiTroughEnergy_pct.append(energyStats["fastIonMeanEnergyDensity"].troughValues_pct)
+        except AttributeError:
+            fiTroughEnergy_pct.append(0.0)
+        fiDelta = 100.0 * (energyStats.fastIonEnergyDensity_delta / energyStats.fastIonEnergyDensity_start)
+        fiDelta_pct.append(fiDelta)
+        biDelta = 100.0 * (energyStats.backgroundIonEnergyDensity_delta / energyStats.fastIonEnergyDensity_start)
+        biDelta_pct.append(biDelta)
+        netFiToBiDelta.append(biDelta - fiDelta)
+
+    permanentVars = {"e- Larmor radius : Debye L (cell width)" : rLe_cellWidth_ratio}
+    independentVars = {
+        "Beam fraction" : beamFraction, 
+        "B0 [T]" : B0_str, 
+        "Density [m^-3]" : density
+    }
+    categoricalDependentVars = {
+        "Has overall FI loss and BI gain" : hasOverallFiLossBiGain,
+        "Has FI trough and BI peak" : hasFiTroughBiPeak
+    }
+    continuousDependentVars = {
+        "BI energy delta at FI trough [% of FI energy]" : bkgdIonChangeAtFastIonTrough_pct,
+        "FI energy delta at trough [% of FI energy]" : fiTroughEnergy_pct,
+        "FI overall energy delta [% of FI energy]" : fiDelta_pct,
+        "BI overall energy delta [% of FI energy]" : biDelta_pct,
+        "Net energy transfer from FI to BI [% of FI energy]" : netFiToBiDelta
+    }
+
+    # Categorical dependent variables
+    for pointName, pointData in categoricalDependentVars.items():
+        for yAxisName, yData in permanentVars.items():
+            fig, axs = plt.subplots(1, 3, sharey=True, figsize=[12,8])
+            fig.suptitle(pointName)
+            fig.supylabel(yAxisName)
+            axCount = 0
+            for xAxisName, xData in independentVars.items():
+                df = pd.DataFrame({
+                    xAxisName : xData,
+                    yAxisName : yData,
+                    pointName : pointData
+                })
+                groups = df.groupby(pointName)
+                for label, group in groups:
+                    axs[axCount].scatter(group.T.loc[xAxisName], group.T.loc[yAxisName], marker='o', label=label)
+                axs[axCount].set_xlabel(xAxisName)
+                axs[axCount].legend()
+                if "fraction" in xAxisName.lower() or "density" in xAxisName.lower():
+                    axs[axCount].set_xscale('log')
+                axCount += 1
+            plt.show()
+            plt.close('all')
+
+    # Continuous dependent variables
+    for pointName, pointData in continuousDependentVars.items():
+        for yAxisName, yData in permanentVars.items():
+            fig, axs = plt.subplots(1, 3, sharey=True, figsize=[12,8])
+            fig.suptitle(pointName)
+            fig.supylabel(yAxisName)
+            axCount = 0
+            for xAxisName, xData in independentVars.items():
+                if logColourbar:
+                    im = axs[axCount].scatter(xData, yData, marker='o', c=pointData, cmap = "Spectral_r", norm='symlog')
+                else:
+                    im = axs[axCount].scatter(xData, yData, marker='o', c=pointData, cmap = "Spectral_r")
+                axs[axCount].set_xlabel(xAxisName)
+                if "fraction" in xAxisName.lower() or "density" in xAxisName.lower():
+                    axs[axCount].set_xscale('log')
+                axCount += 1
+            fig.colorbar(im, ax=axs.ravel().tolist())
+            plt.show()
+            plt.close('all')
+    
+    # fig.suptitle("Fast ion energy transfer")
+    # im = ax1.scatter(beamFraction, rLe_cellWidth_ratio, c=hasOverallFiLossBiGain, cmap="Reds")
+    # fig.colorbar(im, ax=ax1)
+    # ax2.scatter(B0_str, rLe_cellWidth_ratio, c=hasFiTroughBiPeak, cmap="Greens")
+    # ax3.scatter(density, rLe_cellWidth_ratio, c=bkgdIonChangeAtFastIonTrough_pct, cmap="Blues")
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser("parser")
@@ -229,6 +348,12 @@ if __name__ == "__main__":
         "--electronHeating",
         action="store_true",
         help="Analyse electron heating.",
+        required = False
+    )
+    parser.add_argument(
+        "--correlate",
+        action="store_true",
+        help="Correlate cell width with energy characteristics.",
         required = False
     )
     parser.add_argument(
@@ -261,5 +386,7 @@ if __name__ == "__main__":
 
     if args.electronHeating:
         analyse_electron_heating(args.dir)
+    elif args.correlate:
+        correlate_cellWidth_energy_transer(args.dir)
     else:
         calculate_energy(args.dir, args.irb, args.pct)

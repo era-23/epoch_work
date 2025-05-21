@@ -193,10 +193,10 @@ def create_omega_k_plots(
 
 def create_t_k_spectrum(
         originalFftSpectrum : xr.DataArray, 
-        statsFile : nc.Dataset,
-        maxK : float,
-        load : bool,
-        debug : bool
+        statsFile : nc.Dataset = None,
+        maxK : float = 100.0,
+        load : bool = True,
+        debug : bool = False
 ) -> xr.DataArray :
     
     tk_spec = originalFftSpectrum.where(originalFftSpectrum.frequency>0.0, 0.0)
@@ -231,8 +231,9 @@ def create_t_k_spectrum(
         print(f"Mean of t-k: {tk_mean}")
         print(f"Ratio of peak to mean in t-k: {tk_peak/tk_mean}")
 
-    tk_spec = tk_spec.sel(wavenumber=tk_spec.wavenumber<=maxK)
-    tk_spec = tk_spec.sel(wavenumber=tk_spec.wavenumber>=-maxK)
+    if maxK is not None:
+        tk_spec = tk_spec.sel(wavenumber=tk_spec.wavenumber<=maxK)
+        tk_spec = tk_spec.sel(wavenumber=tk_spec.wavenumber>=-maxK)
 
     if load:
         tk_spec = tk_spec.load()
@@ -243,11 +244,11 @@ def create_t_k_plot(
         tkSpectrum : xr.DataArray,
         field : str,
         field_unit : str,
-        saveDirectory : Path,
-        runName : str,
-        maxK : float,
-        log : bool,
-        display : bool):
+        saveDirectory : Path = None,
+        runName : str = None,
+        maxK : float = 100.0,
+        log : bool = False,
+        display : bool = False):
     
     print("Generating t-k plot....")
 
