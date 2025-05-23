@@ -468,7 +468,7 @@ def hosa_autobispectrum_2(signal : xr.DataArray, timePoint : float = None, direc
     
     if mask:
         # Lower triangle mask
-        lower_mask = np.tri(bispec.shape[0], bispec.shape[1], k=-1)
+        lower_mask = np.fliplr(np.tri(bispec.shape[0], bispec.shape[1], k=-1))
         bispec = np.ma.array(bispec, mask = lower_mask)
 
     return bispec, waxis * fs
@@ -487,7 +487,7 @@ def custom_autobispectrum(signal : xr.DataArray, timePoint : float = None, mask 
 
     return bispec, waxis * fs
 
-def manual_autobispectrum(signal : xr.DataArray, timePoint_tci : float = None, totalWindow_tci = 3.0, fftWindowSize_tci = 0.25, overlap = 0.5, maxK = None, mask : bool = True) -> np.ndarray:
+def manual_autobispectrum(signal : xr.DataArray, timePoint_tci : float = None, totalWindow_tci = 2.0, fftWindowSize_tci = 0.25, overlap = 0.5, maxK = None, mask : bool = True) -> np.ndarray:
     
     if len(signal.shape) > 1 and (signal.shape[0] != 1 or signal.shape[1] != 1):
         if timePoint_tci is None:
@@ -539,31 +539,41 @@ def manual_autobispectrum(signal : xr.DataArray, timePoint_tci : float = None, t
             # Remove zero-frequency component
             spec = spec.where(spec.wavenumber!=0.0, None)
             # Get t-k
-            spec = utils.create_t_k_spectrum(spec, maxK = maxK)
+            spec = utils.create_t_k_spectrum(spec, maxK = maxK, takeAbs = False)
             # spec = spec.fillna(0.0)
 
             # Build bispectrum by averaging FFT data around the time point
             if initBispec:
                 bispec = np.zeros((spec.shape[1], spec.shape[1]), dtype=complex)
+                initBispec = False
             
-            y = spec.mean(dim="time").to_numpy()
-            nfft = y.size
+            # y = spec.mean(dim="time").to_numpy()
+            y = spec.to_numpy()
+            nfft = spec.shape[1]
             # Create all combinations of k1 and k2
             k = np.arange(nfft)
             K1, K2 = np.meshgrid(k, k)
-            K3 = (K1 + K2) % nfft
+            K3 = K1 + K2
+
+            # Mask
+            k_mask = K3 < nfft
+            valid_K3 = np.where(k_mask, K3, 0)
+            Y3_conj = np.conj(y[:,valid_K3])
 
             # Use broadcasting to access X[k1], X[k2], X[k1 + k2]
-            bispec += y[K1] * y[K2] * np.conj(y[K3])
+            # b = y[:,K1] * y[:,K2] * Y3_conj
+            bispec += np.mean(y[:,K1] * y[:,K2] * Y3_conj, axis = 0)
+            bispec[np.logical_not(k_mask)] = 0.0
 
             count += 1
 
-        bispec = np.fft.fftshift(bispec) / count
+        # bispec = np.fft.fftshift(bispec) / count
+        bispec = bispec / count
         waxis = np.linspace(-maxK, maxK, bispec.shape[0])
 
     if mask:
         # Lower triangle mask
-        lower_mask = np.tri(bispec.shape[0], bispec.shape[1], k=-1)
+        lower_mask = np.fliplr(np.tri(bispec.shape[0], bispec.shape[1], k=-1))
         bispec = np.ma.array(bispec, mask = lower_mask)
 
     return bispec, waxis
@@ -736,7 +746,7 @@ def evaluate_single_signal(signal : xr.DataArray, timePoint : float, totalTimeWi
         plt.imshow(np.angle(hosa_bs_d_masked), extent=[-max_freq, max_freq, -max_freq, max_freq], origin="lower", cmap="plasma")
         plt.xlim(-100.0, 100.0)
         plt.ylim(-100.0, 100.0)
-        plt.title("HOSA bispectrum direct implementation -- phase spectrum at t = {timePoint}")
+        plt.title(f"HOSA bispectrum direct implementation -- phase spectrum at t = {timePoint}")
         plt.xlabel('Wavenumber $k_1$')
         plt.ylabel('Wavenumber $k_2$')
         plt.colorbar(label='Angle/rad')

@@ -6,6 +6,7 @@ import epydeck
 from pathlib import Path
 from plasmapy.formulary import lengths as ppl
 from plasmapy.formulary import speeds as pps
+from plasmapy.formulary import frequencies as ppf
 from astropy import units as u
 
 def debug_input_deck(directory : Path):
@@ -76,6 +77,35 @@ def debug_input_deck(directory : Path):
     print(f"Beam v (vpara)   = {'%.2e' % Decimal(vbeam)}")
     print(f"Intended v_perp/v_A = {'%.2e' % Decimal(v_perp_ratio)}")
     print(f"Actual v_perp/v_A   = {'%.2e' % Decimal(vring / alfven_velo)}")
+
+    my_Debye_length = np.sqrt(constants.epsilon_0 * constants.k * background_temp / background_density / constants.elementary_charge**2) * u.m
+    pp_Debye_length = ppl.Debye_length(background_temp, background_density / u.m**3)
+    print(f"My Debye length: {my_Debye_length}")
+    print(f"PP Debye length: {pp_Debye_length}")
+
+    cell_width = 0.0
+    if my_Debye_length.value <= combined_rLe.value:
+        print("Debye length is smaller, using this for cell width.")
+        cell_width = my_Debye_length
+    else:
+        print("Electron gyroradius is smaller, using this for cell width.")
+        cell_width = combined_rLe
+    print(f"Cell width: {cell_width}")
+    
+    num_cells = input_vals["num_cells"]
+    sim_L = num_cells * cell_width * u.m
+    print(f"Sim length : {sim_L}")
+    ion_gyroperiod_s = (2.0 * np.pi * u.rad) / ppf.gyrofrequency(b0_strength * u.T, "p+")
+    sim_L_vA_Tci = sim_L / (ion_gyroperiod_s * alfven_velo * (u.m / u.s))
+    print(f"Sim length in k units: {sim_L_vA_Tci}")
+    spatial_Nyquist = num_cells/(2.0 * sim_L_vA_Tci)
+    print(f"Spatial Nyquist frequency: {spatial_Nyquist}")
+    pixels_per_wavenumber = num_cells / (2.0 * spatial_Nyquist)
+    print(f"Pixels per wavenumber: {pixels_per_wavenumber}")
+
+    needed_ppk = 8.0
+    needed_num_cells = np.ceil((needed_ppk * ion_gyroperiod_s * alfven_velo) / cell_width).astype(int)
+    print(f"Minimum number of cells for ppk = {needed_ppk} is {needed_num_cells}")
 
     # all_variables = dir() 
   

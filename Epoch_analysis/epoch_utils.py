@@ -196,6 +196,7 @@ def create_t_k_spectrum(
         statsFile : nc.Dataset = None,
         maxK : float = 100.0,
         load : bool = True,
+        takeAbs : bool = True,
         debug : bool = False
 ) -> xr.DataArray :
     
@@ -206,21 +207,21 @@ def create_t_k_spectrum(
     tk_spec.loc[dict(wavenumber=0.0)] = original_zero_freq_amplitude # Restore original 0-freq amplitude
     tk_spec = xrft.xrft.ifft(tk_spec, dim="frequency")
     tk_spec = tk_spec.rename(freq_frequency="time")
-    tk_spec = np.abs(tk_spec)
+    abs_spec = np.abs(tk_spec)
 
     if statsFile is not None:
         # Log stats on spectrum
-        tk_sum = float(tk_spec.sum())
+        tk_sum = float(abs_spec.sum())
         statsFile.totalTkSpectralPower = tk_sum
 
-        tk_squared = float((np.abs(tk_spec)**2).sum())
-        parseval_tk = tk_squared  * tk_spec.coords['wavenumber'].spacing * tk_spec.coords['time'].spacing
+        tk_squared = float((np.abs(abs_spec)**2).sum())
+        parseval_tk = tk_squared  * abs_spec.coords['wavenumber'].spacing * abs_spec.coords['time'].spacing
         statsFile.parsevalTk = parseval_tk
         
-        tk_peak = float(np.nanmax(tk_spec))
+        tk_peak = float(np.nanmax(abs_spec))
         statsFile.peakTkSpectralPower = tk_peak
         
-        tk_mean = float(tk_spec.mean())
+        tk_mean = float(abs_spec.mean())
         statsFile.meanTkSpectralPower = tk_mean
 
         statsFile.peakTkSpectralPowerRatio = tk_peak/tk_mean
@@ -230,6 +231,9 @@ def create_t_k_spectrum(
         print(f"Max peak in t-k: {tk_peak}")
         print(f"Mean of t-k: {tk_mean}")
         print(f"Ratio of peak to mean in t-k: {tk_peak/tk_mean}")
+
+    if takeAbs:
+        tk_spec = abs_spec
 
     if maxK is not None:
         tk_spec = tk_spec.sel(wavenumber=tk_spec.wavenumber<=maxK)
