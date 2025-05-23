@@ -511,6 +511,15 @@ def manual_autobispectrum(signal : xr.DataArray, timePoint_tci : float = None, t
         waxis = np.linspace(-fs/2.0, fs/2.0, bispec.shape[0])
     else:
         
+        # Take fft
+        spec : xr.DataArray = xrft.xrft.fft(signal, true_amplitude=True, true_phase=True, window=None)
+        spec = spec.rename(freq_time="frequency", freq_x_space="wavenumber")
+        # Remove zero-frequency component
+        spec = spec.where(spec.wavenumber!=0.0, None)
+        # Get t-k
+        spec = utils.create_t_k_spectrum(spec, maxK = maxK, takeAbs = False)
+        # spec = spec.fillna(0.0)
+
         # Work out how many indices in each window
         times = np.array(signal.coords["time"])
         windowSize_indices = int((signal.coords["time"].size / signal.coords["time"][-1]) * fftWindowSize_tci)
@@ -523,33 +532,23 @@ def manual_autobispectrum(signal : xr.DataArray, timePoint_tci : float = None, t
         startIdx = windowStart_idx
         endIdx = startIdx + windowSize_indices
         while endIdx < windowEnd_idx:
-            w = signal.isel(time=slice(startIdx, endIdx))
+            w = spec.isel(time=slice(startIdx, endIdx))
             signalWindows.append(w)
             startIdx = (endIdx + 1) - overlap_indices
             endIdx = startIdx + windowSize_indices
 
-        print("woh")
-
         initBispec = True
         count = 0
         for window in signalWindows:
-            # Take fft
-            spec : xr.DataArray = xrft.xrft.fft(window, true_amplitude=True, true_phase=True, window=None)
-            spec = spec.rename(freq_time="frequency", freq_x_space="wavenumber")
-            # Remove zero-frequency component
-            spec = spec.where(spec.wavenumber!=0.0, None)
-            # Get t-k
-            spec = utils.create_t_k_spectrum(spec, maxK = maxK, takeAbs = False)
-            # spec = spec.fillna(0.0)
-
+            
             # Build bispectrum by averaging FFT data around the time point
             if initBispec:
-                bispec = np.zeros((spec.shape[1], spec.shape[1]), dtype=complex)
+                bispec = np.zeros((window.shape[1], window.shape[1]), dtype=complex)
                 initBispec = False
             
             # y = spec.mean(dim="time").to_numpy()
-            y = spec.to_numpy()
-            nfft = spec.shape[1]
+            y = window.to_numpy()
+            nfft = window.shape[1]
             # Create all combinations of k1 and k2
             k = np.arange(nfft)
             K1, K2 = np.meshgrid(k, k)
