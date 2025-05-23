@@ -195,7 +195,7 @@
                 "--dir", "/home/era536/Documents/Epoch/Data/irb_debug_15_65/more_macro/deltaF/run_65/",
                 "--field", "Magnetic_Field_Bz",
                 "--showPlots",
-                "--time", "10.0",
+                "--time", "2.0",
                 "--totalTimeWindow", "2.0",
                 "--fftTimeWindow", "0.2",
                 "--fftOverlap", "0.5",
