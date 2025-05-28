@@ -246,7 +246,7 @@
                 "--skipIndices", "30",
                 //"--runNumber", "15",
                 //"--saveGammaPlots",
-                "--displayPlots",
+                //"--displayPlots",
                 //"--energy",
                 "--createPlots",
                 "--bigLabels",

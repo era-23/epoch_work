@@ -447,11 +447,11 @@ def bispectral_analysis(
     minis_waxis = waxis[0]
     fig, axs = plt.subplots(figsize=(12, 12))
     img = axs.imshow(np.abs(bispec), extent=[minis_waxis, maxis_waxis, minis_waxis, maxis_waxis], origin="lower", cmap="plasma")
-    axs.set_title(f"{field} autobispectrum t = {timeCentre}" if timePoint_tci is not None else f"{field} autobispectrum (full time window)")
+    axs.set_title(f"{field} autobispectrum t = {timeCentre}" if timePoint_tci is not None else f"{field} autobispectrum (full time window)", pad=20.0)
     axs.set_xlabel('Wavenumber $k_1$')
     axs.set_ylabel('Wavenumber $k_2$')
     axs.grid(True)
-    fig.colorbar(img, ax=axs, label='Magnitude', shrink = 0.8)
+    fig.colorbar(img, ax=axs, label='Magnitude', shrink = 0.7)
     fig.tight_layout()
     if saveDirectory is not None:
         filename = Path(f'{runName}_{field.replace("_", "")}_autobispectrum_t{timeCentre:.3f}_maxK-{maxK if maxK is not None else "all"}.png')
@@ -463,11 +463,12 @@ def bispectral_analysis(
     # Log autobispectrum
     fig, axs = plt.subplots(figsize=(12, 12))
     img = axs.imshow(np.log(np.abs(bispec)), extent=[minis_waxis, maxis_waxis, minis_waxis, maxis_waxis], origin="lower", cmap="plasma")
-    axs.set_title(f"Log {field} autobispectrum t = {timeCentre}" if timePoint_tci is not None else f"Log {field} autobispectrum (full time window)")
+    axs.set_title(f"Log {field} autobispectrum t = {timeCentre}" if timePoint_tci is not None else f"Log {field} autobispectrum (full time window)", pad=20.0)
     axs.set_xlabel('Wavenumber $k_1$')
     axs.set_ylabel('Wavenumber $k_2$')
     axs.grid(True)
-    fig.colorbar(img, ax=axs, label='Log magnitude', shrink = 0.8)
+    fig.colorbar(img, ax=axs, label='Log magnitude', shrink = 0.7)
+    fig.tight_layout()
     if saveDirectory is not None:
         filename = Path(f'{runName}_log_{field.replace("_", "")}_autobispectrum_t{timeCentre:.3f}_maxK-{maxK if maxK is not None else "all"}.png')
         fig.savefig(str(saveDirectory / filename))
@@ -481,11 +482,12 @@ def bispectral_analysis(
     minis_waxis = waxis[0]
     fig, axs = plt.subplots(figsize=(12, 12))
     img = axs.imshow(np.abs(bicoh), extent=[minis_waxis, maxis_waxis, minis_waxis, maxis_waxis], origin="lower", cmap="plasma")
-    axs.set_title(f"{field} auto-bicoherence{r'$^2$'} t = {timeCentre}" if timePoint_tci is not None else f"{field} auto-bicoherence{r'$^2$'} (full time window)")
+    axs.set_title(f"{field} auto-bicoherence{r'$^2$'} t = {timeCentre}" if timePoint_tci is not None else f"{field} auto-bicoherence{r'$^2$'} (full time window)", pad=20.0)
     axs.set_xlabel('Wavenumber $k_1$')
     axs.set_ylabel('Wavenumber $k_2$')
     axs.grid(True)
-    fig.colorbar(img, ax=axs, label='Magnitude', shrink = 0.8)
+    fig.colorbar(img, ax=axs, label='Magnitude', shrink = 0.7)
+    fig.tight_layout()
     if saveDirectory is not None:
         filename = Path(f'{runName}_{field.replace("_", "")}_autobicoherence_t{timeCentre:.3f}_maxK-{maxK if maxK is not None else "all"}.png')
         fig.savefig(str(saveDirectory / filename))
