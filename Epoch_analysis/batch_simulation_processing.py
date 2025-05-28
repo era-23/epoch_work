@@ -24,28 +24,24 @@ import xrft  # noqa: E402
 global debug
 
 def initialise_folder_structure(
-        dataDirectory : Path,
+        outputDirectory : Path,
         fields : list,
         create : bool = False,
         energy : bool = True,
-        plotGrowthRates : bool = False,
-        outFileDirectory : Path = None
-) -> tuple[Path, Path, Path]:
+        plotGrowthRates : bool = False
+) -> tuple[Path, Path]:
     
-    if outFileDirectory is None:
-        outFileDirectory = dataDirectory / "analysis"
-   
-    dataFolder = outFileDirectory / "data"
-    plotsFolder = outFileDirectory / "plots"
+    dataFolder = outputDirectory / "data"
+    plotsFolder = outputDirectory / "plots"
                 
     if create:
 
         if debug:
-            print(f"Creating folder structure in {outFileDirectory}....")
+            print(f"Creating folder structure in {outputDirectory}....")
 
-        if os.path.exists(outFileDirectory):
-            sh.rmtree(outFileDirectory)
-        os.mkdir(outFileDirectory)
+        if os.path.exists(outputDirectory):
+            sh.rmtree(outputDirectory)
+        os.mkdir(outputDirectory)
         os.mkdir(dataFolder)
         os.mkdir(plotsFolder)
 
@@ -68,10 +64,13 @@ def calculate_simulation_metadata(
         inputDeck : dict,
         dataset,
         outputNcRoot : nc.Dataset,
-        beam = True,
         fastSpecies : str = 'p+',
         bkgdSpecies : str = 'p+') -> tuple[float, float]:
     
+    beam = False
+    if "frac_beam" in inputDeck["constant"].keys():
+        beam =  inputDeck["constant"]["frac_beam"] > 0.0
+
     # Check parameters in SI
     num_t = int(inputDeck['constant']['num_time_samples'])
     outputNcRoot.numTimePoints = num_t
@@ -211,9 +210,12 @@ def run_energy_analysis(
     savePlotsFolder : Path,
     statsFile : nc.Dataset,
     displayPlots : bool = False,
-    noTitle : bool = False,
-    beam : bool = True
+    noTitle : bool = False
 ):
+    beam = False
+    if "frac_beam" in inputDeck["constant"].keys():
+        beam =  inputDeck["constant"]["frac_beam"] > 0.0
+
     # Create stats group if not already existing
     if "Energy" not in statsFile.groups.keys():
         energyStats = statsFile.createGroup("Energy")
@@ -570,14 +572,10 @@ def process_simulation_batch(
         maxK : float = None,
         maxW : float = None,
         growthRates : bool = True,
-        maxResPct : float = 0.1,
-        maxResidual : float = 0.1, # IMPLEMENT THIS ONCE BASELINED
+        bispectra : bool = True,
         gammaWindowPctMin : float = 5.0,
         gammaWindowPctMax : float = 15.0,
         gammaWindowSkipIndices : float = 5,
-        minSignalPower : float = 0.08, # IMPLEMENT THIS ONCE BASELINED
-        takeLog = False, 
-        beam = True,
         fastSpecies : str = 'p+',
         bkgdSpecies : str = 'p+',
         bigLabels : bool = False,
@@ -662,14 +660,14 @@ def process_simulation_batch(
         statsFilepath = os.path.join(dataFolder, statsFilename)
         statsRoot = nc.Dataset(statsFilepath, "a", format="NETCDF4")
 
-        ion_gyroperiod, alfven_velocity = calculate_simulation_metadata(inputDeck, ds, statsRoot, beam, fastSpecies, bkgdSpecies)
+        ion_gyroperiod, alfven_velocity = calculate_simulation_metadata(inputDeck, ds, statsRoot, fastSpecies, bkgdSpecies)
 
         ds = normalise_data(ds, ion_gyroperiod, alfven_velocity)
 
         # Energy analysis
         if energy:
             energyPlotFolder = plotsFolder / "energy"
-            run_energy_analysis(ds, inputDeck, simFolder.name, energyPlotFolder, statsRoot, displayPlots = displayPlots, noTitle=noTitle, beam = beam)
+            run_energy_analysis(ds, inputDeck, simFolder.name, energyPlotFolder, statsRoot, displayPlots = displayPlots, noTitle=noTitle)
 
         if "all" in fields:
             fields = [str(f) for f in ds.data_vars.keys() if str(f).startswith("Electric_Field") or str(f).startswith("Magnetic_Field")]
@@ -707,7 +705,7 @@ def process_simulation_batch(
             del(delta)
             del(squared_delta)
 
-            if createPlots or growthRates:
+            if createPlots or growthRates or bispectra:
                 # Take FFT
                 original_spec : xr.DataArray = xrft.xrft.fft(ds[field], true_amplitude=True, true_phase=True, window=None)
                 original_spec = original_spec.rename(freq_time="frequency", freq_x_space="wavenumber")
@@ -718,14 +716,16 @@ def process_simulation_batch(
 
                 # Dispersion relations
                 if createPlots:
-                    e_utils.create_omega_k_plots(original_spec, fieldStats, field, field_unit, plotFieldFolder, simFolder.name, inputDeck, bkgdSpecies, fastSpecies, maxK=maxK, maxW=maxW, log=takeLog, display=displayPlots, debug=debug)
-                    e_utils.create_t_k_plot(tk_spec, field, field_unit, plotFieldFolder, simFolder.name, maxK, takeLog, displayPlots)
+                    e_utils.create_omega_k_plots(original_spec, fieldStats, field, field_unit, plotFieldFolder, simFolder.name, inputDeck, bkgdSpecies, fastSpecies, maxK=maxK, maxW=maxW, display=displayPlots, debug=debug)
+                    e_utils.create_t_k_plot(tk_spec, field, field_unit, plotFieldFolder, simFolder.name, maxK, displayPlots)
+
+                if bispectra:
+                    e_utils.bispectral_analysis(tk_spec, simFolder.name, field, displayPlots, plotFieldFolder, maxK = maxK)
 
                 # Linear growth rates
                 if growthRates:
                     e_utils.process_growth_rates(tk_spec, fieldStats, plotFieldFolder, simFolder, field, gammaWindowPctMin, gammaWindowPctMax, gammaWindowSkipIndices, saveGrowthRatePlots, numGrowthRatesToPlot, displayPlots, noTitle, debug)
     
-
         statsRoot.close()
         ds.close()
             
@@ -758,6 +758,12 @@ if __name__ == "__main__":
         "--growthRates",
         action="store_true",
         help="Calculate growth rates.",
+        required = False
+    )
+    parser.add_argument(
+        "--bispectra",
+        action="store_true",
+        help="Plot bispectra and bicoherence across the entire simulation.",
         required = False
     )
     parser.add_argument(
@@ -810,24 +816,6 @@ if __name__ == "__main__":
         type=int
     )
     parser.add_argument(
-        "--createFolders",
-        action="store_true",
-        help="Initialise folder structure.",
-        required = False
-    )
-    parser.add_argument(
-        "--process",
-        action="store_true",
-        help="Process simulation(s).",
-        required = False
-    )
-    parser.add_argument(
-        "--takeLog",
-        action="store_true",
-        help="Take logarithm of field data for plotting.",
-        required = False
-    )
-    parser.add_argument(
         "--createPlots",
         action="store_true",
         help="Create dispersion plots and save to file.",
@@ -864,12 +852,6 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
-        "--beam",
-        action="store_true",
-        help="Account for a ring beam of fast ions.",
-        required = False
-    )
-    parser.add_argument(
         "--debug",
         action="store_true",
         help="Print debugging statements.",
@@ -880,29 +862,45 @@ if __name__ == "__main__":
 
     debug = args.debug
 
-    dataFolder, plotsFolder = initialise_folder_structure(args.dir, args.fields, args.createFolders, args.energy, args.saveGammaPlots, args.outputDir)
+    # Check outputDir
+    createFolders = True
+    if args.outputDir is not None:
+        if Path.is_dir(args.outputDir):
+            if os.path.exists(os.path.join(args.outputDir, 'data')):
+                print(f"Existing analysis folder found at '{args.outputDir}'")
+                createFolders = False
+            else:
+                createFolders = True
+        else:
+            createFolders = True
 
-    if args.process:
-        
-        if args.runNumber is not None:
-            args.dir = Path(os.path.join(args.dir, f"run_{args.runNumber}"))
+        outputDirectory = args.outputDir
+    else:
+        outputDirectory = args.dir / Path("analysis")
+        os.mkdir(outputDirectory)
 
-        process_simulation_batch(
-            directory=args.dir, 
-            dataFolder=dataFolder,
-            plotsFolder=plotsFolder,
-            fields=args.fields if args.fields is not None else [],
-            maxK=args.maxK,
-            maxW=args.maxW,
-            growthRates=args.growthRates,
-            gammaWindowPctMin=args.minGammaFitWindow,
-            gammaWindowPctMax=args.maxGammaFitWindow,
-            numGrowthRatesToPlot=args.numGrowthRatesToPlot, 
-            takeLog=args.takeLog, 
-            beam = args.beam,
-            createPlots=args.createPlots, 
-            displayPlots=args.displayPlots,
-            bigLabels=args.bigLabels,
-            noTitle=args.noTitle,
-            saveGrowthRatePlots=args.saveGammaPlots,
-            energy=args.energy)
+    print(f"Using analysis folder at '{outputDirectory}'")
+
+    dataFolder, plotsFolder = initialise_folder_structure(outputDirectory, args.fields, createFolders, args.energy, args.saveGammaPlots)
+
+    if args.runNumber is not None:
+        args.dir = Path(os.path.join(args.dir, f"run_{args.runNumber}"))
+
+    process_simulation_batch(
+        directory=args.dir, 
+        dataFolder=dataFolder,
+        plotsFolder=plotsFolder,
+        fields=args.fields if args.fields is not None else [],
+        maxK=args.maxK,
+        maxW=args.maxW,
+        growthRates=args.growthRates,
+        bispectra = args.bispectra,
+        gammaWindowPctMin=args.minGammaFitWindow,
+        gammaWindowPctMax=args.maxGammaFitWindow,
+        numGrowthRatesToPlot=args.numGrowthRatesToPlot, 
+        createPlots=args.createPlots,
+        displayPlots=args.displayPlots,
+        bigLabels=args.bigLabels,
+        noTitle=args.noTitle,
+        saveGrowthRatePlots=args.saveGammaPlots,
+        energy=args.energy)

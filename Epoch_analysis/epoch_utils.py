@@ -94,7 +94,6 @@ def create_omega_k_plots(
         fastSpecies : str,
         maxK : float,
         maxW : float,
-        log : bool,
         display : bool,
         debug):
 
@@ -136,7 +135,7 @@ def create_omega_k_plots(
     axs.grid(which='both', axis='x')
     axs.set_xlabel(r"Frequency [$\omega_{ci}$]")
     axs.set_ylabel(f"Sum of power in {field} over all k [{field_unit}]")
-    filename = Path(f'{runName}_{field.replace("_", "")}_powerByOmega_log-{log}_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
+    filename = Path(f'{runName}_{field.replace("_", "")}_powerByOmega_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
     fig.savefig(str(saveDirectory / filename))
     if display:
         plt.show()
@@ -151,21 +150,31 @@ def create_omega_k_plots(
     axs.set_xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
     omega = r'$\omega_{ci}$'
     axs.set_ylabel(f"Sum of power in {field} over all {omega} [{field_unit}]")
-    filename = Path(f'{runName}_{field.replace("_", "")}_powerByK_log-{log}_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
+    filename = Path(f'{runName}_{field.replace("_", "")}_powerByK_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
     fig.savefig(str(saveDirectory / filename))
     if display:
         plt.show()
         plt.close("all")
 
-    if log:
-        spec = np.log(spec)
-
     # Full dispersion relation for positive omega
     fig, axs = plt.subplots(figsize=(15, 10))
-    spec.plot(ax=axs, cbar_kwargs={'label': f'Spectral power in {field} [{field_unit}]' if not log else f'Log of spectral power in {field}'}, cmap='plasma')
+    spec.plot(ax=axs, cbar_kwargs={'label': f'Spectral power in {field} [{field_unit}]'}, cmap='plasma')
     axs.set_ylabel(r"Frequency [$\omega_{ci}$]")
     axs.set_xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
-    filename = Path(f'{runName}_{field.replace("_", "")}_wk_log-{log}_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
+    filename = Path(f'{runName}_{field.replace("_", "")}_wk_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
+    fig.savefig(str(saveDirectory / filename))
+    if display:
+        plt.show()
+        plt.close("all")
+
+    log_spec = np.log(spec)
+
+    # Full dispersion relation for positive omega (log)
+    fig, axs = plt.subplots(figsize=(15, 10))
+    log_spec.plot(ax=axs, cbar_kwargs={'label': f'Log of spectral power in {field}'}, cmap='plasma')
+    axs.set_ylabel(r"Frequency [$\omega_{ci}$]")
+    axs.set_xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
+    filename = Path(f'{runName}_{field.replace("_", "")}_wk_log_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
     fig.savefig(str(saveDirectory / filename))
     if display:
         plt.show()
@@ -174,7 +183,7 @@ def create_omega_k_plots(
     # Positive omega/positive k with vA and lower hybrid frequency
     fig, axs = plt.subplots(figsize=(15, 10))
     spec = spec.sel(wavenumber=spec.wavenumber>0.0)
-    spec.plot(ax=axs, cbar_kwargs={'label': f'Spectral power in {field} [{field_unit}]' if not log else f'Log of spectral power in {field}'}, cmap='plasma')
+    spec.plot(ax=axs, cbar_kwargs={'label': f'Spectral power in {field} [{field_unit}]'}, cmap='plasma')
     axs.plot(spec.coords['wavenumber'].data, spec.coords['wavenumber'].data, 'w--', label=r'$V_A$ branch')
     B0 = inputDeck['constant']['b0_strength']
     bkgd_number_density = float(inputDeck['constant']['background_density'])
@@ -183,20 +192,35 @@ def create_omega_k_plots(
     axs.legend(loc='upper left')
     axs.set_ylabel(r"Frequency [$\omega_{ci}$]")
     axs.set_xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
-    filename = Path(f'{runName}_{field.replace("_", "")}_wk_positiveK_log-{log}_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
+    filename = Path(f'{runName}_{field.replace("_", "")}_wk_positiveK_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
+    fig.savefig(str(saveDirectory / filename))
+    if display:
+        plt.show()
+        plt.close("all")
+
+    # Positive omega/positive k with vA and lower hybrid frequency (log)
+    fig, axs = plt.subplots(figsize=(15, 10))
+    log_spec = log_spec.sel(wavenumber=log_spec.wavenumber>0.0)
+    log_spec.plot(ax=axs, cbar_kwargs={'label': f'Log of spectral power in {field}'}, cmap='plasma')
+    axs.plot(log_spec.coords['wavenumber'].data, log_spec.coords['wavenumber'].data, 'w--', label=r'$V_A$ branch')
+    axs.axhline(y = wLH_cyclo, color='white', linestyle=':', label=r'Lower hybrid frequency')
+    axs.legend(loc='upper left')
+    axs.set_ylabel(r"Frequency [$\omega_{ci}$]")
+    axs.set_xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
+    filename = Path(f'{runName}_{field.replace("_", "")}_wk_positiveK_log_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
     fig.savefig(str(saveDirectory / filename))
     if display:
         plt.show()
         plt.close("all")
     
     del(spec)
+    del(log_spec)
 
 def create_t_k_spectrum(
         originalFftSpectrum : xr.DataArray, 
         statsFile : nc.Dataset = None,
         maxK : float = 100.0,
         load : bool = True,
-        takeAbs : bool = True,
         debug : bool = False
 ) -> xr.DataArray :
     
@@ -232,9 +256,6 @@ def create_t_k_spectrum(
         print(f"Mean of t-k: {tk_mean}")
         print(f"Ratio of peak to mean in t-k: {tk_peak/tk_mean}")
 
-    if takeAbs:
-        tk_spec = abs_spec
-
     if maxK is not None:
         tk_spec = tk_spec.sel(wavenumber=tk_spec.wavenumber<=maxK)
         tk_spec = tk_spec.sel(wavenumber=tk_spec.wavenumber>=-maxK)
@@ -251,31 +272,227 @@ def create_t_k_plot(
         saveDirectory : Path = None,
         runName : str = None,
         maxK : float = 100.0,
-        log : bool = False,
         display : bool = False):
     
     print("Generating t-k plot....")
 
-    tkSpectrum = np.abs(tkSpectrum)
-    if log:
-        tkSpectrum = np.log(tkSpectrum)
     if maxK is not None:
-        tkSpectrum = tkSpectrum.sel(wavenumber=tkSpectrum.wavenumber<=maxK)
-        tkSpectrum = tkSpectrum.sel(wavenumber=tkSpectrum.wavenumber>=-maxK)
-
+        tkSpec_plot = tkSpectrum.sel(wavenumber=tkSpectrum.wavenumber<=maxK)
+        tkSpec_plot = tkSpec_plot.sel(wavenumber=tkSpec_plot.wavenumber>=-maxK)
+    tkSpec_plot = np.abs(tkSpec_plot)
+    tkSpec_plot_log = np.log(tkSpec_plot)
+    
     # Time-wavenumber
     fig, axs = plt.subplots(figsize=(15, 10))
-    tkSpectrum.plot(ax=axs, x = "wavenumber", y = "time", cbar_kwargs={'label': f'Spectral power in {field} [{field_unit}]' if not log else f'Log of spectral power in {field}'}, cmap='plasma')
+    tkSpec_plot.plot(ax=axs, x = "wavenumber", y = "time", cbar_kwargs={'label': f'Spectral power in {field} [{field_unit}]'}, cmap='plasma')
     axs.grid()
     axs.set_xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
     axs.set_ylabel(r"Time [$\tau_{ci}$]")
     if saveDirectory is not None:
-        filename = Path(f'{runName}_{field.replace("_", "")}_tk_log-{log}_maxK-{maxK if maxK is not None else "all"}.png')
+        filename = Path(f'{runName}_{field.replace("_", "")}_tk_maxK-{maxK if maxK is not None else "all"}.png')
         fig.savefig(str(saveDirectory / filename))
     if display:
         plt.show()
     plt.close('all')
 
+    # Time-wavenumber (log)
+    fig, axs = plt.subplots(figsize=(15, 10))
+    tkSpec_plot_log.plot(ax=axs, x = "wavenumber", y = "time", cbar_kwargs={'label': f'Log of spectral power in {field}'}, cmap='plasma')
+    axs.grid()
+    axs.set_xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
+    axs.set_ylabel(r"Time [$\tau_{ci}$]")
+    if saveDirectory is not None:
+        filename = Path(f'{runName}_{field.replace("_", "")}_tk_log_maxK-{maxK if maxK is not None else "all"}.png')
+        fig.savefig(str(saveDirectory / filename))
+    if display:
+        plt.show()
+    plt.close('all')
+
+def create_autobispectrum(
+        signalWindows : list, 
+        maxK = None, 
+        mask : bool = True
+):
+    initBispec = True
+    count = 0
+    for window in signalWindows:
+        
+        # Build bispectrum by averaging FFT data around the time point
+        if initBispec:
+            bispec = np.zeros((window.shape[1], window.shape[1]), dtype=complex)
+            initBispec = False
+        
+        # y = spec.mean(dim="time").to_numpy()
+        y = window.to_numpy()
+        nfft = window.shape[1]
+        # Create all combinations of k1 and k2
+        k = np.arange(nfft)
+        K1, K2 = np.meshgrid(k, k)
+        K3 = K1 + K2
+
+        # Mask
+        k_mask = K3 < nfft
+        valid_K3 = np.where(k_mask, K3, 0)
+        Y3_conj = np.conj(y[:,valid_K3])
+
+        # Use broadcasting to access X[k1], X[k2], X[k1 + k2]
+        # b = y[:,K1] * y[:,K2] * Y3_conj
+        bispec += np.mean(y[:,K1] * y[:,K2] * Y3_conj, axis = 0)
+        bispec[np.logical_not(k_mask)] = 0.0
+
+        count += 1
+
+    # bispec = np.fft.fftshift(bispec) / count
+    bispec = bispec / count
+    waxis = np.linspace(-maxK, maxK, bispec.shape[0])
+
+    if mask:
+        # Lower triangle mask
+        lower_mask = np.fliplr(np.tri(bispec.shape[0], bispec.shape[1], k=-1))
+        bispec = np.ma.array(bispec, mask = lower_mask)
+
+    return bispec, waxis
+    
+def create_autobicoherence(
+        signalWindows : list, 
+        maxK = None, 
+        mask : bool = True
+):
+    initBicoh = True
+    count = 0
+    for window in signalWindows:
+        
+        # Build bispectrum by averaging FFT data around the time point
+        if initBicoh:
+            bicoh = np.zeros((window.shape[1], window.shape[1]), dtype=complex)
+            initBicoh = False
+        
+        # y = spec.mean(dim="time").to_numpy()
+        y = window.to_numpy()
+        nfft = window.shape[1]
+        # Create all combinations of k1 and k2
+        k = np.arange(nfft)
+        K1, K2 = np.meshgrid(k, k)
+        K3 = K1 + K2
+
+        # Mask
+        k_mask = K3 < nfft
+        valid_K3 = np.where(k_mask, K3, 0)
+        Y3_conj = np.conj(y[:,valid_K3])
+
+        # Use broadcasting to access X[k1], X[k2], X[k1 + k2]
+        # b = y[:,K1] * y[:,K2] * Y3_conj
+        bicoh_top = np.abs(np.mean(y[:,K1] * y[:,K2] * Y3_conj, axis = 0))**2
+        # b1 = np.abs(y[:,K1] * y[:,K2])**2
+        # b2 = np.abs(Y3_conj)**2
+        bicoh_bottom = np.mean(np.abs(y[:,K1] * y[:,K2])**2, axis=0) * np.mean(np.abs(Y3_conj)**2, axis=0)
+        bicoh += bicoh_top / bicoh_bottom
+
+        count += 1
+
+    # bispec = np.fft.fftshift(bispec) / count
+    bicoh = bicoh / count
+    waxis = np.linspace(-maxK, maxK, bicoh.shape[0])
+
+    if mask:
+        # Lower triangle mask
+        lower_mask = np.fliplr(np.tri(bicoh.shape[0], bicoh.shape[1], k=-1))
+        bicoh = np.ma.array(bicoh, mask = lower_mask)
+
+    return bicoh, waxis
+
+def bispectral_analysis(
+        tkSpectrum : xr.DataArray, 
+        runName : str,
+        field : str,
+        display : bool = False,
+        saveDirectory : Path = None,
+        timePoint_tci : float = None, 
+        totalWindow_tci = 2.0, 
+        fftWindowSize_tci = 0.25, 
+        overlap = 0.5, 
+        maxK = None, 
+        mask : bool = True
+):
+    print("Doing bispectral analysis....")
+
+    times = np.array(tkSpectrum.coords["time"])
+
+    timeCentre = timePoint_tci
+    if timePoint_tci is None:
+        timeCentre = times[len(times)//2]
+        totalWindow_tci = np.floor(times[-1])
+        fftWindowSize_tci = 0.25
+        overlap = 0.25
+
+    # Work out how many indices in each window and window spectrum
+    windowSize_indices = int((times.size / times[-1]) * fftWindowSize_tci)
+    overlap_indices = int(np.round(overlap * windowSize_indices))
+    windowStart_tci = timeCentre - (0.5 * totalWindow_tci)
+    windowStart_idx = np.where(abs(times-windowStart_tci)==abs(times-windowStart_tci).min())[0][0]
+    windowEnd_tci = timeCentre + (0.5 * totalWindow_tci)
+    windowEnd_idx = np.where(abs(times-windowEnd_tci)==abs(times-windowEnd_tci).min())[0][0]
+    signalWindows = []
+    startIdx = windowStart_idx
+    endIdx = startIdx + windowSize_indices
+    while endIdx < windowEnd_idx:
+        w = tkSpectrum.isel(time=slice(startIdx, endIdx))
+        signalWindows.append(w)
+        startIdx = (endIdx + 1) - overlap_indices
+        endIdx = startIdx + windowSize_indices
+
+    # Autobispectrum
+    bispec, waxis = create_autobispectrum(signalWindows, maxK, mask)
+    maxis_waxis = waxis[-1]
+    minis_waxis = waxis[0]
+    fig, axs = plt.subplots(figsize=(12, 12))
+    img = axs.imshow(np.abs(bispec), extent=[minis_waxis, maxis_waxis, minis_waxis, maxis_waxis], origin="lower", cmap="plasma")
+    axs.set_title(f"{field} autobispectrum t = {timeCentre}" if timePoint_tci is not None else f"{field} autobispectrum (full time window)")
+    axs.set_xlabel('Wavenumber $k_1$')
+    axs.set_ylabel('Wavenumber $k_2$')
+    axs.grid(True)
+    fig.colorbar(img, ax=axs, label='Magnitude', shrink = 0.8)
+    fig.tight_layout()
+    if saveDirectory is not None:
+        filename = Path(f'{runName}_{field.replace("_", "")}_autobispectrum_t{timeCentre:.3f}_maxK-{maxK if maxK is not None else "all"}.png')
+        fig.savefig(str(saveDirectory / filename))
+    if display:
+        plt.show()
+    plt.close('all')
+
+    # Log autobispectrum
+    fig, axs = plt.subplots(figsize=(12, 12))
+    img = axs.imshow(np.log(np.abs(bispec)), extent=[minis_waxis, maxis_waxis, minis_waxis, maxis_waxis], origin="lower", cmap="plasma")
+    axs.set_title(f"Log {field} autobispectrum t = {timeCentre}" if timePoint_tci is not None else f"Log {field} autobispectrum (full time window)")
+    axs.set_xlabel('Wavenumber $k_1$')
+    axs.set_ylabel('Wavenumber $k_2$')
+    axs.grid(True)
+    fig.colorbar(img, ax=axs, label='Log magnitude', shrink = 0.8)
+    if saveDirectory is not None:
+        filename = Path(f'{runName}_log_{field.replace("_", "")}_autobispectrum_t{timeCentre:.3f}_maxK-{maxK if maxK is not None else "all"}.png')
+        fig.savefig(str(saveDirectory / filename))
+    if display:
+        plt.show()
+    plt.close('all')
+
+    # Autobicoherence
+    bicoh, waxis = create_autobicoherence(signalWindows, maxK, mask)
+    maxis_waxis = waxis[-1]
+    minis_waxis = waxis[0]
+    fig, axs = plt.subplots(figsize=(12, 12))
+    img = axs.imshow(np.abs(bicoh), extent=[minis_waxis, maxis_waxis, minis_waxis, maxis_waxis], origin="lower", cmap="plasma")
+    axs.set_title(f"{field} auto-bicoherence{r'$^2$'} t = {timeCentre}" if timePoint_tci is not None else f"{field} auto-bicoherence{r'$^2$'} (full time window)")
+    axs.set_xlabel('Wavenumber $k_1$')
+    axs.set_ylabel('Wavenumber $k_2$')
+    axs.grid(True)
+    fig.colorbar(img, ax=axs, label='Magnitude', shrink = 0.8)
+    if saveDirectory is not None:
+        filename = Path(f'{runName}_{field.replace("_", "")}_autobicoherence_t{timeCentre:.3f}_maxK-{maxK if maxK is not None else "all"}.png')
+        fig.savefig(str(saveDirectory / filename))
+    if display:
+        plt.show()
+    plt.close('all')
+    
 def create_netCDF_fieldVariable_structure(
         fieldRoot : nc.Dataset,
         numGrowthRates : int
