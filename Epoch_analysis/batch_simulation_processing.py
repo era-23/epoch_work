@@ -123,7 +123,7 @@ def calculate_simulation_metadata(
     outputNcRoot.alfvenSpeed = alfven_velocity.value
 
     wLH_si = ppf.lower_hybrid_frequency(B0 * u.T, number_density_bkgd / u.m**3, bkgdSpecies)
-    outputNcRoot.lhFrequency_radPs - wLH_si.value
+    outputNcRoot.lhFrequency_radPs = wLH_si.value
     wLH_cyclo = wLH_si / ion_gyrofrequency
     outputNcRoot.lhFrequency_ionGyroF = wLH_cyclo.value
     
@@ -580,7 +580,6 @@ def process_simulation_batch(
         bispectra : bool = True,
         gammaWindowPctMin : float = 5.0,
         gammaWindowPctMax : float = 15.0,
-        gammaWindowSkipIndices : float = 5,
         fastSpecies : str = 'p+',
         bkgdSpecies : str = 'p+',
         bigLabels : bool = False,
@@ -729,7 +728,7 @@ def process_simulation_batch(
 
                 # Linear growth rates
                 if growthRates:
-                    e_utils.process_growth_rates(tk_spec, fieldStats, plotFieldFolder, simFolder, field, gammaWindowPctMin, gammaWindowPctMax, gammaWindowSkipIndices, saveGrowthRatePlots, numGrowthRatesToPlot, displayPlots, noTitle, debug)
+                    e_utils.process_growth_rates(tk_spec, fieldStats, plotFieldFolder, simFolder, field, gammaWindowPctMin, gammaWindowPctMax, saveGrowthRatePlots, numGrowthRatesToPlot, displayPlots, noTitle, debug)
     
         statsRoot.close()
         ds.close()
@@ -807,13 +806,6 @@ if __name__ == "__main__":
         type=float
     )
     parser.add_argument(
-        "--skipIndices",
-        action="store",
-        help="Number of indices to skip at a time when fitting gamma windows, e.g. every n window lengths will be fit starting at every n indices between max and min. Required to make analysis tractable.",
-        required = False,
-        type=int
-    )
-    parser.add_argument(
         "--runNumber",
         action="store",
         help="Run number to analyse (folder must be in directory and named \'run_##\' where ## is runNumber).",
@@ -882,7 +874,8 @@ if __name__ == "__main__":
         outputDirectory = args.outputDir
     else:
         outputDirectory = args.dir / Path("analysis")
-        os.mkdir(outputDirectory)
+        if not os.path.exists(outputDirectory):
+            os.mkdir(outputDirectory)
 
     print(f"Using analysis folder at '{outputDirectory}'")
 

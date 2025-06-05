@@ -546,6 +546,8 @@ def plot_growth_rates(
     if numToPlot == 0:
         return
     
+    spectrum = np.abs(tkSpectrum)
+
     signString = "positive" if growthRateData[0].gamma > 0.0 else "negative"
     
     if debug:
@@ -561,7 +563,7 @@ def plot_growth_rates(
     
     rank = 0
     for g in growth_rates_to_plot:
-        signal = tkSpectrum.sel(wavenumber=g.wavenumber)
+        signal = spectrum.sel(wavenumber=g.wavenumber)
         timeVals = signal.coords['time'][g.timeStartIndex:g.timeEndIndex]
         plt.close("all")
         fig, ax = plt.subplots(figsize=(12, 8))
@@ -582,27 +584,32 @@ def plot_growth_rates(
 
 def find_best_growth_rates(
         tkSpectrum : xr.DataArray,
-        gammaWindowMin : int,
-        gammaWindowMax : int,
-        skipIndices : int,
+        gammaWindowPctMin : int,
+        gammaWindowPctMax : int,
         debug : bool):
+
+    spectrum = np.abs(tkSpectrum)
+    # Change: This now only evaluates at integer values of percentage, i.e. if 5% - 15% range is given, this evaluates at 5%, 6%, 7% etc.
+    gammaWindowIndicesMin = int(np.rint((gammaWindowPctMin / 100.0) * spectrum.coords['time'].size))
+    gammaWindowIndicesMax = int(np.rint((gammaWindowPctMax / 100.0) * spectrum.coords['time'].size))
+    onePercentIndices = int(np.rint(0.01 * spectrum.coords['time'].size))
 
     best_pos_growth_rates = []
     best_neg_growth_rates = []
 
-    num_wavenumbers = tkSpectrum.sizes["wavenumber"]
+    num_wavenumbers = spectrum.sizes["wavenumber"]
 
     for index in range(0, num_wavenumbers):
 
         # Must load data here for quick iteration over windows
         # Changed: this is pre-loaded in create_t_k_spectrum()
-        signal = tkSpectrum.isel(wavenumber=index)
+        signal = spectrum.isel(wavenumber=index)
 
-        signalK=float(tkSpectrum.coords['wavenumber'][index])
+        signalK=float(spectrum.coords['wavenumber'][index])
         signalPeak=float(signal.max())
         signalTotal=float(signal.sum())
 
-        windowWidths = range(gammaWindowMin, gammaWindowMax + 1, skipIndices)
+        windowWidths = range(gammaWindowIndicesMin, gammaWindowIndicesMax + 1, onePercentIndices)
         len_widths = len(windowWidths)
 
         best_pos_params = None
@@ -613,7 +620,7 @@ def find_best_growth_rates(
         width_count = 0
         for width in windowWidths: # For each possible window width
             
-            windowStarts = range(0, len(signal) - (width + 1), skipIndices)
+            windowStarts = range(0, len(signal) - (width + 1), onePercentIndices)
 
             if debug:
                 width_count += 1
@@ -624,7 +631,7 @@ def find_best_growth_rates(
                 
                 if debug:
                     window_count += 1
-                    print(f"Processing width {width} starting at {window} in k={signalK}. Width {width_count}/{len_widths} window {window_count}/{len_windows}....")
+                    print(f"Processing width {width} ({(width/spectrum.coords['time'].size)*100.0}% of signal) starting at {window} in k = {signalK}. Width {width_count}/{len_widths} window {window_count}/{len_windows}....")
 
                 t_k_window = signal[window:(width + window)]
 
@@ -651,7 +658,7 @@ def find_best_growth_rates(
                                     yIntercept=y_int,
                                     rSquared=r_sqrd,
                                     wavenumber=signalK,
-                                    timeMidpoint=float(tkSpectrum.coords['time'][windowStart+(int(window_width/2))]),
+                                    timeMidpoint=float(spectrum.coords['time'][windowStart+(int(window_width/2))]),
                                     peakPower = signalPeak,
                                     totalPower = signalTotal))
             
@@ -665,7 +672,7 @@ def find_best_growth_rates(
                                     yIntercept=y_int,
                                     rSquared=r_sqrd,
                                     wavenumber=signalK,
-                                    timeMidpoint=float(tkSpectrum.coords['time'][windowStart+(int(window_width/2))]),
+                                    timeMidpoint=float(spectrum.coords['time'][windowStart+(int(window_width/2))]),
                                     peakPower = signalPeak,
                                     totalPower = signalTotal))
         del(signal)
@@ -686,7 +693,6 @@ def process_growth_rates(
         field : str,
         gammaWindowPctMin : float,
         gammaWindowPctMax : float,
-        skipIndices : int,
         saveGrowthRatePlots : bool,
         numGrowthRatesToPlot : int,
         displayPlots : bool,
@@ -695,9 +701,7 @@ def process_growth_rates(
 
     print("Processing growth rates....")
 
-    gammaWindowIndicesMin = int((gammaWindowPctMin / 100.0) * tkSpectrum.coords['time'].size)
-    gammaWindowIndicesMax = int((gammaWindowPctMax / 100.0) * tkSpectrum.coords['time'].size)
-    best_pos_gammas, best_neg_gammas = find_best_growth_rates(tkSpectrum, gammaWindowIndicesMin, gammaWindowIndicesMax, skipIndices, debug)
+    best_pos_gammas, best_neg_gammas = find_best_growth_rates(tkSpectrum, gammaWindowPctMin, gammaWindowPctMax, debug)
     maxNumGammas = np.max([len(best_pos_gammas), len(best_neg_gammas)])
     growthRateStatsRoot = create_netCDF_fieldVariable_structure(fieldRoot, maxNumGammas)
 
