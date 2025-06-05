@@ -207,7 +207,7 @@ def manual_bicoherence(signal : xr.DataArray, timePoint_tci : float = None, tota
         # Remove zero-frequency component
         spec = spec.where(spec.wavenumber!=0.0, None)
         # Get t-k
-        spec = utils.create_t_k_spectrum(spec, maxK = maxK, takeAbs = False)
+        spec = utils.create_t_k_spectrum(spec, maxK = maxK)
         # spec = spec.fillna(0.0)
 
         # Work out how many indices in each window
@@ -240,21 +240,21 @@ def manual_bicoherence(signal : xr.DataArray, timePoint_tci : float = None, tota
             y = window.to_numpy()
             nfft = window.shape[1]
             # Create all combinations of k1 and k2
-            k = np.arange(nfft)
+            k = np.fft.fftshift(np.fft.fftfreq(nfft, 1/nfft))
             K1, K2 = np.meshgrid(k, k)
             K3 = K1 + K2
+            i1 = (K1 - k.min()).astype(int)
+            i2 = (K2 - k.min()).astype(int)
+            i3 = (K3 - k.min()).astype(int)
 
             # Mask
-            k_mask = K3 < nfft
-            valid_K3 = np.where(k_mask, K3, 0)
-            Y3_conj = np.conj(y[:,valid_K3])
+            k_mask = np.abs(i3) < (nfft/2)
+            valid_I3 = np.where(k_mask, i3, 0)
+            Y3_conj = np.conj(y[:,valid_I3])
 
             # Use broadcasting to access X[k1], X[k2], X[k1 + k2]
-            # b = y[:,K1] * y[:,K2] * Y3_conj
-            bicoh_top = np.abs(np.mean(y[:,K1] * y[:,K2] * Y3_conj, axis = 0))**2
-            # b1 = np.abs(y[:,K1] * y[:,K2])**2
-            # b2 = np.abs(Y3_conj)**2
-            bicoh_bottom = np.mean(np.abs(y[:,K1] * y[:,K2])**2, axis=0) * np.mean(np.abs(Y3_conj)**2, axis=0)
+            bicoh_top = np.abs(np.mean(y[:,i1] * y[:,i2] * Y3_conj, axis = 0))**2
+            bicoh_bottom = np.mean(np.abs(y[:,i1] * y[:,i2])**2, axis=0) * np.mean(np.abs(Y3_conj)**2, axis=0)
             bicoh += bicoh_top / bicoh_bottom
 
             count += 1
@@ -265,7 +265,7 @@ def manual_bicoherence(signal : xr.DataArray, timePoint_tci : float = None, tota
 
     if mask:
         # Lower triangle mask
-        lower_mask = np.fliplr(np.tri(bicoh.shape[0], bicoh.shape[1], k=-1))
+        lower_mask = np.tri(bicoh.shape[0], bicoh.shape[1], k=-1)
         bicoh = np.ma.array(bicoh, mask = lower_mask)
 
     return bicoh, waxis
@@ -284,12 +284,20 @@ def manual_autobispectrum(signal : xr.DataArray, timePoint_tci : float = None, t
         nfft = y.size
         
         # Create all combinations of k1 and k2
-        k = np.arange(nfft)
+        k = np.fft.fftshift(np.fft.fftfreq(nfft, 1/nfft))
         K1, K2 = np.meshgrid(k, k)
-        K3 = (K1 + K2) % nfft
+        K3 = K1 + K2
+        i1 = (K1 - k.min()).astype(int)
+        i2 = (K2 - k.min()).astype(int)
+        i3 = (K3 - k.min()).astype(int)
+
+        # Mask
+        k_mask = np.abs(i3) < (nfft/2)
+        valid_I3 = np.where(k_mask, i3, 0)
+        Y3_conj = np.conj(y[:,valid_I3])
 
         # Use broadcasting to access X[k1], X[k2], X[k1 + k2]
-        bispec = y[K1] * y[K2] * np.conj(y[K3])
+        bispec = y[:,i1] * y[:,i2] * Y3_conj
 
         waxis = np.linspace(-fs/2.0, fs/2.0, bispec.shape[0])
     else:
@@ -300,7 +308,7 @@ def manual_autobispectrum(signal : xr.DataArray, timePoint_tci : float = None, t
         # Remove zero-frequency component
         spec = spec.where(spec.wavenumber!=0.0, None)
         # Get t-k
-        spec = utils.create_t_k_spectrum(spec, maxK = maxK, takeAbs = False)
+        spec = utils.create_t_k_spectrum(spec, maxK = maxK)
         # spec = spec.fillna(0.0)
 
         # Work out how many indices in each window
@@ -333,19 +341,21 @@ def manual_autobispectrum(signal : xr.DataArray, timePoint_tci : float = None, t
             y = window.to_numpy()
             nfft = window.shape[1]
             # Create all combinations of k1 and k2
-            k = np.arange(nfft)
+            k = np.fft.fftshift(np.fft.fftfreq(nfft, 1/nfft))
             K1, K2 = np.meshgrid(k, k)
             K3 = K1 + K2
+            i1 = (K1 - k.min()).astype(int)
+            i2 = (K2 - k.min()).astype(int)
+            i3 = (K3 - k.min()).astype(int)
 
             # Mask
-            k_mask = K3 < nfft
-            valid_K3 = np.where(k_mask, K3, 0)
-            Y3_conj = np.conj(y[:,valid_K3])
+            k_mask = np.abs(i3) < (nfft/2)
+            valid_I3 = np.where(k_mask, i3, 0)
+            Y3_conj = np.conj(y[:,valid_I3])
 
             # Use broadcasting to access X[k1], X[k2], X[k1 + k2]
             # b = y[:,K1] * y[:,K2] * Y3_conj
-            bispec += np.mean(y[:,K1] * y[:,K2] * Y3_conj, axis = 0)
-            bispec[np.logical_not(k_mask)] = 0.0
+            bispec += np.mean(y[:,i1] * y[:,i2] * Y3_conj, axis = 0)
 
             count += 1
 
@@ -355,7 +365,7 @@ def manual_autobispectrum(signal : xr.DataArray, timePoint_tci : float = None, t
 
     if mask:
         # Lower triangle mask
-        lower_mask = np.fliplr(np.tri(bispec.shape[0], bispec.shape[1], k=-1))
+        lower_mask = np.tri(bispec.shape[0], bispec.shape[1], k=-1)
         bispec = np.ma.array(bispec, mask = lower_mask)
 
     return bispec, waxis
@@ -462,7 +472,7 @@ def evaluate_single_signal(signal : xr.DataArray, timePoint : float, totalTimeWi
     
     # Get bispectra
     # manual_bs, m_waxis = manual_autobispectrum(spectrum, fs, mask = False)
-    hosa_bs_d_masked, hosa_waxis = hosa_autobispectrum_2(signal, timePoint=timePoint, direct=True, mask = True)
+    # hosa_bs_d_masked, hosa_waxis = hosa_autobispectrum_2(signal, timePoint=timePoint, direct=True, mask = False)
     manual_bs_masked, m_waxis = manual_autobispectrum(signal, timePoint_tci=timePoint, totalWindow_tci=totalTimeWindow_tci, fftWindowSize_tci=fftWindow_tci, overlap=fftOverlap, maxK = maxK, mask = True)
     manual_bc_masked, mbc_waxis = manual_bicoherence(signal, timePoint_tci=timePoint, totalWindow_tci=totalTimeWindow_tci, fftWindowSize_tci=fftWindow_tci, overlap=fftOverlap, maxK = maxK, mask = True)
     # hosa_bs_d, hosa_waxis = hosa_autobispectrum_2(signal, direct=True, mask = False)
@@ -482,8 +492,8 @@ def evaluate_single_signal(signal : xr.DataArray, timePoint : float, totalTimeWi
         max_freq = mbc_waxis[-1]
 
         plt.imshow(np.abs(manual_bc_masked), extent=[-max_freq, max_freq, -max_freq, max_freq], origin="lower", cmap="plasma")
-        plt.xlim(-100.0, 100.0)
-        plt.ylim(-100.0, 100.0)
+        plt.xlim(-maxK, maxK)
+        plt.ylim(-maxK, maxK)
         plt.title(f"Manual bicoherence^2 implementation t = {timePoint}")
         plt.xlabel('Wavenumber $k_1$')
         plt.ylabel('Wavenumber $k_2$')
@@ -491,22 +501,22 @@ def evaluate_single_signal(signal : xr.DataArray, timePoint : float, totalTimeWi
         plt.grid(False)
         plt.show()
 
-        # Log
-        plt.imshow(np.log(np.abs(manual_bc_masked)), extent=[-max_freq, max_freq, -max_freq, max_freq], origin="lower", cmap="plasma")
-        plt.xlim(-100.0, 100.0)
-        plt.ylim(-100.0, 100.0)
-        plt.title(f"Manual bicoherence^2 implementation (log) t = {timePoint}")
-        plt.xlabel('Wavenumber $k_1$')
-        plt.ylabel('Wavenumber $k_2$')
-        plt.colorbar(label='Log Magnitude')
-        plt.grid(False)
-        plt.show()
+        # # Log
+        # plt.imshow(np.log(np.abs(manual_bc_masked)), extent=[-max_freq, max_freq, -max_freq, max_freq], origin="lower", cmap="plasma")
+        # plt.xlim(-100.0, 100.0)
+        # plt.ylim(-100.0, 100.0)
+        # plt.title(f"Manual bicoherence^2 implementation (log) t = {timePoint}")
+        # plt.xlabel('Wavenumber $k_1$')
+        # plt.ylabel('Wavenumber $k_2$')
+        # plt.colorbar(label='Log Magnitude')
+        # plt.grid(False)
+        # plt.show()
 
         max_freq = m_waxis[-1]
         
         plt.imshow(np.abs(manual_bs_masked), extent=[-max_freq, max_freq, -max_freq, max_freq], origin="lower", cmap="plasma")
-        plt.xlim(-100.0, 100.0)
-        plt.ylim(-100.0, 100.0)
+        plt.xlim(-maxK, maxK)
+        plt.ylim(-maxK, maxK)
         plt.title(f"Manual bispectrum implementation t = {timePoint}")
         plt.xlabel('Wavenumber $k_1$')
         plt.ylabel('Wavenumber $k_2$')
@@ -514,21 +524,21 @@ def evaluate_single_signal(signal : xr.DataArray, timePoint : float, totalTimeWi
         plt.grid(False)
         plt.show()
 
-        # Phase
-        plt.imshow(np.angle(manual_bs_masked), extent=[-max_freq, max_freq, -max_freq, max_freq], origin="lower", cmap="plasma")
-        plt.xlim(-100.0, 100.0)
-        plt.ylim(-100.0, 100.0)
-        plt.title(f"Manual bispectrum implementation -- phase spectrum at t = {timePoint}")
-        plt.xlabel('Wavenumber $k_1$')
-        plt.ylabel('Wavenumber $k_2$')
-        plt.colorbar(label='Angle/rad')
-        plt.grid(False)
-        plt.show()
+        # # Phase
+        # plt.imshow(np.angle(manual_bs_masked), extent=[-max_freq, max_freq, -max_freq, max_freq], origin="lower", cmap="plasma")
+        # plt.xlim(-100.0, 100.0)
+        # plt.ylim(-100.0, 100.0)
+        # plt.title(f"Manual bispectrum implementation -- phase spectrum at t = {timePoint}")
+        # plt.xlabel('Wavenumber $k_1$')
+        # plt.ylabel('Wavenumber $k_2$')
+        # plt.colorbar(label='Angle/rad')
+        # plt.grid(False)
+        # plt.show()
 
         # Log
         plt.imshow(np.log(np.abs(manual_bs_masked)), extent=[-max_freq, max_freq, -max_freq, max_freq], origin="lower", cmap="plasma")
-        plt.xlim(-100.0, 100.0)
-        plt.ylim(-100.0, 100.0)
+        plt.xlim(-maxK, maxK)
+        plt.ylim(-maxK, maxK)
         plt.title(f"Manual bispectrum implementation (log) t = {timePoint}")
         plt.xlabel('Wavenumber $k_1$')
         plt.ylabel('Wavenumber $k_2$')
@@ -536,39 +546,39 @@ def evaluate_single_signal(signal : xr.DataArray, timePoint : float, totalTimeWi
         plt.grid(False)
         plt.show()
 
-        max_freq = hosa_waxis[-1]
+        # max_freq = hosa_waxis[-1]
 
-        plt.imshow(np.abs(hosa_bs_d_masked), extent=[-max_freq, max_freq, -max_freq, max_freq], origin="lower", cmap="plasma")
-        plt.xlim(-100.0, 100.0)
-        plt.ylim(-100.0, 100.0)
-        plt.title(f"HOSA bispectrum direct implementation t = {timePoint}")
-        plt.xlabel('Wavenumber $k_1$')
-        plt.ylabel('Wavenumber $k_2$')
-        plt.colorbar(label='Magnitude')
-        plt.grid(False)
-        plt.show()
+        # plt.imshow(np.abs(hosa_bs_d_masked), extent=[-max_freq, max_freq, -max_freq, max_freq], origin="lower", cmap="plasma")
+        # plt.xlim(-100.0, 100.0)
+        # plt.ylim(-100.0, 100.0)
+        # plt.title(f"HOSA bispectrum direct implementation t = {timePoint}")
+        # plt.xlabel('Wavenumber $k_1$')
+        # plt.ylabel('Wavenumber $k_2$')
+        # plt.colorbar(label='Magnitude')
+        # plt.grid(False)
+        # plt.show()
 
-        # Phase
-        plt.imshow(np.angle(hosa_bs_d_masked), extent=[-max_freq, max_freq, -max_freq, max_freq], origin="lower", cmap="plasma")
-        plt.xlim(-100.0, 100.0)
-        plt.ylim(-100.0, 100.0)
-        plt.title(f"HOSA bispectrum direct implementation -- phase spectrum at t = {timePoint}")
-        plt.xlabel('Wavenumber $k_1$')
-        plt.ylabel('Wavenumber $k_2$')
-        plt.colorbar(label='Angle/rad')
-        plt.grid(False)
-        plt.show()
+        # # Phase
+        # plt.imshow(np.angle(hosa_bs_d_masked), extent=[-max_freq, max_freq, -max_freq, max_freq], origin="lower", cmap="plasma")
+        # plt.xlim(-100.0, 100.0)
+        # plt.ylim(-100.0, 100.0)
+        # plt.title(f"HOSA bispectrum direct implementation -- phase spectrum at t = {timePoint}")
+        # plt.xlabel('Wavenumber $k_1$')
+        # plt.ylabel('Wavenumber $k_2$')
+        # plt.colorbar(label='Angle/rad')
+        # plt.grid(False)
+        # plt.show()
 
-        # Log
-        plt.imshow(np.log(np.abs(hosa_bs_d_masked)), extent=[-max_freq, max_freq, -max_freq, max_freq], origin="lower", cmap="plasma")
-        plt.xlim(-100.0, 100.0)
-        plt.ylim(-100.0, 100.0)
-        plt.title(f"HOSA bispectrum direct implementation (log) t = {timePoint}")
-        plt.xlabel('Wavenumber $k_1$')
-        plt.ylabel('Wavenumber $k_2$')
-        plt.colorbar(label='Log Magnitude')
-        plt.grid(False)
-        plt.show()
+        # # Log
+        # plt.imshow(np.log(np.abs(hosa_bs_d_masked)), extent=[-max_freq, max_freq, -max_freq, max_freq], origin="lower", cmap="plasma")
+        # plt.xlim(-100.0, 100.0)
+        # plt.ylim(-100.0, 100.0)
+        # plt.title(f"HOSA bispectrum direct implementation (log) t = {timePoint}")
+        # plt.xlabel('Wavenumber $k_1$')
+        # plt.ylabel('Wavenumber $k_2$')
+        # plt.colorbar(label='Log Magnitude')
+        # plt.grid(False)
+        # plt.show()
 
         # max_freq = c_waxis[-1]
 

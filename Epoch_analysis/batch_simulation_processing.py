@@ -122,6 +122,11 @@ def calculate_simulation_metadata(
     alfven_velocity = pps.Alfven_speed(B0 * u.T, number_density_bkgd / u.m**3, bkgdSpecies)
     outputNcRoot.alfvenSpeed = alfven_velocity.value
 
+    wLH_si = ppf.lower_hybrid_frequency(B0 * u.T, number_density_bkgd / u.m**3, bkgdSpecies)
+    outputNcRoot.lhFrequency_radPs - wLH_si.value
+    wLH_cyclo = wLH_si / ion_gyrofrequency
+    outputNcRoot.lhFrequency_ionGyroF = wLH_cyclo.value
+    
     # Lengths
     if beam:
         irb_v_perp = inputDeck['constant']['v_perp_ratio'] * alfven_velocity

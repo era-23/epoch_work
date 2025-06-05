@@ -326,18 +326,21 @@ def create_autobispectrum(
         y = window.to_numpy()
         nfft = window.shape[1]
         # Create all combinations of k1 and k2
-        k = np.arange(nfft)
+        k = np.fft.fftshift(np.fft.fftfreq(nfft, 1/nfft))
         K1, K2 = np.meshgrid(k, k)
         K3 = K1 + K2
+        i1 = (K1 - k.min()).astype(int)
+        i2 = (K2 - k.min()).astype(int)
+        i3 = (K3 - k.min()).astype(int)
 
         # Mask
-        k_mask = K3 < nfft
-        valid_K3 = np.where(k_mask, K3, 0)
-        Y3_conj = np.conj(y[:,valid_K3])
+        k_mask = np.abs(i3) < (nfft/2)
+        valid_I3 = np.where(k_mask, i3, 0)
+        Y3_conj = np.conj(y[:,valid_I3])
 
         # Use broadcasting to access X[k1], X[k2], X[k1 + k2]
         # b = y[:,K1] * y[:,K2] * Y3_conj
-        bispec += np.mean(y[:,K1] * y[:,K2] * Y3_conj, axis = 0)
+        bispec += np.mean(y[:,i1] * y[:,i2] * Y3_conj, axis = 0)
         bispec[np.logical_not(k_mask)] = 0.0
 
         count += 1
@@ -348,7 +351,7 @@ def create_autobispectrum(
 
     if mask:
         # Lower triangle mask
-        lower_mask = np.fliplr(np.tri(bispec.shape[0], bispec.shape[1], k=-1))
+        lower_mask = np.tri(bispec.shape[0], bispec.shape[1], k=-1)
         bispec = np.ma.array(bispec, mask = lower_mask)
 
     return bispec, waxis
@@ -371,21 +374,21 @@ def create_autobicoherence(
         y = window.to_numpy()
         nfft = window.shape[1]
         # Create all combinations of k1 and k2
-        k = np.arange(nfft)
+        k = np.fft.fftshift(np.fft.fftfreq(nfft, 1/nfft))
         K1, K2 = np.meshgrid(k, k)
         K3 = K1 + K2
+        i1 = (K1 - k.min()).astype(int)
+        i2 = (K2 - k.min()).astype(int)
+        i3 = (K3 - k.min()).astype(int)
 
         # Mask
-        k_mask = K3 < nfft
-        valid_K3 = np.where(k_mask, K3, 0)
-        Y3_conj = np.conj(y[:,valid_K3])
+        k_mask = np.abs(i3) < (nfft/2)
+        valid_I3 = np.where(k_mask, i3, 0)
+        Y3_conj = np.conj(y[:,valid_I3])
 
         # Use broadcasting to access X[k1], X[k2], X[k1 + k2]
-        # b = y[:,K1] * y[:,K2] * Y3_conj
-        bicoh_top = np.abs(np.mean(y[:,K1] * y[:,K2] * Y3_conj, axis = 0))**2
-        # b1 = np.abs(y[:,K1] * y[:,K2])**2
-        # b2 = np.abs(Y3_conj)**2
-        bicoh_bottom = np.mean(np.abs(y[:,K1] * y[:,K2])**2, axis=0) * np.mean(np.abs(Y3_conj)**2, axis=0)
+        bicoh_top = np.abs(np.mean(y[:,i1] * y[:,i2] * Y3_conj, axis = 0))**2
+        bicoh_bottom = np.mean(np.abs(y[:,i1] * y[:,i2])**2, axis=0) * np.mean(np.abs(Y3_conj)**2, axis=0)
         bicoh += bicoh_top / bicoh_bottom
 
         count += 1
@@ -396,7 +399,7 @@ def create_autobicoherence(
 
     if mask:
         # Lower triangle mask
-        lower_mask = np.fliplr(np.tri(bicoh.shape[0], bicoh.shape[1], k=-1))
+        lower_mask = np.tri(bicoh.shape[0], bicoh.shape[1], k=-1)
         bicoh = np.ma.array(bicoh, mask = lower_mask)
 
     return bicoh, waxis
