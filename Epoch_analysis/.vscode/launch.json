@@ -244,7 +244,7 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "args": [
-                "--dir", "/home/era536/Documents/Epoch/Data/batch_testing/",
+                "--dir", "/home/era536/Documents/Epoch/Data/batch_testing_2/",
                 //"--outputDir", "/home/era536/Documents/Epoch/Data/metaAnalysisTesting/dummy",
                 "--fields", "Magnetic_Field_Bz", "Electric_Field_Ex",
                 "--growthRates",

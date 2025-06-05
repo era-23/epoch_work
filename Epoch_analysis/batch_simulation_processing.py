@@ -80,7 +80,22 @@ def calculate_simulation_metadata(
     outputNcRoot.timeSamplingFreq_Hz = num_t/sim_time
     outputNcRoot.timeNyquistFreq_Hz = num_t/(2.0 *sim_time)
 
-    num_cells = int(inputDeck['constant']['num_cells'])
+    # Work out num cells
+    B0 = inputDeck['constant']['b0_strength']
+    if beam:
+        ion_gyrofrequency = ppf.gyrofrequency(B0 * u.T, fastSpecies)
+    else:
+        ion_gyrofrequency = ppf.gyrofrequency(B0 * u.T, bkgdSpecies)
+    ion_gyroperiod = 1.0 / ion_gyrofrequency
+    background_density = inputDeck['constant']['background_density']
+    debye_length = ppl.Debye_length(inputDeck['constant']['background_temp'] * u.K, background_density / u.m**3)
+    electron_gyroradius = ppl.gyroradius(B = B0 * u.T, particle = "e", T=inputDeck['constant']['background_temp'] * u.K)
+    beam_frac = inputDeck['constant']['frac_beam']
+    number_density_bkgd = background_density * (1.0 - beam_frac)
+    alfven_velocity = pps.Alfven_speed(B0 * u.T, number_density_bkgd / u.m**3, bkgdSpecies)
+    grid_spacing = float(np.min([debye_length.value, electron_gyroradius.value]))
+    pixels_per_k = inputDeck['constant']['pixels_per_k']
+    num_cells = int(np.ceil((pixels_per_k * ion_gyroperiod.value * alfven_velocity.value) / grid_spacing))
     outputNcRoot.numCells = num_cells
 
     sim_L = float(dataset['Magnetic_Field_Bz'].coords["X_Grid_mid"][-1]) * u.m
@@ -88,30 +103,20 @@ def calculate_simulation_metadata(
     outputNcRoot.spaceSamplingFreq_Pm = num_cells/sim_L
     outputNcRoot.spaceNyquistFreq_Pm = num_cells/(2.0 *sim_L)
 
-    B0 = inputDeck['constant']['b0_strength']
     outputNcRoot.B0strength = B0
     
     B0_angle = inputDeck['constant']["b0_angle"]
     outputNcRoot.B0angle = B0_angle
-    background_density = inputDeck['constant']['background_density']
+    
     outputNcRoot.backgroundDensity = background_density
-    beam_frac = inputDeck['constant']['frac_beam']
     outputNcRoot.beamFraction = beam_frac
 
-    debye_length = ppl.Debye_length(inputDeck['constant']['background_temp'] * u.K, background_density / u.m**3)
     outputNcRoot.debyeLength_m = debye_length.value
     sim_L_dl = sim_L / debye_length
     outputNcRoot.simLength_dL = sim_L_dl
     outputNcRoot.cellWidth_dL = sim_L_dl / num_cells
 
-    number_density_bkgd = background_density * (1.0 - beam_frac)
-    if beam:
-        ion_gyrofrequency = ppf.gyrofrequency(B0 * u.T, fastSpecies)
-    else:
-        ion_gyrofrequency = ppf.gyrofrequency(B0 * u.T, bkgdSpecies)
-
     outputNcRoot.ionGyrofrequency_radPs = ion_gyrofrequency.value
-    ion_gyroperiod = 1.0 / ion_gyrofrequency
     outputNcRoot.ionGyroperiod_sPrad = ion_gyroperiod.value
     ion_gyroperiod_s = ion_gyroperiod * 2.0 * np.pi * u.rad
     
@@ -119,7 +124,6 @@ def calculate_simulation_metadata(
     plasma_freq = ppf.plasma_frequency(number_density_bkgd / u.m**3, bkgdSpecies)
     outputNcRoot.plasmaFrequency_radPs = plasma_freq.value
 
-    alfven_velocity = pps.Alfven_speed(B0 * u.T, number_density_bkgd / u.m**3, bkgdSpecies)
     outputNcRoot.alfvenSpeed = alfven_velocity.value
 
     wLH_si = ppf.lower_hybrid_frequency(B0 * u.T, number_density_bkgd / u.m**3, bkgdSpecies)
@@ -138,7 +142,6 @@ def calculate_simulation_metadata(
     outputNcRoot.protonGyroradius = proton_gyroradius.value
     outputNcRoot.simLength_rLp = sim_L.value / proton_gyroradius.value
     outputNcRoot.cellWidth_rLp = (sim_L.value / proton_gyroradius.value) / num_cells
-    electron_gyroradius = ppl.gyroradius(B = B0 * u.T, particle = "e", T=inputDeck['constant']['background_temp'] * u.K)
     outputNcRoot.electronGyroradius = electron_gyroradius.value
     outputNcRoot.simLength_rLe = sim_L.value / electron_gyroradius.value
     outputNcRoot.cellWidth_rLe = (sim_L.value / electron_gyroradius.value) / num_cells
