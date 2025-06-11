@@ -35,7 +35,6 @@ def initialise_folder_structure(
     plotsFolder = outputDirectory / "plots"
                 
     if create:
-
         if debug:
             print(f"Creating folder structure in {outputDirectory}....")
 
@@ -56,7 +55,9 @@ def initialise_folder_structure(
             if plotGrowthRates:
                 gammaPlotFolder = plotFieldFolder / "growth_rates"
                 os.mkdir(gammaPlotFolder)
-
+    else:
+        if debug:
+            print(f"Using existing folder structure in {outputDirectory}....")
     
     return dataFolder, plotsFolder
 
@@ -80,22 +81,31 @@ def calculate_simulation_metadata(
     outputNcRoot.timeSamplingFreq_Hz = num_t/sim_time
     outputNcRoot.timeNyquistFreq_Hz = num_t/(2.0 *sim_time)
 
-    # Work out num cells
+    
     B0 = inputDeck['constant']['b0_strength']
     if beam:
         ion_gyrofrequency = ppf.gyrofrequency(B0 * u.T, fastSpecies)
     else:
         ion_gyrofrequency = ppf.gyrofrequency(B0 * u.T, bkgdSpecies)
     ion_gyroperiod = 1.0 / ion_gyrofrequency
-    background_density = inputDeck['constant']['background_density']
-    debye_length = ppl.Debye_length(inputDeck['constant']['background_temp'] * u.K, background_density / u.m**3)
-    electron_gyroradius = ppl.gyroradius(B = B0 * u.T, particle = "e", T=inputDeck['constant']['background_temp'] * u.K)
+    
+    outputNcRoot.ionGyrofrequency_radPs = ion_gyrofrequency.value
+    outputNcRoot.ionGyroperiod_sPrad = ion_gyroperiod.value
+    ion_gyroperiod_s = ion_gyroperiod * 2.0 * np.pi * u.rad
+    outputNcRoot.ionGyroperiod_s = ion_gyroperiod_s.value
+
+    # Work out num cells
+    background_density = inputDeck['constant']['background_density'] / u.m**3
+    background_temp = inputDeck['constant']['background_temp'] * u.K
+    debye_length = ppl.Debye_length(background_temp, background_density)
+    electron_gyroradius = np.sqrt(2.0 * constants.k * (u.J / u.K) * background_temp * constants.electron_mass * u.kg) / (constants.elementary_charge * u.C * inputDeck['constant']['b0_strength'] * u.T)
     beam_frac = inputDeck['constant']['frac_beam']
     number_density_bkgd = background_density * (1.0 - beam_frac)
-    alfven_velocity = pps.Alfven_speed(B0 * u.T, number_density_bkgd / u.m**3, bkgdSpecies)
+    alfven_velocity = pps.Alfven_speed(B0 * u.T, number_density_bkgd, bkgdSpecies)
     grid_spacing = float(np.min([debye_length.value, electron_gyroradius.value]))
     pixels_per_k = inputDeck['constant']['pixels_per_k']
-    num_cells = int(np.ceil((pixels_per_k * ion_gyroperiod.value * alfven_velocity.value) / grid_spacing))
+    est_min_cells = int(np.ceil((pixels_per_k * ion_gyroperiod_s.value * alfven_velocity.value) / grid_spacing))
+    num_cells = dataset["X_Grid_mid"].size
     outputNcRoot.numCells = num_cells
 
     sim_L = float(dataset['Magnetic_Field_Bz'].coords["X_Grid_mid"][-1]) * u.m
@@ -108,25 +118,20 @@ def calculate_simulation_metadata(
     B0_angle = inputDeck['constant']["b0_angle"]
     outputNcRoot.B0angle = B0_angle
     
-    outputNcRoot.backgroundDensity = background_density
+    outputNcRoot.backgroundDensity = background_density.value
     outputNcRoot.beamFraction = beam_frac
 
     outputNcRoot.debyeLength_m = debye_length.value
     sim_L_dl = sim_L / debye_length
     outputNcRoot.simLength_dL = sim_L_dl
     outputNcRoot.cellWidth_dL = sim_L_dl / num_cells
-
-    outputNcRoot.ionGyrofrequency_radPs = ion_gyrofrequency.value
-    outputNcRoot.ionGyroperiod_sPrad = ion_gyroperiod.value
-    ion_gyroperiod_s = ion_gyroperiod * 2.0 * np.pi * u.rad
     
-    outputNcRoot.ionGyroperiod_s = ion_gyroperiod_s.value
-    plasma_freq = ppf.plasma_frequency(number_density_bkgd / u.m**3, bkgdSpecies)
+    plasma_freq = ppf.plasma_frequency(number_density_bkgd, bkgdSpecies)
     outputNcRoot.plasmaFrequency_radPs = plasma_freq.value
 
     outputNcRoot.alfvenSpeed = alfven_velocity.value
 
-    wLH_si = ppf.lower_hybrid_frequency(B0 * u.T, number_density_bkgd / u.m**3, bkgdSpecies)
+    wLH_si = ppf.lower_hybrid_frequency(B0 * u.T, number_density_bkgd, bkgdSpecies)
     outputNcRoot.lhFrequency_radPs = wLH_si.value
     wLH_cyclo = wLH_si / ion_gyrofrequency
     outputNcRoot.lhFrequency_ionGyroF = wLH_cyclo.value
@@ -138,7 +143,7 @@ def calculate_simulation_metadata(
         outputNcRoot.fastIonGyroradius = irb_gyroradius.value
         outputNcRoot.simLength_rLfi = sim_L.value / irb_gyroradius.value
         outputNcRoot.cellWidth_rLfi = (sim_L.value / irb_gyroradius.value) / num_cells
-    proton_gyroradius = ppl.gyroradius(B = B0 * u.T, particle = "p", T=inputDeck['constant']['background_temp'] * u.K)
+    proton_gyroradius = ppl.gyroradius(B = B0 * u.T, particle = "p", T = background_temp)
     outputNcRoot.protonGyroradius = proton_gyroradius.value
     outputNcRoot.simLength_rLp = sim_L.value / proton_gyroradius.value
     outputNcRoot.cellWidth_rLp = (sim_L.value / proton_gyroradius.value) / num_cells
@@ -162,6 +167,7 @@ def calculate_simulation_metadata(
         print(f"Sim time in SI: {sim_time}")
         print(f"Sampling frequency: {num_t/sim_time}")
         print(f"Nyquist frequency: {num_t/(2.0 *sim_time)}")
+        print(f"Estimated minimum cells needed: {est_min_cells}")
         print(f"Num cells: {num_cells}")
         print(f"Sim length: {sim_L}")
         print(f"Sampling frequency: {num_cells/sim_L}")
@@ -852,6 +858,12 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
+        "--clean",
+        action="store_true",
+        help="Delete existing analysis and re-write files. Otherwise will append to existing output files.",
+        required = False
+    )
+    parser.add_argument(
         "--debug",
         action="store_true",
         help="Print debugging statements.",
@@ -877,12 +889,15 @@ if __name__ == "__main__":
         outputDirectory = args.outputDir
     else:
         outputDirectory = args.dir / Path("analysis")
-        if not os.path.exists(outputDirectory):
-            os.mkdir(outputDirectory)
+        if os.path.exists(outputDirectory):
+            print(f"Existing analysis folder found at '{outputDirectory}'")
+            createFolders = False
+        else:
+            createFolders = True
+
+    dataFolder, plotsFolder = initialise_folder_structure(outputDirectory, args.fields, True if args.clean else createFolders, args.energy, args.saveGammaPlots)
 
     print(f"Using analysis folder at '{outputDirectory}'")
-
-    dataFolder, plotsFolder = initialise_folder_structure(outputDirectory, args.fields, createFolders, args.energy, args.saveGammaPlots)
 
     if args.runNumber is not None:
         args.dir = Path(os.path.join(args.dir, f"run_{args.runNumber}"))

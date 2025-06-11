@@ -223,7 +223,7 @@
             "program": "debugging.py",
             "console": "integratedTerminal",
             "args": [
-                "--dir", "/home/era536/Documents/Epoch/Data/convergence/deltaF/"
+                "--dir", "/home/era536/Documents/Epoch/Data/irb_may25_analysis/input_decks/"
             ]
         },
         {
@@ -244,21 +244,21 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "args": [
-                "--dir", "/home/era536/Documents/Epoch/Data/batch_testing_2/",
+                "--dir", "/home/era536/Documents/Epoch/Data/batch_testing_2/irb_may25/",
                 //"--outputDir", "/home/era536/Documents/Epoch/Data/metaAnalysisTesting/dummy",
                 "--fields", "Magnetic_Field_Bz", "Electric_Field_Ex",
-                "--growthRates",
+                //"--growthRates",
                 //"--bispectra",
-                "--maxK", "5.0",
-                "--numGrowthRatesToPlot", "3",
-                "--minGammaFitWindow", "8.0",
-                "--maxGammaFitWindow", "10.0",
+                "--maxK", "100.0",
+                //"--numGrowthRatesToPlot", "3",
+                //"--minGammaFitWindow", "8.0",
+                //"--maxGammaFitWindow", "10.0",
                 //"--runNumber", "15",
-                "--saveGammaPlots",
+                //"--saveGammaPlots",
                 //"--displayPlots",
                 //"--energy",
-                "--createPlots",
-                "--bigLabels",
+                //"--createPlots",
+                //"--bigLabels",
                 //"--noTitle",
                 "--debug",
             ]

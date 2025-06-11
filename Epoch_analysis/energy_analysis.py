@@ -2,6 +2,7 @@ import glob
 from sdf_xarray import SDFPreprocess
 from pathlib import Path
 from scipy import constants
+from inference.plotting import matrix_plot
 import pandas as pd
 import matplotlib.pyplot as plt
 import epydeck
@@ -334,6 +335,70 @@ def correlate_cellWidth_energy_transer(analysisDirectory : Path, logColourbar : 
     # ax2.scatter(B0_str, rLe_cellWidth_ratio, c=hasFiTroughBiPeak, cmap="Greens")
     # ax3.scatter(density, rLe_cellWidth_ratio, c=bkgdIonChangeAtFastIonTrough_pct, cmap="Blues")
 
+def analyse_peak_characteristics(analysisDirectory : Path):
+    dataFiles = glob.glob(str(analysisDirectory / "*.nc"))
+
+    B0strength = []
+    B0angle = []
+    densities = []
+    beamFractions = []
+    hasFastIonTrough = []
+    hasBkgdIonPeak = []
+
+    for simulation in dataFiles:
+
+        data = xr.open_datatree(
+            simulation,
+            engine="netcdf4"
+        )
+
+        energyStats = data["Energy"]
+
+        if (energyStats["fastIonMeanEnergyDensity"].attrs["hasTroughs"] and energyStats["protonMeanEnergyDensity"].attrs["hasPeaks"]):
+
+            
+            mciB0.append(data.attrs["B0strength"])
+            mciBangle.append(data.attrs["B0angle"])
+            mciBeamFracs.append(data.attrs["beamFraction"])
+            mciDensities.append(data.attrs["backgroundDensity"])
+        else:
+            noMciB0.append(data.attrs["B0strength"])
+            noMciBangle.append(data.attrs["B0angle"])
+            noMciBeamFracs.append(data.attrs["beamFraction"])
+            noMciDensities.append(data.attrs["backgroundDensity"])
+    
+    mciName = "E transfer"
+    noMciName = "No E transfer"
+    mciXAxis = [mciName for _ in mciB0]
+    noMciXAxis = [noMciName for _ in noMciB0]
+
+    fig, axs = plt.subplots(1, 4, sharey=False, figsize=[12,8])
+    axs[0].scatter(mciXAxis, mciB0)
+    axs[0].scatter(noMciXAxis, noMciB0)
+    #axs[0].scatter([mciName], [np.mean(mciB0)], "x", color = "purple")
+    #axs[0].scatter([noMciName], [np.mean(noMciB0)], "x", color = "red")
+    axs[0].set_ylabel("B0 [T]")
+    axs[1].scatter(mciXAxis, mciBangle)
+    axs[1].scatter(noMciXAxis, noMciBangle)
+    #axs[1].scatter([mciName], [np.mean(mciBangle)], "x", color = "purple")
+    #axs[1].scatter([noMciName], [np.mean(noMciBangle)], "x", color = "red")
+    axs[1].set_ylabel("B0 angle [degrees]")
+    axs[2].scatter(mciXAxis, mciDensities)
+    axs[2].scatter(noMciXAxis, noMciDensities)
+    #axs[2].scatter([mciName], [np.mean(mciDensities)], "x", color = "purple")
+    #axs[2].scatter([noMciName], [np.mean(noMciDensities)], "x", color = "red")
+    axs[2].set_ylabel("Density [/m^3]")
+    axs[2].set_yscale("log")
+    axs[3].scatter(mciXAxis, mciBeamFracs)
+    axs[3].scatter(noMciXAxis, noMciBeamFracs)
+    #axs[3].scatter([mciName], [np.mean(mciBeamFracs)], "x", color = "purple")
+    #axs[3].scatter([noMciName], [np.mean(noMciBeamFracs)], "x", color = "red")
+    axs[3].set_yscale("log")
+    axs[3].set_ylabel("Beam fraction [au]")
+    
+    plt.tight_layout()
+    plt.show()
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser("parser")
@@ -384,9 +449,11 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    if args.electronHeating:
-        analyse_electron_heating(args.dir)
-    elif args.correlate:
-        correlate_cellWidth_energy_transer(args.dir)
-    else:
-        calculate_energy(args.dir, args.irb, args.pct)
+    analyse_peak_characteristics(Path("/home/era536/Documents/Epoch/Data/irb_may25_analysis/data/"))
+
+    # if args.electronHeating:
+    #     analyse_electron_heating(args.dir)
+    # elif args.correlate:
+    #     correlate_cellWidth_energy_transer(args.dir)
+    # else:
+    #     calculate_energy(args.dir, args.irb, args.pct)

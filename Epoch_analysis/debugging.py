@@ -3,6 +3,7 @@ from decimal import Decimal
 from scipy import constants
 import numpy as np
 import epydeck
+import glob
 from pathlib import Path
 from plasmapy.formulary import lengths as ppl
 from plasmapy.formulary import speeds as pps
@@ -13,11 +14,11 @@ def debug_input_deck(directory : Path):
 
     # Read input deck
     input = {}
-    with open(str(directory / "input.deck")) as id:
+    with open(glob.glob(str(directory / "run_10_input.deck"))[0]) as id:
         input = epydeck.loads(id.read())
 
     input_vals = input['constant']
-    background_density = input_vals['background_density']
+    background_density = input_vals['background_density'] / u.m**3
     background_temp = input_vals['background_temp'] * u.K
     b0_strength = input_vals['b0_strength'] * u.T
 
@@ -58,7 +59,7 @@ def debug_input_deck(directory : Path):
     # Angle between B and x (predominantly in Z)
     alfven_velo = b0_strength / np.sqrt(constants.mu_0 * background_mass_density)
     #v_perp_ratio = input_vals['v_perp_ratio']
-    v_perp_ratio = 0.634
+    v_perp_ratio = 1.0
     v_perp = v_perp_ratio * alfven_velo
     #ring_beam_energy = ((v_perp_ratio * alfven_velo)**2 * mass_fast_ion) / 2.0 * constants.e
     #pring_beam = np.sqrt(2 * mass_fast_ion * constants.e * ring_beam_energy)
@@ -70,16 +71,16 @@ def debug_input_deck(directory : Path):
     E_rb_si = mass_fast_ion * (vring**2 + vbeam**2) / 2.0
     E_rb_ev = E_rb_si / constants.e
 
-    print(f"Alfven velo      = {'%.2e' % Decimal(alfven_velo)}")
-    print(f"Ring beam E (si) = {'%.2e' % Decimal(E_rb_si)}")
-    print(f"Ring beam E (ev) = {'%.2e' % Decimal(E_rb_ev)}")
-    print(f"Ring v (vperp)   = {'%.2e' % Decimal(vring)}")
-    print(f"Beam v (vpara)   = {'%.2e' % Decimal(vbeam)}")
+    print(f"Alfven velo      = {'%.2e' % Decimal(alfven_velo.value)}")
+    print(f"Ring beam E (si) = {'%.2e' % Decimal(E_rb_si.value)}")
+    print(f"Ring beam E (ev) = {'%.2e' % Decimal(E_rb_ev.value)}")
+    print(f"Ring v (vperp)   = {'%.2e' % Decimal(vring.value)}")
+    print(f"Beam v (vpara)   = {'%.2e' % Decimal(vbeam.value)}")
     print(f"Intended v_perp/v_A = {'%.2e' % Decimal(v_perp_ratio)}")
-    print(f"Actual v_perp/v_A   = {'%.2e' % Decimal(vring / alfven_velo)}")
+    print(f"Actual v_perp/v_A   = {'%.2e' % Decimal(vring.value / alfven_velo.value)}")
 
-    my_Debye_length = np.sqrt(constants.epsilon_0 * constants.k * background_temp / background_density / constants.elementary_charge**2) * u.m
-    pp_Debye_length = ppl.Debye_length(background_temp, background_density / u.m**3)
+    my_Debye_length = np.sqrt(constants.epsilon_0 * constants.k * background_temp.value / background_density.value / constants.elementary_charge**2) * u.m
+    pp_Debye_length = ppl.Debye_length(background_temp, background_density)
     print(f"My Debye length: {my_Debye_length}")
     print(f"PP Debye length: {pp_Debye_length}")
 
@@ -90,22 +91,23 @@ def debug_input_deck(directory : Path):
     else:
         print("Electron gyroradius is smaller, using this for cell width.")
         cell_width = combined_rLe
-    print(f"Cell width: {cell_width}")
+    print(f"Cell width: {cell_width} ({cell_width/my_Debye_length} Debye lengths) ({cell_width/combined_rLe} e- Larmor radii)")
     
-    num_cells = input_vals["num_cells"]
+    ion_gyroperiod_s = (2.0 * np.pi * u.rad) / ppf.gyrofrequency(b0_strength * u.T, "p+")
+    print(f"Ion gyroperiod = {1.0 / ppf.gyrofrequency(b0_strength * u.T, 'p+')} or {(2.0 * np.pi * u.rad) / ppf.gyrofrequency(b0_strength * u.T, 'p+')}")
+    needed_ppk = 8.0
+    needed_num_cells = np.ceil((needed_ppk * ion_gyroperiod_s * alfven_velo) / cell_width).astype(int)
+    print(f"Minimum number of cells for ppk = {needed_ppk} is {needed_num_cells}")
+    num_cells = needed_num_cells
+    print(f"Num Cells : {num_cells}")
     sim_L = num_cells * cell_width * u.m
     print(f"Sim length : {sim_L}")
-    ion_gyroperiod_s = (2.0 * np.pi * u.rad) / ppf.gyrofrequency(b0_strength * u.T, "p+")
     sim_L_vA_Tci = sim_L / (ion_gyroperiod_s * alfven_velo * (u.m / u.s))
     print(f"Sim length in k units: {sim_L_vA_Tci}")
     spatial_Nyquist = num_cells/(2.0 * sim_L_vA_Tci)
     print(f"Spatial Nyquist frequency: {spatial_Nyquist}")
     pixels_per_wavenumber = num_cells / (2.0 * spatial_Nyquist)
     print(f"Pixels per wavenumber: {pixels_per_wavenumber}")
-
-    needed_ppk = 8.0
-    needed_num_cells = np.ceil((needed_ppk * ion_gyroperiod_s * alfven_velo) / cell_width).astype(int)
-    print(f"Minimum number of cells for ppk = {needed_ppk} is {needed_num_cells}")
 
     # all_variables = dir() 
   
