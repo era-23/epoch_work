@@ -237,6 +237,20 @@
             ]
         },
         {
+            "name": "Python Debugger: File manager",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "file_manager.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--modify",
+                "--source", "/home/era536/Documents/Epoch/Data/batch_testing_2/test/",
+                "--file_pattern", "input.deck",
+                "--search_text", "num_time_samples = 1000.0",
+                "--replace_text", "num_time_samples = 4000.0",
+            ]
+        },
+        {
             "name": "Python Debugger: Batch Processing",
             "type": "debugpy",
             "request": "launch",
