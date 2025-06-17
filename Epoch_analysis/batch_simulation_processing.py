@@ -404,7 +404,7 @@ def run_energy_analysis(
     maxExtent = np.max([np.array(v) for v in deltaEnergies.values()])
     minExtent = np.min([np.array(v) for v in deltaEnergies.values()])
     dataRange = maxExtent - minExtent
-    prominence = 0.01 * dataRange # Peak prominence must be at least 1% of the data range
+    prominence = 0.02 * dataRange # Peak prominence must be at least 2% of the data range
 
     # Initialise plotting
     fig, ax = plt.subplots(figsize=(12, 8))
@@ -414,7 +414,8 @@ def run_energy_analysis(
     for variable, deltaED in deltaEnergies.items():
         
         # Smooth curve
-        smoothDeltaED = make_smoothing_spline(timeCoords, deltaED, lam=1.0)
+        # smoothDeltaED = make_smoothing_spline(timeCoords, deltaED, lam=1.0)
+        smoothDeltaED = make_smoothing_spline(timeCoords, deltaED, lam = 0.01)
         smoothDeltaData = smoothDeltaED(timeCoords)
         
         # Find stationary points

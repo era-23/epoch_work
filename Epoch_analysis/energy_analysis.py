@@ -3,6 +3,7 @@ from sdf_xarray import SDFPreprocess
 from pathlib import Path
 from scipy import constants
 from inference.plotting import matrix_plot
+import epoch_utils as utils
 import pandas as pd
 import matplotlib.pyplot as plt
 import epydeck
@@ -344,6 +345,10 @@ def analyse_peak_characteristics(analysisDirectory : Path):
     beamFractions = []
     hasFastIonTrough = []
     hasBkgdIonPeak = []
+    hasOverallFiLoss = []
+    hasOverallBiGain = []
+    fiDeltaEnergyPct = []
+    biDeltaEnergyPct = []
 
     for simulation in dataFiles:
 
@@ -354,50 +359,79 @@ def analyse_peak_characteristics(analysisDirectory : Path):
 
         energyStats = data["Energy"]
 
-        if (energyStats["fastIonMeanEnergyDensity"].attrs["hasTroughs"] and energyStats["protonMeanEnergyDensity"].attrs["hasPeaks"]):
+        B0strength.append(data.attrs["B0strength"])
+        B0angle.append(data.attrs["B0angle"])
+        beamFractions.append(data.attrs["beamFraction"])
+        densities.append(data.attrs["backgroundDensity"])
 
-            
-            mciB0.append(data.attrs["B0strength"])
-            mciBangle.append(data.attrs["B0angle"])
-            mciBeamFracs.append(data.attrs["beamFraction"])
-            mciDensities.append(data.attrs["backgroundDensity"])
-        else:
-            noMciB0.append(data.attrs["B0strength"])
-            noMciBangle.append(data.attrs["B0angle"])
-            noMciBeamFracs.append(data.attrs["beamFraction"])
-            noMciDensities.append(data.attrs["backgroundDensity"])
+        hasFastIonTrough.append(bool(energyStats["fastIonMeanEnergyDensity"].attrs["hasTroughs"]))
+        hasBkgdIonPeak.append(bool(energyStats["protonMeanEnergyDensity"].attrs["hasPeaks"]))
+        hasOverallFiLoss.append(False if energyStats.hasOverallFastIonGain else True)
+        hasOverallBiGain.append(bool(energyStats.hasOverallBkgdIonGain))
+        fiDelta = (energyStats.fastIonEnergyDensity_delta / energyStats.fastIonEnergyDensity_start) * 100.0
+        biDelta = (energyStats.backgroundIonEnergyDensity_delta / energyStats.fastIonEnergyDensity_start) * 100.0
+        fiDeltaEnergyPct.append(fiDelta)
+        biDeltaEnergyPct.append(biDelta)
     
-    mciName = "E transfer"
-    noMciName = "No E transfer"
-    mciXAxis = [mciName for _ in mciB0]
-    noMciXAxis = [noMciName for _ in noMciB0]
+    simParameters = {"B0" : np.array(B0strength), "B0_angle" : np.array(B0angle), "Density" : np.array(densities), "Beam_fraction" : np.array(beamFractions)}
+    variables = {
+        "Has_FI_trough" : hasFastIonTrough, 
+        "Has_BI_peak" : hasBkgdIonPeak, 
+        "Has_overall_FI_loss" : hasOverallFiLoss, 
+        "Has_overall_BI_gain" : hasOverallBiGain,
+        "FI_delta_pct" : fiDeltaEnergyPct,
+        "BI_delta_pct" : biDeltaEnergyPct
+    }
 
-    fig, axs = plt.subplots(1, 4, sharey=False, figsize=[12,8])
-    axs[0].scatter(mciXAxis, mciB0)
-    axs[0].scatter(noMciXAxis, noMciB0)
-    #axs[0].scatter([mciName], [np.mean(mciB0)], "x", color = "purple")
-    #axs[0].scatter([noMciName], [np.mean(noMciB0)], "x", color = "red")
-    axs[0].set_ylabel("B0 [T]")
-    axs[1].scatter(mciXAxis, mciBangle)
-    axs[1].scatter(noMciXAxis, noMciBangle)
-    #axs[1].scatter([mciName], [np.mean(mciBangle)], "x", color = "purple")
-    #axs[1].scatter([noMciName], [np.mean(noMciBangle)], "x", color = "red")
-    axs[1].set_ylabel("B0 angle [degrees]")
-    axs[2].scatter(mciXAxis, mciDensities)
-    axs[2].scatter(noMciXAxis, noMciDensities)
-    #axs[2].scatter([mciName], [np.mean(mciDensities)], "x", color = "purple")
-    #axs[2].scatter([noMciName], [np.mean(noMciDensities)], "x", color = "red")
-    axs[2].set_ylabel("Density [/m^3]")
-    axs[2].set_yscale("log")
-    axs[3].scatter(mciXAxis, mciBeamFracs)
-    axs[3].scatter(noMciXAxis, noMciBeamFracs)
-    #axs[3].scatter([mciName], [np.mean(mciBeamFracs)], "x", color = "purple")
-    #axs[3].scatter([noMciName], [np.mean(noMciBeamFracs)], "x", color = "red")
-    axs[3].set_yscale("log")
-    axs[3].set_ylabel("Beam fraction [au]")
+    fiTroughIndices = np.where(variables["Has_FI_trough"])[0]
+    biPeakIndices = np.where(variables["Has_BI_peak"])[0]
+    overallFiLossIndices = np.where(variables["Has_overall_FI_loss"])[0]
+    overallBiGainIndices = np.where(variables["Has_overall_BI_gain"])[0]
+    mciIndices = np.intersect1d(fiTroughIndices, biPeakIndices)
+    partialMciIndices = np.union1d(fiTroughIndices, biPeakIndices)
+    noMciIndices = np.setdiff1d(np.arange(len(simParameters["B0"])), partialMciIndices)
+    fiTroughBiPeakParams = {"B0" : simParameters["B0"][mciIndices], "B0_angle" : simParameters["B0_angle"][mciIndices], "Density" : simParameters["Density"][mciIndices], "Beam_fraction" : simParameters["Beam_fraction"][mciIndices]}
+    noFiTroughAndBiPeakParams = {"B0" : simParameters["B0"][noMciIndices], "B0_angle" : simParameters["B0_angle"][noMciIndices], "Density" : simParameters["Density"][noMciIndices], "Beam_fraction" : simParameters["Beam_fraction"][noMciIndices]}
+    fiTroughOrBiPeakParams = {"B0" : simParameters["B0"][partialMciIndices], "B0_angle" : simParameters["B0_angle"][partialMciIndices], "Density" : simParameters["Density"][partialMciIndices], "Beam_fraction" : simParameters["Beam_fraction"][partialMciIndices]}
+
+    labels = [k for k in fiTroughBiPeakParams.keys()]
+    mciSamples = [v for v in fiTroughBiPeakParams.values()]
+    partialMciSamples = [v for v in fiTroughOrBiPeakParams.values()]
+    noMciSamples = [v for v in noFiTroughAndBiPeakParams.values()]
+    utils.my_matrix_plot(data_series=[mciSamples, partialMciSamples, noMciSamples], series_labels=["Clear E transfer", "Partial E transfer", "No E transfer"], parameter_labels=labels, plot_style="hdi", colormap_list=["Reds", "Greens", "Blues"], show=True)
+
+    print("Woh")
+    # mciName = "E transfer"
+    # noMciName = "No E transfer"
+    # mciXAxis = [mciName for _ in mciB0]
+    # noMciXAxis = [noMciName for _ in noMciB0]
+
+    # fig, axs = plt.subplots(1, 4, sharey=False, figsize=[12,8])
+    # axs[0].scatter(mciXAxis, mciB0)
+    # axs[0].scatter(noMciXAxis, noMciB0)
+    # #axs[0].scatter([mciName], [np.mean(mciB0)], "x", color = "purple")
+    # #axs[0].scatter([noMciName], [np.mean(noMciB0)], "x", color = "red")
+    # axs[0].set_ylabel("B0 [T]")
+    # axs[1].scatter(mciXAxis, mciBangle)
+    # axs[1].scatter(noMciXAxis, noMciBangle)
+    # #axs[1].scatter([mciName], [np.mean(mciBangle)], "x", color = "purple")
+    # #axs[1].scatter([noMciName], [np.mean(noMciBangle)], "x", color = "red")
+    # axs[1].set_ylabel("B0 angle [degrees]")
+    # axs[2].scatter(mciXAxis, mciDensities)
+    # axs[2].scatter(noMciXAxis, noMciDensities)
+    # #axs[2].scatter([mciName], [np.mean(mciDensities)], "x", color = "purple")
+    # #axs[2].scatter([noMciName], [np.mean(noMciDensities)], "x", color = "red")
+    # axs[2].set_ylabel("Density [/m^3]")
+    # axs[2].set_yscale("log")
+    # axs[3].scatter(mciXAxis, mciBeamFracs)
+    # axs[3].scatter(noMciXAxis, noMciBeamFracs)
+    # #axs[3].scatter([mciName], [np.mean(mciBeamFracs)], "x", color = "purple")
+    # #axs[3].scatter([noMciName], [np.mean(noMciBeamFracs)], "x", color = "red")
+    # axs[3].set_yscale("log")
+    # axs[3].set_ylabel("Beam fraction [au]")
     
-    plt.tight_layout()
-    plt.show()
+    # plt.tight_layout()
+    # plt.show()
 
 if __name__ == "__main__":
 

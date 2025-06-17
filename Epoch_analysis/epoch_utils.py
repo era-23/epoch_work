@@ -10,6 +10,13 @@ from plasmapy.formulary import frequencies as ppf
 from sklearn.gaussian_process import GaussianProcessRegressor, GaussianProcessClassifier
 from dataclasses import dataclass
 
+from collections.abc import Sequence
+from warnings import warn
+from inference.pdf.hdi import sample_hdi
+from inference.pdf.kde import GaussianKDE, KDE2D
+
+from matplotlib import colormaps
+
 @dataclass
 class LinearGrowthRate:
     gamma : float
@@ -763,3 +770,312 @@ def process_growth_rates(
         group.wavenumber=float(gamma.wavenumber)
         group.peakPower=float(gamma.peakPower)
         group.totalPower=float(gamma.totalPower)
+
+def my_matrix_plot(
+    data_series,
+    series_labels: list[str] = None,
+    parameter_labels: list[str] = None,
+    show: bool = True,
+    reference: Sequence[float] = None,
+    filename: str = None,
+    plot_style: str = "contour",
+    colormap_list: list = ["Blues", "Greens"],
+    show_ticks: bool = None,
+    point_colors: Sequence[float] = None,
+    hdi_fractions=(0.35, 0.65, 0.95),
+    point_size: int = 1,
+    label_size: int = 10,
+):
+    """
+    Construct a 'matrix plot' for a set of variables which shows all possible
+    1D and 2D marginal distributions.
+
+    :param data_series: \
+        A list of lists of array-like objects containing the samples for each variable for each data series.
+    
+    :param series_labels: \
+        A list of strings to be used as labels for each data series being plotted.
+
+    :param parameter_labels: \
+        A list of strings to be used as axis labels for each parameter being plotted.
+
+    :param bool show: \
+        Sets whether the plot is displayed.
+
+    :param reference: \
+        A list of reference values for each parameter which will be over-plotted.
+
+    :param str filename: \
+        File path to which the matrix plot will be saved (if specified).
+
+    :param str plot_style: \
+        Specifies the type of plot used to display the 2D marginal distributions.
+        Available styles are 'contour' for filled contour plotting, 'hdi' for
+        highest-density interval contouring, 'histogram' for hexagonal-bin histogram,
+        and 'scatter' for scatterplot.
+
+    :param str colormaps: \
+        A list of colormaps to be used for plotting. Must be the same length as len(data_series)
+        and contain names of valid colormaps present in ``matplotlib.colormaps``.
+
+    :param bool show_ticks: \
+        By default, axis ticks are only shown when plotting less than 6 variables.
+        This behaviour can be overridden for any number of parameters by setting
+        show_ticks to either True or False.
+
+    :param point_colors: \
+        An array containing data which will be used to set the colors of the points
+        if the plot_style argument is set to 'scatter'.
+
+    :param point_size: \
+        An array containing data which will be used to set the size of the points
+        if the plot_style argument is set to 'scatter'.
+
+    :param hdi_fractions: \
+        The highest-density intervals used for contouring, specified in terms of
+        the fraction of the total probability contained in each interval. Should
+        be given as an iterable of floats, each in the range [0, 1].
+
+    :param int label_size: \
+        The font-size used for axis labels.
+    """
+    N_series = len(data_series)
+    N_par = len(data_series[0])
+    if parameter_labels is None:  # set default axis labels if none are given
+        if N_par >= 10:
+            parameter_labels = [f"p{i}" for i in range(N_par)]
+        else:
+            parameter_labels = [f"param {i}" for i in range(N_par)]
+    else:
+        if len(parameter_labels) != N_par:
+            raise ValueError(
+                """\n
+                \r[ matrix_plot error ]
+                \r>> The number of labels given does not match
+                \r>> the number of plotted parameters.
+                """
+            )
+
+    if reference is not None:
+        if len(reference) != N_par:
+            raise ValueError(
+                """\n
+                \r[ matrix_plot error ]
+                \r>> The number of reference values given does not match
+                \r>> the number of plotted parameters.
+                """
+            )
+    # check that given plot style is valid, else default to a histogram
+    if plot_style not in ["contour", "hdi", "histogram", "scatter"]:
+        plot_style = "contour"
+        warn(
+            "'plot_style' must be set as either 'contour', 'hdi', 'histogram' or 'scatter'"
+        )
+
+    iterable = hasattr(hdi_fractions, "__iter__")
+    if not iterable or not all(0 < f < 1 for f in hdi_fractions):
+        raise ValueError(
+            """\n
+            \r[ matrix_plot error ]
+            \r>> The 'hdi_fractions' argument must be given as an
+            \r>> iterable of floats, each in the range [0, 1].
+            """
+        )
+
+    # by default, we suppress axis ticks if there are 6 parameters or more to keep things tidy
+    if show_ticks is None:
+        show_ticks = N_par < 6
+
+    L = 200
+    cmaps = []
+    marginal_colors = []
+    cmap_count = 0
+    for c in colormap_list:
+        if c in colormaps:
+            cmaps.append(colormaps[c])
+        else:
+            cmaps.append(colormaps[cmap_count])
+            cmap_count += 1
+            warn(f"'{c}' is not a valid colormap from matplotlib.colormaps")
+    # find the darker of the two ends of the colormap, and use it for the marginal plots
+        marginal_colors.append(sorted([cmaps[-1](10), cmaps[-1](245)], key=lambda x: sum(x[:-1]))[0])
+
+    # build axis arrays and determine limits for all variables
+    axis_limits = []
+    axis_arrays = []
+    parameters = [s.tolist() for s in data_series[0]]
+    for n_series in range(1, N_series):
+        for n_sample in range(N_par):
+            parameters[n_sample] += data_series[n_series][n_sample].tolist()
+    for sample in parameters:
+        # get the 98% HDI to calculate plot limits
+        lwr, upr = sample_hdi(sample, fraction=0.98)
+        # store the limits and axis array
+        axis_limits.append([lwr - (upr - lwr) * 0.3, upr + (upr - lwr) * 0.3])
+        axis_arrays.append(
+            np.linspace(lwr - (upr - lwr) * 0.35, upr + (upr - lwr) * 0.35, L)
+        )
+
+    fig = plt.figure(figsize=(8, 8))
+    # build a lower-triangular indices list in diagonal-striped order
+    inds_list = [(N_par - 1, 0)]  # start with bottom-left corner
+    for k in range(1, N_par):
+        inds_list.extend([(N_par - 1 - i, k - i) for i in range(k + 1)])
+
+    # now create a dictionary of axis objects with correct sharing
+    axes = {}
+    for tup in inds_list:
+        i, j = tup
+        x_share = None
+        y_share = None
+
+        if i < N_par - 1:
+            x_share = axes[(N_par - 1, j)]
+
+        if (j > 0) and (i != j):  # diagonal doesnt share y-axis
+            y_share = axes[(i, 0)]
+
+        axes[tup] = plt.subplot2grid(
+            (N_par, N_par), (i, j), sharex=x_share, sharey=y_share
+        )
+    
+    for n_series in range(N_series):
+        
+        samples = data_series[n_series]
+        marginal_color = marginal_colors[n_series]
+        cmap = cmaps[n_series]
+
+        # now loop over grid and plot
+        for tup in inds_list:
+            i, j = tup
+            ax = axes[tup]
+            # are we on the diagonal?
+            if i == j:
+                sample = samples[i]
+                pdf = GaussianKDE(sample)
+                estimate = np.array(pdf(axis_arrays[i]))
+                ax.plot(
+                    axis_arrays[i],
+                    0.9 * (estimate / estimate.max()),
+                    lw=1,
+                    color=marginal_color,
+                    label = series_labels[n_series]
+                )
+                ax.fill_between(
+                    axis_arrays[i],
+                    0.9 * (estimate / estimate.max()),
+                    color=marginal_color,
+                    alpha=0.1,
+                )
+                if reference is not None:
+                    ax.plot(
+                        [reference[i], reference[i]],
+                        [0, 1],
+                        lw=1.5,
+                        ls="dashed",
+                        color="red",
+                    )
+                ax.set_ylim([0, 1])
+            else:
+                x = samples[j]
+                y = samples[i]
+
+                # plot the 2D marginals
+                if plot_style == "contour":
+                    # Filled contour plotting using 2D gaussian KDE
+                    pdf = KDE2D(x=x, y=y)
+                    x_ax = axis_arrays[j][::4]
+                    y_ax = axis_arrays[i][::4]
+                    X, Y = np.meshgrid(x_ax, y_ax)
+                    prob = np.array(pdf(X.flatten(), Y.flatten())).reshape([L // 4, L // 4])
+                    ax.set_facecolor(cmap(256 // 20))
+                    ax.contourf(X, Y, prob, 10, cmap=cmap)
+
+                elif plot_style == "hdi":
+                    # Filled contour plotting using 2D gaussian KDE
+                    pdf = KDE2D(x=x, y=y)
+                    sample_probs = pdf(x, y)
+                    pcts = [100 * (1 - f) for f in hdi_fractions]
+                    levels = [l for l in np.percentile(sample_probs, pcts)]
+
+                    x_ax = axis_arrays[j][::4]
+                    y_ax = axis_arrays[i][::4]
+                    X, Y = np.meshgrid(x_ax, y_ax)
+                    prob = np.array(pdf(X.flatten(), Y.flatten())).reshape([L // 4, L // 4])
+                    levels.append(prob.max())
+                    levels = sorted(levels)
+                    ax.contourf(X, Y, prob, levels=levels, cmap=cmap, alpha=0.7)
+                    ax.contour(X, Y, prob, levels=levels, alpha=0.2)
+
+                elif plot_style == "histogram":
+                    # hexagonal-bin histogram
+                    ax.set_facecolor(cmap(0))
+                    ax.hexbin(x, y, gridsize=35, cmap=cmap)
+
+                else:
+                    # scatterplot
+                    if point_colors is None:
+                        ax.scatter(x, y, color=marginal_color, s=point_size)
+                    else:
+                        ax.scatter(x, y, c=point_colors, s=point_size, cmap=cmap)
+
+                # plot any reference points if given
+                if reference is not None:
+                    ax.plot(
+                        reference[j],
+                        reference[i],
+                        marker="o",
+                        markersize=7,
+                        markerfacecolor="none",
+                        markeredgecolor="white",
+                        markeredgewidth=3.5,
+                    )
+                    ax.plot(
+                        reference[j],
+                        reference[i],
+                        marker="o",
+                        markersize=7,
+                        markerfacecolor="none",
+                        markeredgecolor="red",
+                        markeredgewidth=2,
+                    )
+
+            # assign axis labels
+            if i == N_par - 1:
+                ax.set_xlabel(parameter_labels[j], fontsize=label_size)
+            if j == 0 and i != 0:
+                ax.set_ylabel(parameter_labels[i], fontsize=label_size)
+            # impose x-limits on bottom row
+            if i == N_par - 1:
+                ax.set_xlim(axis_limits[j])
+            # impose y-limits on left column, except the top-left corner
+            if j == 0 and i != 0:
+                ax.set_ylim(axis_limits[i])
+
+            if show_ticks:  # set up ticks for the edge plots if they are to be shown
+                # hide x-tick labels for plots not on the bottom row
+                if i < N_par - 1:
+                    plt.setp(ax.get_xticklabels(), visible=False)
+                # hide y-tick labels for plots not in the left column
+                if j > 0:
+                    plt.setp(ax.get_yticklabels(), visible=False)
+                # remove all y-ticks for 1D marginal plots on the diagonal
+                if i == j:
+                    ax.set_yticks([])
+            else:  # else remove all ticks from all axes
+                ax.set_xticks([])
+                ax.set_yticks([])
+
+    handles, labels = plt.gca().get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    fig.legend(by_label.values(), by_label.keys(), loc="upper right")
+    # set the plot spacing
+    fig.tight_layout()
+    fig.subplots_adjust(wspace=0.0, hspace=0.0)
+    # save/show the figure if required
+    if filename is not None:
+        plt.savefig(filename)
+    if show:
+        plt.show()
+
+    return fig
