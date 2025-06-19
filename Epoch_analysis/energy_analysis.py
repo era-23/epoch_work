@@ -373,7 +373,7 @@ def analyse_peak_characteristics(analysisDirectory : Path):
         fiDeltaEnergyPct.append(fiDelta)
         biDeltaEnergyPct.append(biDelta)
     
-    simParameters = {"B0" : np.array(B0strength), "B0_angle" : np.array(B0angle), "Density" : np.array(densities), "Beam_fraction" : np.array(beamFractions)}
+    simParameters = {"B0" : np.array(B0strength), "B0_angle" : np.array(B0angle), "Density" : np.log10(np.array(densities)), "Beam_fraction" : np.log10(np.array(beamFractions))}
     variables = {
         "Has_FI_trough" : hasFastIonTrough, 
         "Has_BI_peak" : hasBkgdIonPeak, 
@@ -390,7 +390,7 @@ def analyse_peak_characteristics(analysisDirectory : Path):
     mciIndices = np.intersect1d(fiTroughIndices, biPeakIndices)
     partialMciIndices = np.union1d(fiTroughIndices, biPeakIndices)
     noMciIndices = np.setdiff1d(np.arange(len(simParameters["B0"])), partialMciIndices)
-    fiTroughBiPeakParams = {"B0" : simParameters["B0"][mciIndices], "B0_angle" : simParameters["B0_angle"][mciIndices], "Density" : simParameters["Density"][mciIndices], "Beam_fraction" : simParameters["Beam_fraction"][mciIndices]}
+    fiTroughBiPeakParams = {"B0 (T)" : simParameters["B0"][mciIndices], "B0 angle (deg)" : simParameters["B0_angle"][mciIndices], "Log_10 density" : simParameters["Density"][mciIndices], "Log_10 beam fraction" : simParameters["Beam_fraction"][mciIndices]}
     noFiTroughAndBiPeakParams = {"B0" : simParameters["B0"][noMciIndices], "B0_angle" : simParameters["B0_angle"][noMciIndices], "Density" : simParameters["Density"][noMciIndices], "Beam_fraction" : simParameters["Beam_fraction"][noMciIndices]}
     fiTroughOrBiPeakParams = {"B0" : simParameters["B0"][partialMciIndices], "B0_angle" : simParameters["B0_angle"][partialMciIndices], "Density" : simParameters["Density"][partialMciIndices], "Beam_fraction" : simParameters["Beam_fraction"][partialMciIndices]}
 
@@ -398,7 +398,48 @@ def analyse_peak_characteristics(analysisDirectory : Path):
     mciSamples = [v for v in fiTroughBiPeakParams.values()]
     partialMciSamples = [v for v in fiTroughOrBiPeakParams.values()]
     noMciSamples = [v for v in noFiTroughAndBiPeakParams.values()]
-    utils.my_matrix_plot(data_series=[mciSamples, partialMciSamples, noMciSamples], series_labels=["Clear E transfer", "Partial E transfer", "No E transfer"], parameter_labels=labels, plot_style="hdi", colormap_list=["Reds", "Greens", "Blues"], show=True)
+    # utils.my_matrix_plot(data_series=[noMciSamples, partialMciSamples, mciSamples], series_labels=["No E transfer", "Partial E transfer", "Clear E transfer"], parameter_labels=labels, plot_style="hdi", colormap_list=["Blues", "Greens", "Reds"], show=True)
+    # utils.my_matrix_plot(data_series=[noMciSamples, mciSamples], series_labels=["No E transfer", "Clear E transfer"], parameter_labels=labels, plot_style="hdi", colormap_list=["Blues", "Reds"], show=True)
+
+    fiLossParams = {
+        "B0 (T)" : simParameters["B0"][overallFiLossIndices], 
+        "B0 angle (deg)" : simParameters["B0_angle"][overallFiLossIndices], 
+        "Log_10 density" : simParameters["Density"][overallFiLossIndices], 
+        "Log_10 beam fraction" : simParameters["Beam_fraction"][overallFiLossIndices]
+    }
+    biGainParams = {
+        "B0 (T)" : simParameters["B0"][overallBiGainIndices], 
+        "B0 angle (deg)" : simParameters["B0_angle"][overallBiGainIndices], 
+        "Log_10 density" : simParameters["Density"][overallBiGainIndices], 
+        "Log_10 beam fraction" : simParameters["Beam_fraction"][overallBiGainIndices]
+    }
+    fiLossAndBiGainIndices = np.intersect1d(overallFiLossIndices, overallBiGainIndices)
+    fiLossOrBiGainIndices = np.union1d(overallFiLossIndices, overallBiGainIndices)
+    noFiToBiTransferIndices = np.setdiff1d(np.arange(len(simParameters["B0"])), fiLossAndBiGainIndices)
+    fiLossAndBiGainParams = {
+        "B0 (T)" : simParameters["B0"][fiLossAndBiGainIndices], 
+        "B0 angle (deg)" : simParameters["B0_angle"][fiLossAndBiGainIndices], 
+        "Log_10 density" : simParameters["Density"][fiLossAndBiGainIndices], 
+        "Log_10 beam fraction" : simParameters["Beam_fraction"][fiLossAndBiGainIndices]
+    }
+    noFiToBiTransferParams = {
+        "B0 (T)" : simParameters["B0"][noFiToBiTransferIndices], 
+        "B0 angle (deg)" : simParameters["B0_angle"][noFiToBiTransferIndices], 
+        "Log_10 density" : simParameters["Density"][noFiToBiTransferIndices], 
+        "Log_10 beam fraction" : simParameters["Beam_fraction"][noFiToBiTransferIndices]
+    }
+    fiLossSamples = [v for v in fiLossParams.values()]
+    biGainSamples = [v for v in biGainParams.values()]
+    noTransferSamples = [v for v in noFiToBiTransferParams.values()]
+    fiLossBiGainSamples = [v for v in fiLossAndBiGainParams.values()]
+    utils.my_matrix_plot(
+        data_series=[fiLossSamples, biGainSamples, noTransferSamples, fiLossBiGainSamples], 
+        series_labels=["Overall FI Loss", "Overall BI Gain", "Neither FI loss or BI gain", "Both FI loss and BI gain"], 
+        parameter_labels=labels, 
+        plot_style="hdi", 
+        colormap_list=["Greys", "Greens", "Blues", "Reds"], 
+        show=True)
+
 
     print("Woh")
     # mciName = "E transfer"

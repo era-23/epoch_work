@@ -7,7 +7,6 @@ import astropy.units as u
 import xrft  # noqa: E402
 from scipy import stats
 from plasmapy.formulary import frequencies as ppf
-from sklearn.gaussian_process import GaussianProcessRegressor, GaussianProcessClassifier
 from dataclasses import dataclass
 
 from collections.abc import Sequence
@@ -46,17 +45,6 @@ class MaxGrowthRate:
     time: float
     gamma: float
     yIntercept: float
-
-@dataclass
-class GPModel:
-    kernelName : str
-    inputNames : list
-    normalisedInputs : np.ndarray
-    outputName : str
-    output : np.ndarray
-    regressionModel : GaussianProcessRegressor = None
-    classificationModel : GaussianProcessClassifier = None
-    modelParams : dict = None
 
 E_TRACE_SPECIES_COLOUR_MAP = {
     "proton" : "orange",

@@ -1,5 +1,4 @@
 import matplotlib.pyplot as plt
-import epoch_utils as e_utils
 import numpy as np
 import itertools
 from scipy.stats import norm
@@ -8,7 +7,21 @@ from functools import partial
 from matplotlib import animation
 from inference.plotting import matrix_plot
 from SALib import ProblemSpec
+from sklearn.gaussian_process import GaussianProcessRegressor, GaussianProcessClassifier
+from dataclasses import dataclass
 import SALib.sample as salsamp
+
+@dataclass
+class GPModel:
+    kernelName : str
+    inputNames : list
+    normalisedInputs : np.ndarray
+    outputName : str
+    output : np.ndarray
+    regressionModel : GaussianProcessRegressor = None
+    classificationModel : GaussianProcessClassifier = None
+    modelParams : dict = None
+    fitSuccess : bool = None
 
 fieldNameToText_dict = {
     "Energy/electricFieldEnergyDensity_delta" : "E_deltaE",
@@ -54,6 +67,12 @@ fieldNameToText_dict = {
     "Magnetic_Field_Bz/growthRates/maxInHighTotalPowerK/time" : "Bz_totalKmaxGammaTime",
     "Magnetic_Field_Bz/growthRates/maxInHighTotalPowerK/totalPower" : "Bz_totalKmaxGammaTotalPower",
     "Magnetic_Field_Bz/growthRates/maxInHighTotalPowerK/wavenumber" : "Bz_totalKmaxGammaK",
+    "Magnetic_Field_Bz/growthRates/positive/bestInHighestPeakPowerK/growthRate" : "Growth rate (peak power k)",
+    "Magnetic_Field_Bz/growthRates/positive/bestInHighestPeakPowerK/time" : "Time max growth (peak power k)",
+    "Magnetic_Field_Bz/growthRates/positive/bestInHighestPeakPowerK/wavenumber" : "Peak k",
+    "Magnetic_Field_Bz/growthRates/positive/bestInHighestTotalPowerK/growthRate" : "Growth rate (total power k)",
+    "Magnetic_Field_Bz/growthRates/positive/bestInHighestTotalPowerK/time" : "Time max growth (total power k)",
+    "Magnetic_Field_Bz/growthRates/positive/bestInHighestTotalPowerK/wavenumber" : "Total power k",
     "Electric_Field_Ex/totalMagnitude" : "Ex_totalPower", 
     "Electric_Field_Ex/meanMagnitude" : "Ex_meanPower", 
     "Electric_Field_Ex/totalDelta" : "Ex_deltaTotalPower", 
@@ -121,7 +140,7 @@ def parse_commandLine_netCDFpaths(paths : list) -> dict:
 
     return formattedPaths
 
-def plot_three_dimensions(input_1_index : int, input_2_index : int, gpModel : e_utils.GPModel, showModels = True, saveAnimation = False, noTitle = False):
+def plot_three_dimensions(input_1_index : int, input_2_index : int, gpModel : GPModel, showModels = True, saveAnimation = False, noTitle = False):
     
     # if showModels:
     #     fig = plt.figure()
@@ -161,7 +180,7 @@ def plot_three_dimensions(input_1_index : int, input_2_index : int, gpModel : e_
     elif gpModel.classificationModel:
         gp_z = gpModel.classificationModel.predict_proba(gp_test_values)[:,1]
     else:
-        raise NotImplementedError("type must be one of regress or classify")
+        raise ValueError("No regression or classification model found.")
     gp_x, gp_y = gp_test_values[:,input_1_index], gp_test_values[:,input_2_index]
     #ax.plot_trisurf(gp_x, gp_y, gp_z, cmap="plasma")
     X, Y = np.meshgrid(np.linspace(min(gp_x), max(gp_x), len(gp_x)), np.linspace(min(gp_y), max(gp_y), len(gp_y)))
@@ -216,7 +235,7 @@ def display_matrix_plots(inputs : dict, normalisedInputs : np.ndarray, outputs: 
 def plot_models(gpModels : list, showModels : bool = True, saveAnimation : bool = False, noTitle : bool = False):
     
     for model in gpModels:
-        model : e_utils.GPModel
+        model : GPModel
         # 3D plot if there are only 2 input dimensions
         allInputCombos = list(itertools.combinations(range(len(model.inputNames)), 2))
         for inputPair in allInputCombos:

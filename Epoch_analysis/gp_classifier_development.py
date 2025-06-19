@@ -170,7 +170,7 @@ def sobol_analysis(gpModels : list):
     test_values = salsamp.sobol.sample(sp, int(2**17))
 
     for model in gpModels:
-        model : e_utils.GPModel
+        model : gp_utils.GPModel
         print(f"SOBOL analysing {model.kernelName} model for {model.outputName}....")
 
         if model.regressionModel:
@@ -200,7 +200,7 @@ def evaluate_model(gpModels : list, crossValidate : bool = True, folds : int = 5
     uniqueOutputNames = set([m.outputName for m in gpModels])
     evaluationData = {o : {k : {"score" : None, "std" : None} for k in uniqueKernels} for o in uniqueOutputNames}
     for model in gpModels:
-        model : e_utils.GPModel
+        model : gp_utils.GPModel
         if crossValidate:
             if model.modelParams:
                 retrainedModel = untrained_GP(

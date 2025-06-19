@@ -169,7 +169,7 @@ def sobol_analysis(gpModels : list, noTitle : bool = False):
     test_values = salsamp.sobol.sample(sp, int(2**17))
 
     for model in gpModels:
-        model : e_utils.GPModel
+        model : gp_utils.GPModel
         print(f"SOBOL analysing {model.kernelName} model for {model.outputName}....")
 
         if model.regressionModel:
@@ -200,7 +200,7 @@ def evaluate_model(gpModels : list, crossValidate : bool = True, folds : int = 5
     uniqueOutputNames = set([m.outputName for m in gpModels])
     evaluationData = {o : {k : {"score" : None, "std" : None} for k in uniqueKernels} for o in uniqueOutputNames}
     for model in gpModels:
-        model : e_utils.GPModel
+        model : gp_utils.GPModel
         if crossValidate:
             if model.modelParams:
                 untrainedModel = untrained_GP(
@@ -238,12 +238,14 @@ def evaluate_model(gpModels : list, crossValidate : bool = True, folds : int = 5
     for _, data in alphabeticalEvalData.items():
         multiplier = 0
         for kernel, kernelData in data.items():
+            kernelScore = 0.0 if kernelData["score"] is None else kernelData["score"]
+            kernelStd = 0.0 if kernelData["std"] is None else kernelData["std"]
             offset = width * multiplier
-            rects = ax.bar(x + offset, kernelData["score"], width, color=colors[multiplier])
+            rects = ax.bar(x + offset, kernelScore, width, color=colors[multiplier])
             if x==0:
                 rects.set_label(kernel)
             if crossValidate:
-                ax.errorbar(x + offset, kernelData["score"], yerr=zScore*np.array(kernelData["std"]), fmt=' ', color='r')
+                ax.errorbar(x + offset, kernelScore, yerr=zScore*np.array(kernelStd), fmt=' ', color='r')
             #ax.bar_label(rects, padding=3, fmt="%.3f")
             ax.bar_label(rects, label_type='center', fmt="%.3f", fontsize=16)
             multiplier += 1
@@ -327,26 +329,28 @@ def regress_simulations(
     for k in kernels:
         for outputName, outputData in normalisedOutputs.items():
             regressionModel, modelParams = train_data(normalisedInputData, outputData, k)
-            models.append(e_utils.GPModel(
+            models.append(gp_utils.GPModel(
                 regressionModel=regressionModel,
                 modelParams=modelParams,
                 kernelName=k,
                 inputNames=inNames,
                 normalisedInputs=normalisedInputData,
                 outputName=outputName,
-                output=outputData
+                output=outputData,
+                fitSuccess = (regressionModel is not None)
             ))
 
+    successfulModels = [model for model in models if model.fitSuccess]
     if plotModels:
-        gp_utils.plot_models(models, showModels, saveAnimation, noTitle)
+        gp_utils.plot_models(successfulModels, showModels, saveAnimation, noTitle)
 
     # Evaluate model
     if evaluateModels:
-        evaluate_model(models, noTitle=noTitle)
+        evaluate_model(successfulModels, noTitle=noTitle)
 
     # Perform SOBOL analysis
     if sobol:
-        sobol_analysis(models, noTitle=noTitle)
+        sobol_analysis(successfulModels, noTitle=noTitle)
 
 if __name__ == "__main__":
     
