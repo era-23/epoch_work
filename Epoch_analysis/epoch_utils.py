@@ -6,6 +6,7 @@ import netCDF4 as nc
 import astropy.units as u
 import xrft  # noqa: E402
 from scipy import stats
+from scipy.interpolate import make_smoothing_spline, BSpline
 from plasmapy.formulary import frequencies as ppf
 from dataclasses import dataclass
 
@@ -28,6 +29,7 @@ class LinearGrowthRate:
     wavenumber : float = None
     peakPower : float = None
     totalPower : float = None
+    smoothingFunction : BSpline = None
 
     def to_string(self) -> str:
         return f"Wavenumber: {float(self.wavenumber)}, Peak power: {float(self.peakPower)}, Total power: {float(self.totalPower)}, Time (midpoint): {float(self.timeMidpoint)}, Growth rate: {float(self.gamma)}, SoS residual: {float(self.rSquared)}"
@@ -562,8 +564,11 @@ def plot_growth_rates(
         timeVals = signal.coords['time'][g.timeStartIndex:g.timeEndIndex]
         plt.close("all")
         fig, ax = plt.subplots(figsize=(12, 8))
-        np.log(signal).plot(ax=ax)
-        ax.plot(timeVals, g.gamma * timeVals + g.yIntercept, label = r"$\gamma = $" + f"{g.gamma:.3f}" + r"$\omega_{ci}$")
+        logSignal = np.log(signal)
+        logSignal.plot(ax=ax, alpha = 0.5, color = "blue")
+        if g.smoothingFunction is not None:
+            ax.plot(logSignal.coords['time'], np.log(g.smoothingFunction(logSignal.coords['time'])), linestyle = "dashed", color="purple", label = "Smoothed signal")
+        ax.plot(timeVals, g.gamma * timeVals + g.yIntercept, color = "orange", label = r"$\gamma = $" + f"{g.gamma:.3f}" + r"$\omega_{ci}$")
         ax.set_xlabel(r"Time [$\tau_{ci}$]")
         ax.set_ylabel(f"Log of {field} signal power")
         ax.grid()
@@ -581,7 +586,8 @@ def find_best_growth_rates(
         tkSpectrum : xr.DataArray,
         gammaWindowPctMin : int,
         gammaWindowPctMax : int,
-        debug : bool):
+        useSmoothing : bool = True,
+        debug : bool = False):
 
     spectrum = np.abs(tkSpectrum)
     # Change: This now only evaluates at integer values of percentage, i.e. if 5% - 15% range is given, this evaluates at 5%, 6%, 7% etc.
@@ -598,11 +604,22 @@ def find_best_growth_rates(
 
         # Must load data here for quick iteration over windows
         # Changed: this is pre-loaded in create_t_k_spectrum()
-        signal = spectrum.isel(wavenumber=index)
+        rawSignal = spectrum.isel(wavenumber=index)
 
         signalK=float(spectrum.coords['wavenumber'][index])
-        signalPeak=float(signal.max())
-        signalTotal=float(signal.sum())
+        signalPeak=float(rawSignal.max())
+        signalTotal=float(rawSignal.sum())
+
+        if useSmoothing:
+            # Smooth signal for finding growth rates
+            smoothingFunction = make_smoothing_spline(rawSignal.coords["time"], np.nan_to_num(rawSignal), lam = 0.01)
+            signal = smoothingFunction(rawSignal.coords["time"])
+            # rawSignal.plot(alpha = 0.7)
+            # plt.plot(rawSignal.coords["time"], signal, linestyle = "dashed", color = "purple")
+            # plt.show()    
+        else:
+            smoothingFunction = None
+            signal = rawSignal        
 
         windowWidths = range(gammaWindowIndicesMin, gammaWindowIndicesMax + 1, onePercentIndices)
         len_widths = len(windowWidths)
@@ -630,7 +647,7 @@ def find_best_growth_rates(
 
                 t_k_window = signal[window:(width + window)]
 
-                slope, intercept, r_value, _, _ = stats.linregress(signal.coords["time"][window:(width + window)], np.log(t_k_window))
+                slope, intercept, r_value, _, _ = stats.linregress(rawSignal.coords["time"][window:(width + window)], np.log(t_k_window))
                 r_squared = r_value ** 2
                 
                 if not np.isnan(slope):
@@ -647,29 +664,32 @@ def find_best_growth_rates(
             gamma, y_int, window_width, windowStart, r_sqrd = best_pos_params
             best_pos_growth_rates.append(
                 LinearGrowthRate(timeStartIndex=windowStart,
-                                    timeEndIndex=(windowStart + window_width),
-                                    timeMidpointIndex=windowStart+(int(window_width/2)),
-                                    gamma=gamma,
-                                    yIntercept=y_int,
-                                    rSquared=r_sqrd,
-                                    wavenumber=signalK,
-                                    timeMidpoint=float(spectrum.coords['time'][windowStart+(int(window_width/2))]),
-                                    peakPower = signalPeak,
-                                    totalPower = signalTotal))
+                                timeEndIndex=(windowStart + window_width),
+                                timeMidpointIndex=windowStart+(int(window_width/2)),
+                                gamma=gamma,
+                                yIntercept=y_int,
+                                rSquared=r_sqrd,
+                                wavenumber=signalK,
+                                timeMidpoint=float(spectrum.coords['time'][windowStart+(int(window_width/2))]),
+                                peakPower = signalPeak,
+                                totalPower = signalTotal,
+                                smoothingFunction=smoothingFunction))
             
         if best_neg_params is not None:
             gamma, y_int, window_width, windowStart, r_sqrd = best_neg_params
             best_neg_growth_rates.append(
                 LinearGrowthRate(timeStartIndex=windowStart,
-                                    timeEndIndex=(windowStart + window_width),
-                                    timeMidpointIndex=windowStart+(int(window_width/2)),
-                                    gamma=gamma,
-                                    yIntercept=y_int,
-                                    rSquared=r_sqrd,
-                                    wavenumber=signalK,
-                                    timeMidpoint=float(spectrum.coords['time'][windowStart+(int(window_width/2))]),
-                                    peakPower = signalPeak,
-                                    totalPower = signalTotal))
+                                timeEndIndex=(windowStart + window_width),
+                                timeMidpointIndex=windowStart+(int(window_width/2)),
+                                gamma=gamma,
+                                yIntercept=y_int,
+                                rSquared=r_sqrd,
+                                wavenumber=signalK,
+                                timeMidpoint=float(spectrum.coords['time'][windowStart+(int(window_width/2))]),
+                                peakPower = signalPeak,
+                                totalPower = signalTotal,
+                                smoothingFunction=smoothingFunction))
+        del(rawSignal)
         del(signal)
         
         if debug: 
@@ -696,7 +716,7 @@ def process_growth_rates(
 
     print("Processing growth rates....")
 
-    best_pos_gammas, best_neg_gammas = find_best_growth_rates(tkSpectrum, gammaWindowPctMin, gammaWindowPctMax, debug)
+    best_pos_gammas, best_neg_gammas = find_best_growth_rates(tkSpectrum, gammaWindowPctMin, gammaWindowPctMax, useSmoothing = True, debug = debug)
     maxNumGammas = np.max([len(best_pos_gammas), len(best_neg_gammas)])
     growthRateStatsRoot = create_netCDF_fieldVariable_structure(fieldRoot, maxNumGammas)
 
