@@ -779,13 +779,13 @@ def my_matrix_plot(
     1D and 2D marginal distributions.
 
     :param data_series: \
-        A list of lists of array-like objects containing the samples for each variable for each data series.
+        A list of data series', each of which is a list of array-like objects containing the samples for each variable.
     
     :param series_labels: \
-        A list of strings to be used as labels for each data series being plotted.
+        A list of strings to be used as labels for each data series being plotted, in the same order as those in data_series.
 
     :param parameter_labels: \
-        A list of strings to be used as axis labels for each parameter being plotted.
+        A list of strings to be used as axis labels for each parameter being plotted, in the same order as those in data_series.
 
     :param bool show: \
         Sets whether the plot is displayed.
@@ -802,7 +802,7 @@ def my_matrix_plot(
         highest-density interval contouring, 'histogram' for hexagonal-bin histogram,
         and 'scatter' for scatterplot.
 
-    :param str colormaps: \
+    :param str colormap_list: \
         A list of colormaps to be used for plotting. Must be the same length as len(data_series)
         and contain names of valid colormaps present in ``matplotlib.colormaps``.
 
@@ -884,8 +884,8 @@ def my_matrix_plot(
         else:
             cmaps.append(colormaps[cmap_count])
             cmap_count += 1
-            warn(f"'{c}' is not a valid colormap from matplotlib.colormaps")
-    # find the darker of the two ends of the colormap, and use it for the marginal plots
+            warn(f"'{c}' is not a valid colormap from matplotlib.colormaps. Using default.")
+        # find the darker of the two ends of the colormap, and use it for the marginal plots
         marginal_colors.append(sorted([cmaps[-1](10), cmaps[-1](245)], key=lambda x: sum(x[:-1]))[0])
 
     # build axis arrays and determine limits for all variables
@@ -927,6 +927,7 @@ def my_matrix_plot(
             (N_par, N_par), (i, j), sharex=x_share, sharey=y_share
         )
     
+    initialiseAxes = True
     for n_series in range(N_series):
         
         samples = data_series[n_series]
@@ -1028,38 +1029,44 @@ def my_matrix_plot(
                         markeredgewidth=2,
                     )
 
-            # assign axis labels
-            if i == N_par - 1:
-                ax.set_xlabel(parameter_labels[j], fontsize=label_size)
-            if j == 0 and i != 0:
-                ax.set_ylabel(parameter_labels[i], fontsize=label_size)
-            # impose x-limits on bottom row
-            if i == N_par - 1:
-                ax.set_xlim(axis_limits[j])
-            # impose y-limits on left column, except the top-left corner
-            if j == 0 and i != 0:
-                ax.set_ylim(axis_limits[i])
+            if initialiseAxes:
+                # assign axis labels
+                if i == N_par - 1:
+                    ax.set_xlabel(parameter_labels[j], fontsize=label_size)
+                if j == 0 and i != 0:
+                    ax.set_ylabel(parameter_labels[i], fontsize=label_size)
+                # impose x-limits on bottom row
+                if i == N_par - 1:
+                    ax.set_xlim(axis_limits[j])
+                # impose y-limits on left column, except the top-left corner
+                if j == 0 and i != 0:
+                    ax.set_ylim(axis_limits[i])
 
-            if show_ticks:  # set up ticks for the edge plots if they are to be shown
-                # hide x-tick labels for plots not on the bottom row
-                if i < N_par - 1:
-                    plt.setp(ax.get_xticklabels(), visible=False)
-                # hide y-tick labels for plots not in the left column
-                if j > 0:
-                    plt.setp(ax.get_yticklabels(), visible=False)
-                # remove all y-ticks for 1D marginal plots on the diagonal
-                if i == j:
+                if show_ticks:  # set up ticks for the edge plots if they are to be shown
+                    # hide x-tick labels for plots not on the bottom row
+                    if i < N_par - 1:
+                        plt.setp(ax.get_xticklabels(), visible=False)
+                    # hide y-tick labels for plots not in the left column
+                    if j > 0:
+                        plt.setp(ax.get_yticklabels(), visible=False)
+                    # remove all y-ticks for 1D marginal plots on the diagonal
+                    if i == j:
+                        ax.set_yticks([])
+                else:  # else remove all ticks from all axes
+                    ax.set_xticks([])
                     ax.set_yticks([])
-            else:  # else remove all ticks from all axes
-                ax.set_xticks([])
-                ax.set_yticks([])
+        
+        initialiseAxes = False
 
+    # Set legend
     handles, labels = plt.gca().get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
     fig.legend(by_label.values(), by_label.keys(), loc="upper right")
+    
     # set the plot spacing
     fig.tight_layout()
     fig.subplots_adjust(wspace=0.0, hspace=0.0)
+    
     # save/show the figure if required
     if filename is not None:
         plt.savefig(filename)
