@@ -26,6 +26,8 @@ class LinearGrowthRate:
     timeMidpoint: float = None
     yIntercept : float = None
     rSquared : float = None
+    stdErr : float = None
+    rawWindowVariance : float = None
     wavenumber : float = None
     peakPower : float = None
     totalPower : float = None
@@ -523,6 +525,8 @@ def create_netCDF_fieldVariable_structure(
             gamma_var.standard_name = "linear_growth_rate"
             group.createVariable("rSquared", datatype="f4", dimensions=("wavenumber",))
             group.createVariable("yIntercept", datatype="f4", dimensions=("wavenumber",))
+            group.createVariable("stdErr", datatype="f4", dimensions=("wavenumber",))
+            group.createVariable("rawWindowVariance", datatype="f4", dimensions=("wavenumber",))
 
     return growth_rate_group
 
@@ -568,7 +572,7 @@ def plot_growth_rates(
         logSignal.plot(ax=ax, alpha = 0.5, color = "blue")
         if g.smoothingFunction is not None:
             ax.plot(logSignal.coords['time'], np.log(g.smoothingFunction(logSignal.coords['time'])), linestyle = "dashed", color="purple", label = "Smoothed signal")
-        ax.plot(timeVals, g.gamma * timeVals + g.yIntercept, color = "orange", label = r"$\gamma = $" + f"{g.gamma:.3f}" + r"$\omega_{ci}$")
+        ax.plot(timeVals, g.gamma * timeVals + g.yIntercept, color = "orange", label = r"$\gamma = $" + f"{g.gamma:.3f}" + r"$\pm$" + f"{g.stdErr:.3f}" + r"$\omega_{ci}$")
         ax.set_xlabel(r"Time [$\tau_{ci}$]")
         ax.set_ylabel(f"Log of {field} signal power")
         ax.grid()
@@ -647,45 +651,49 @@ def find_best_growth_rates(
 
                 t_k_window = signal[window:(width + window)]
 
-                slope, intercept, r_value, _, _ = stats.linregress(rawSignal.coords["time"][window:(width + window)], np.log(t_k_window))
-                r_squared = r_value ** 2
+                result = stats.linregress(rawSignal.coords["time"][window:(width + window)], np.log(t_k_window))
+                r_squared = result.rvalue ** 2
                 
-                if not np.isnan(slope):
-                    if slope > 0.0:
+                if not np.isnan(result.slope):
+                    if result.slope > 0.0:
                         if r_squared > best_pos_r_squared:
                             best_pos_r_squared = r_squared
-                            best_pos_params = (slope, intercept, width, window, r_squared)
+                            best_pos_params = (result.slope, result.intercept, width, window, r_squared, result.stderr)
                     else:
                         if r_squared > best_neg_r_squared:
                             best_neg_r_squared = r_squared
-                            best_neg_params = (slope, intercept, width, window, r_squared)
+                            best_neg_params = (result.slope, result.intercept, width, window, r_squared, result.stderr)
 
         if best_pos_params is not None:
-            gamma, y_int, window_width, windowStart, r_sqrd = best_pos_params
+            gamma, y_int, window_width, window_start, r_sqrd, std_err = best_pos_params
             best_pos_growth_rates.append(
-                LinearGrowthRate(timeStartIndex=windowStart,
-                                timeEndIndex=(windowStart + window_width),
-                                timeMidpointIndex=windowStart+(int(window_width/2)),
+                LinearGrowthRate(timeStartIndex=window_start,
+                                timeEndIndex=(window_start + window_width),
+                                timeMidpointIndex=window_start+(int(window_width/2)),
                                 gamma=gamma,
                                 yIntercept=y_int,
                                 rSquared=r_sqrd,
+                                stdErr=std_err,
+                                rawWindowVariance=np.var(rawSignal[window_start:window_start+window_width]),
                                 wavenumber=signalK,
-                                timeMidpoint=float(spectrum.coords['time'][windowStart+(int(window_width/2))]),
+                                timeMidpoint=float(spectrum.coords['time'][window_start+(int(window_width/2))]),
                                 peakPower = signalPeak,
                                 totalPower = signalTotal,
                                 smoothingFunction=smoothingFunction))
             
         if best_neg_params is not None:
-            gamma, y_int, window_width, windowStart, r_sqrd = best_neg_params
+            gamma, y_int, window_width, window_start, r_sqrd, std_err = best_neg_params
             best_neg_growth_rates.append(
-                LinearGrowthRate(timeStartIndex=windowStart,
-                                timeEndIndex=(windowStart + window_width),
-                                timeMidpointIndex=windowStart+(int(window_width/2)),
+                LinearGrowthRate(timeStartIndex=window_start,
+                                timeEndIndex=(window_start + window_width),
+                                timeMidpointIndex=window_start+(int(window_width/2)),
                                 gamma=gamma,
                                 yIntercept=y_int,
                                 rSquared=r_sqrd,
+                                stdErr=std_err,
+                                rawWindowVariance=np.var(rawSignal[window_start:window_start+window_width]),
                                 wavenumber=signalK,
-                                timeMidpoint=float(spectrum.coords['time'][windowStart+(int(window_width/2))]),
+                                timeMidpoint=float(spectrum.coords['time'][window_start+(int(window_width/2))]),
                                 peakPower = signalPeak,
                                 totalPower = signalTotal,
                                 smoothingFunction=smoothingFunction))
@@ -735,6 +743,8 @@ def process_growth_rates(
         posGammaNc.variables["time"][i] = gamma.timeMidpoint
         posGammaNc.variables["growthRate"][i] = gamma.gamma
         posGammaNc.variables["rSquared"][i] = gamma.rSquared
+        posGammaNc.variables["stdErr"][i] = gamma.stdErr
+        posGammaNc.variables["rawWindowVariance"][i] = gamma.rawWindowVariance
         posGammaNc.variables["yIntercept"][i] = gamma.yIntercept
 
     keyMetricsIndices = {
@@ -749,6 +759,8 @@ def process_growth_rates(
         group.time=float(gamma.timeMidpoint)
         group.yIntercept=float(gamma.yIntercept)
         group.rSquared=float(gamma.rSquared)
+        group.stdErr = float(gamma.stdErr)
+        group.rawWindowVariance = float(gamma.rawWindowVariance)
         group.wavenumber=float(gamma.wavenumber)
         group.peakPower=float(gamma.peakPower)
         group.totalPower=float(gamma.totalPower)
@@ -763,6 +775,8 @@ def process_growth_rates(
         negGammaNc.variables["time"][i] = gamma.timeMidpoint
         negGammaNc.variables["growthRate"][i] = gamma.gamma
         negGammaNc.variables["rSquared"][i] = gamma.rSquared
+        negGammaNc.variables["stdErr"][i] = gamma.stdErr
+        negGammaNc.variables["rawWindowVariance"][i] = gamma.rawWindowVariance
         negGammaNc.variables["yIntercept"][i] = gamma.yIntercept
 
     keyMetricsIndices["maxFoundInSimulation"] = np.argmin([g.gamma for g in best_neg_gammas])
@@ -775,6 +789,8 @@ def process_growth_rates(
         group.time=float(gamma.timeMidpoint)
         group.yIntercept=float(gamma.yIntercept)
         group.rSquared=float(gamma.rSquared)
+        group.stdErr = float(gamma.stdErr)
+        group.rawWindowVariance = float(gamma.rawWindowVariance)
         group.wavenumber=float(gamma.wavenumber)
         group.peakPower=float(gamma.peakPower)
         group.totalPower=float(gamma.totalPower)
