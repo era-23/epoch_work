@@ -13,6 +13,33 @@
             "args": ["--dir", "/home/era536/Documents/Epoch/Data/run_23"]
         },
         {
+            "name": "Python Debugger: Time-Series Development",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "tsc_development.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "--dataDir", "/home/era536/Documents/Epoch/Data/irb_may25_analysis",
+                "--workingDir", "/home/era536/Documents/Epoch/Data/irb_may25_analysis/tsc/clustering",
+                "--cluster",
+                "--numClusters", "3",
+                "--algorithms",
+                    // "TimeSeriesDBSCAN",
+                    // "TimeSeriesKMeans",
+                    // "TimeSeriesKMeansTslearn",
+                    "TimeSeriesKMedoids",
+                    // "TimeSeriesKShapes",
+                    // "TimeSeriesKernelKMeans",
+                "--inputFields",
+                    // "Energy/protonMeanEnergyDensity",
+                    // "Energy/electronMeanEnergyDensity",
+                    // "Energy/electricFieldMeanEnergyDensity",
+                    // "Energy/magneticFieldMeanEnergyDensity",
+                    "Energy/fastIonMeanEnergyDensity",
+            ]
+        },
+        {
             "name": "Python Debugger: GP Classifier Development",
             "type": "debugpy",
             "request": "launch",

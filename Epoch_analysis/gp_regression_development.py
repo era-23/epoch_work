@@ -16,8 +16,7 @@ from sklearn.exceptions import ConvergenceWarning
 from SALib import ProblemSpec
 from SALib.analyze import sobol
 import SALib.sample as salsamp
-import epoch_utils as e_utils
-import gp_utils
+import ml_utils
 import warnings
 warnings.filterwarnings("error", category=ConvergenceWarning)
 
@@ -140,26 +139,9 @@ def train_data(x_train : np.ndarray, y_train : np.ndarray, kernel : str):
     warnings.filterwarnings("default", category=ConvergenceWarning)
     return fit, bestParams
 
-def read_data(dataFiles, data_dict : dict) -> dict:
-    
-    for simulation in dataFiles:
-
-        data = xr.open_datatree(
-            simulation,
-            engine="netcdf4"
-        )
-
-        for fieldPath in data_dict.keys():
-            s = fieldPath.split("/")
-            group = "/" if len(s) == 1 else '/'.join(s[:-1])
-            fieldName = s[-1]
-            data_dict[fieldPath].append(data[group].attrs[fieldName])
-
-    return data_dict
-
 def sobol_analysis(gpModels : list, noTitle : bool = False):
 
-    formattedNames = [gp_utils.fieldNameToText(i) for i in gpModels[0].inputNames]
+    formattedNames = [ml_utils.fieldNameToText(i) for i in gpModels[0].inputNames]
     # SALib SOBOL indices
     sp = ProblemSpec({
         'num_vars': len(formattedNames),
@@ -169,7 +151,7 @@ def sobol_analysis(gpModels : list, noTitle : bool = False):
     test_values = salsamp.sobol.sample(sp, int(2**17))
 
     for model in gpModels:
-        model : gp_utils.GPModel
+        model : ml_utils.GPModel
         print(f"SOBOL analysing {model.kernelName} model for {model.outputName}....")
 
         if model.regressionModel:
@@ -189,7 +171,7 @@ def sobol_analysis(gpModels : list, noTitle : bool = False):
         sobol_indices.plot()
         plt.subplots_adjust(bottom=0.3)
         if not noTitle:
-            plt.title(f"{model.kernelName} kernel: {gp_utils.fieldNameToText(model.outputName)}")
+            plt.title(f"{model.kernelName} kernel: {ml_utils.fieldNameToText(model.outputName)}")
         plt.tight_layout()
         plt.show()
         plt.close()
@@ -200,7 +182,7 @@ def evaluate_model(gpModels : list, crossValidate : bool = True, folds : int = 5
     uniqueOutputNames = set([m.outputName for m in gpModels])
     evaluationData = {o : {k : {"score" : None, "std" : None} for k in uniqueKernels} for o in uniqueOutputNames}
     for model in gpModels:
-        model : gp_utils.GPModel
+        model : ml_utils.GPModel
         if crossValidate:
             if model.modelParams:
                 untrainedModel = untrained_GP(
@@ -254,7 +236,7 @@ def evaluate_model(gpModels : list, crossValidate : bool = True, folds : int = 5
     if not noTitle:
         ax.set_title('R-squared scores by GP/output and kernel')
     nameLocs = np.arange(len(uniqueOutputNames))
-    ax.set_xticks(nameLocs + ((len(uniqueKernels)-1)*0.5*width), [gp_utils.fieldNameToText(n) for n in alphabeticalEvalData.keys()])
+    ax.set_xticks(nameLocs + ((len(uniqueKernels)-1)*0.5*width), [ml_utils.fieldNameToText(n) for n in alphabeticalEvalData.keys()])
     ax.legend()
     ax.set_ylim(0.0, 1.0)
     plt.tight_layout()
@@ -305,11 +287,11 @@ def regress_simulations(
 
     # Input data
     inputs = {inp : [] for inp in inputFields}
-    inputs = read_data(output_files, inputs)
+    inputs = ml_utils.read_data(output_files, inputs)
 
     # Output data
     outputs = {outp : [] for outp in outputFields}
-    outputs = read_data(output_files, outputs)
+    outputs = ml_utils.read_data(output_files, outputs)
 
     # Preprocess inputs (multiple returned as column vector)
     inNames, normalisedInputData = preprocess_input_data(inputs, list(set(logFields).intersection(inputFields)))
@@ -321,7 +303,7 @@ def regress_simulations(
 
     # Display matrix plots
     if matrixPlot:
-        gp_utils.display_matrix_plots(inputs, normalisedInputData, outputs, normalisedOutputs)
+        ml_utils.display_matrix_plots(inputs, normalisedInputData, outputs, normalisedOutputs)
 
     # Train individual models for each output
     kernels = ["RBF", "RQ"]
@@ -329,7 +311,7 @@ def regress_simulations(
     for k in kernels:
         for outputName, outputData in normalisedOutputs.items():
             regressionModel, modelParams = train_data(normalisedInputData, outputData, k)
-            models.append(gp_utils.GPModel(
+            models.append(ml_utils.GPModel(
                 regressionModel=regressionModel,
                 modelParams=modelParams,
                 kernelName=k,
@@ -342,7 +324,7 @@ def regress_simulations(
 
     successfulModels = [model for model in models if model.fitSuccess]
     if plotModels:
-        gp_utils.plot_models(successfulModels, showModels, saveAnimation, noTitle)
+        ml_utils.plot_models(successfulModels, showModels, saveAnimation, noTitle)
 
     # Evaluate model
     if evaluateModels:

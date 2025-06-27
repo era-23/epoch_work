@@ -784,6 +784,7 @@ def my_matrix_plot(
     series_labels: list[str] = None,
     parameter_labels: list[str] = None,
     show: bool = True,
+    normalisePDF: bool = True,
     reference: Sequence[float] = None,
     filename: str = None,
     plot_style: str = "contour",
@@ -823,7 +824,7 @@ def my_matrix_plot(
         and 'scatter' for scatterplot.
 
     :param str colormap_list: \
-        A list of colormaps to be used for plotting. Must be the same length as len(data_series)
+        A list of colormaps to be used for plotting. Must be at least as long as len(data_series)
         and contain names of valid colormaps present in ``matplotlib.colormaps``.
 
     :param bool show_ticks: \
@@ -911,10 +912,16 @@ def my_matrix_plot(
     # build axis arrays and determine limits for all variables
     axis_limits = []
     axis_arrays = []
-    parameters = [s.tolist() for s in data_series[0]]
+    if type(data_series[0][0]) is list:
+        parameters = data_series[0]
+    else:
+        parameters = [s.tolist() for s in data_series[0]] 
     for n_series in range(1, N_series):
         for n_sample in range(N_par):
-            parameters[n_sample] += data_series[n_series][n_sample].tolist()
+            if type(data_series[n_series][n_sample]) is list:
+                parameters[n_sample] += data_series[n_series][n_sample]
+            else:
+                parameters[n_sample] += data_series[n_series][n_sample].tolist()
     for sample in parameters:
         # get the 98% HDI to calculate plot limits
         lwr, upr = sample_hdi(sample, fraction=0.98)
@@ -946,11 +953,33 @@ def my_matrix_plot(
         axes[tup] = plt.subplot2grid(
             (N_par, N_par), (i, j), sharex=x_share, sharey=y_share
         )
+
+    # Pre-compute estimates for correct scaling of data_series
+    all_estimates = []
+    all_estimate_maxes = []
+    for n_series in range(N_series):
+        samples = data_series[n_series]
+        series_estimates = []
+        series_estimate_maxes = []
+        for tup in inds_list:
+            i, j = tup
+            ax = axes[tup]
+            # are we on the diagonal?
+            if i == j:
+                sample = samples[i]
+                pdf = GaussianKDE(sample)
+                s_estimate = np.array(pdf(axis_arrays[i]))
+                series_estimates.append(s_estimate)
+                series_estimate_maxes.append(np.max(series_estimates))
+        all_estimates.append(series_estimates)
+        all_estimate_maxes.append(series_estimate_maxes)
     
     initialiseAxes = True
     for n_series in range(N_series):
         
         samples = data_series[n_series]
+        estimates = all_estimates[n_series]
+        estimate_maxes = all_estimate_maxes[n_series]
         marginal_color = marginal_colors[n_series]
         cmap = cmaps[n_series]
 
@@ -961,18 +990,17 @@ def my_matrix_plot(
             # are we on the diagonal?
             if i == j:
                 sample = samples[i]
-                pdf = GaussianKDE(sample)
-                estimate = np.array(pdf(axis_arrays[i]))
+                estimate = estimates[i]
                 ax.plot(
                     axis_arrays[i],
-                    0.9 * (estimate / estimate.max()),
+                    0.9 * (estimate / estimate.max()) if normalisePDF else 0.9 * (estimate / estimate_maxes[i]),
                     lw=1,
                     color=marginal_color,
                     label = series_labels[n_series]
                 )
                 ax.fill_between(
                     axis_arrays[i],
-                    0.9 * (estimate / estimate.max()),
+                    0.9 * (estimate / estimate.max()) if normalisePDF else 0.9 * (estimate / estimate_maxes[i]),
                     color=marginal_color,
                     alpha=0.1,
                 )

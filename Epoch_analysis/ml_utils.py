@@ -3,11 +3,17 @@ import numpy as np
 import itertools
 from scipy.stats import norm
 from scipy.interpolate import griddata
+import xarray as xr
 from functools import partial
 from matplotlib import animation
 from inference.plotting import matrix_plot
 from SALib import ProblemSpec
 from sklearn.gaussian_process import GaussianProcessRegressor, GaussianProcessClassifier
+from sktime.clustering.dbscan import TimeSeriesDBSCAN
+from sktime.clustering.k_means import TimeSeriesKMeans, TimeSeriesKMeansTslearn
+from sktime.clustering.k_medoids import TimeSeriesKMedoids
+from sktime.clustering.k_shapes import TimeSeriesKShapes
+from sktime.clustering.kernel_k_means import TimeSeriesKernelKMeans
 from dataclasses import dataclass
 import SALib.sample as salsamp
 
@@ -22,6 +28,14 @@ class GPModel:
     classificationModel : GaussianProcessClassifier = None
     modelParams : dict = None
     fitSuccess : bool = None
+
+@dataclass
+class SimulationMetadata:
+    simId : int
+    backgroundDensity : float
+    beamFraction : float
+    B0 : float
+    B0angle : float
 
 fieldNameToText_dict = {
     "Energy/electricFieldEnergyDensity_delta" : "E_deltaE",
@@ -103,6 +117,41 @@ fieldNameToText_dict = {
     "backgroundDensity" : "density", 
     "beamFraction" : "beam frac",
 }
+
+def get_algorithm(name, **kwargs):
+    match name:
+        case "TimeSeriesDBSCAN":
+            return TimeSeriesDBSCAN(kwargs["distance"])
+        case "TimeSeriesKMeans":
+            return TimeSeriesKMeans(kwargs["n_clusters"])
+        case "TimeSeriesKMeansTslearn":
+            return TimeSeriesKMeansTslearn(kwargs["n_clusters"])
+        case "TimeSeriesKMedoids": 
+            return TimeSeriesKMedoids(kwargs["n_clusters"])
+        case "TimeSeriesKShapes":
+            return TimeSeriesKShapes(kwargs["n_clusters"])
+        case "TimeSeriesKernelKMeans":
+            return TimeSeriesKernelKMeans(kwargs["n_clusters"])
+
+def read_data(dataFiles, data_dict : dict) -> dict:
+    
+    for simulation in dataFiles:
+
+        data = xr.open_datatree(
+            simulation,
+            engine="netcdf4"
+        )
+
+        for fieldPath in data_dict.keys():
+            s = fieldPath.split("/")
+            group = "/" if len(s) == 1 else '/'.join(s[:-1])
+            fieldName = s[-1]
+            if fieldName in data[group].attrs.keys():
+                data_dict[fieldPath].append(data[group].attrs[fieldName])
+            else:
+                data_dict[fieldPath].append(data[group].variables[fieldName].values)
+
+    return data_dict
 
 def anim_init(fig, ax, xx, yy, zz):
     ax.scatter(xx, yy, zz, color="black")

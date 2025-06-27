@@ -373,6 +373,7 @@ def analyse_peak_characteristics(analysisDirectory : Path):
         fiDeltaEnergyPct.append(fiDelta)
         biDeltaEnergyPct.append(biDelta)
     
+    # simParameters = {"B0" : np.array(B0strength), "B0_angle" : np.array(B0angle), "Density" : np.log10(np.array(densities)), "Beam_fraction" : np.log10(np.array(beamFractions))}
     simParameters = {"B0" : np.array(B0strength), "B0_angle" : np.array(B0angle), "Density" : np.log10(np.array(densities)), "Beam_fraction" : np.log10(np.array(beamFractions))}
     variables = {
         "Has_FI_trough" : hasFastIonTrough, 
@@ -438,8 +439,9 @@ def analyse_peak_characteristics(analysisDirectory : Path):
         parameter_labels=labels, 
         plot_style="hdi", 
         colormap_list=["Greys", "Greens", "Blues", "Reds"], 
-        show=True)
-
+        show=True,
+        normalisePDF=True,
+    )
 
     print("Woh")
     # mciName = "E transfer"
