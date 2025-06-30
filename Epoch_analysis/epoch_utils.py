@@ -127,9 +127,29 @@ def create_omega_k_plots(
         print(f"Max peak in omega-k: {spec_peak}")
         print(f"Mean of omega-k: {spec_mean}")
 
-    # Power in omega over all k
+    # Create fields for recording powers by frequency and wavenumber
+    if "power" not in statsFile.groups.keys():
+        powerStats = statsFile.createGroup("power")#
+        powerStats.createDimension("wavenumber", spec.coords['wavenumber'].size)
+        powerStats.createDimension("frequency", spec.coords['frequency'].size)
+        k_var = powerStats.createVariable("wavenumber", datatype="f4", dimensions=("wavenumber",))
+        k_var[:] = spec.coords["wavenumber"].data
+        k_var.units = "wCI/vA"
+
+        w_var = powerStats.createVariable("frequency", datatype="f4", dimensions=("frequency",))
+        w_var[:] = spec.coords["frequency"].data
+        w_var.units = "wCI"
+
+        powerByK = powerStats.createVariable("powerByWavenumber", datatype="f4", dimensions=("wavenumber",))
+        powerByOmega = powerStats.createVariable("powerByFrequency", datatype="f4", dimensions=("frequency",))
+    else:
+        powerByK = statsFile.groups["power"].variables["powerByWavenumber"]
+        powerByOmega = statsFile.groups["power"].variables["powerByFrequency"]
+
+    # Power by omega over all k
     fig, axs = plt.subplots(figsize=(15, 10))
     power_trace = spec.sum(dim = "wavenumber")
+    powerByOmega[:] = power_trace.data
     power_trace.plot(ax=axs)
     axs.set_xticks(ticks=np.arange(np.floor(power_trace.coords['frequency'][0]), np.ceil(power_trace.coords['frequency'][-1])+1.0, 1.0), minor=True)
     axs.grid(which='both', axis='x')
@@ -144,6 +164,7 @@ def create_omega_k_plots(
     # Power in k over all omega
     fig, axs = plt.subplots(figsize=(15, 10))
     power_trace = spec.sum(dim = "frequency")
+    powerByK[:] = power_trace.data
     power_trace.plot(ax=axs)
     axs.set_xticks(ticks=np.arange(np.floor(power_trace.coords['wavenumber'][0]), np.ceil(power_trace.coords['wavenumber'][-1])+1.0, 1.0), minor=True)
     axs.grid(which='both', axis='x')
@@ -498,9 +519,9 @@ def bispectral_analysis(
         plt.show()
     plt.close('all')
     
-def create_netCDF_fieldVariable_structure(
+def create_netCDF_fieldGrowthRate_structure(
         fieldRoot : nc.Dataset,
-        numGrowthRates : int
+        numWavenumbersToEvaluate : int
 ) -> nc.Dataset:
     growth_rate_group = fieldRoot.createGroup("growthRates")
     posGrowthRateGrp = growth_rate_group.createGroup("positive")
@@ -513,7 +534,7 @@ def create_netCDF_fieldVariable_structure(
         if "wavenumber" in group.dimensions.keys():
             continue
         else:
-            group.createDimension("wavenumber", numGrowthRates)
+            group.createDimension("wavenumber", numWavenumbersToEvaluate)
 
             k_var = group.createVariable("wavenumber", datatype="f4", dimensions=("wavenumber",))
             k_var.units = "wCI/vA"
@@ -681,6 +702,22 @@ def find_best_growth_rates(
                                 peakPower = signalPeak,
                                 totalPower = signalTotal,
                                 smoothingFunction=smoothingFunction))
+        # else:
+        #     best_pos_growth_rates.append(
+        #         LinearGrowthRate(timeStartIndex=-1.0,
+        #                         timeEndIndex=-1,
+        #                         timeMidpointIndex=-1,
+        #                         gamma=0.0,
+        #                         yIntercept=-1.0,
+        #                         rSquared=0.0,
+        #                         stdErr=-1.0,
+        #                         rawWindowVariance=-1.0,
+        #                         wavenumber=signalK,
+        #                         timeMidpoint=-1.0,
+        #                         peakPower = signalPeak,
+        #                         totalPower = signalTotal,
+        #                         smoothingFunction=smoothingFunction))
+
             
         if best_neg_params is not None:
             gamma, y_int, window_width, window_start, r_sqrd, std_err = best_neg_params
@@ -698,6 +735,21 @@ def find_best_growth_rates(
                                 peakPower = signalPeak,
                                 totalPower = signalTotal,
                                 smoothingFunction=smoothingFunction))
+        # else:
+        #     best_neg_growth_rates.append(
+        #         LinearGrowthRate(timeStartIndex=-1.0,
+        #                         timeEndIndex=-1,
+        #                         timeMidpointIndex=-1,
+        #                         gamma=0.0,
+        #                         yIntercept=-1.0,
+        #                         rSquared=0.0,
+        #                         stdErr=-1.0,
+        #                         rawWindowVariance=-1.0,
+        #                         wavenumber=signalK,
+        #                         timeMidpoint=-1.0,
+        #                         peakPower = signalPeak,
+        #                         totalPower = signalTotal,
+        #                         smoothingFunction=smoothingFunction))
         del(rawSignal)
         del(signal)
         
@@ -727,7 +779,7 @@ def process_growth_rates(
 
     best_pos_gammas, best_neg_gammas = find_best_growth_rates(tkSpectrum, gammaWindowPctMin, gammaWindowPctMax, useSmoothing = True, debug = debug)
     maxNumGammas = np.max([len(best_pos_gammas), len(best_neg_gammas)])
-    growthRateStatsRoot = create_netCDF_fieldVariable_structure(fieldRoot, maxNumGammas)
+    growthRateStatsRoot = create_netCDF_fieldGrowthRate_structure(fieldRoot, maxNumGammas)
 
     if saveGrowthRatePlots:
         gammaPlotFolder = plotFieldFolder / "growth_rates"
