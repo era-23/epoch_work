@@ -30,6 +30,7 @@ class LinearGrowthRate:
     stdErr : float = None
     rawWindowVariance : float = None
     wavenumber : float = None
+    maxPowerFrequency : float = None
     peakPower : float = None
     totalPower : float = None
     smoothingFunction : BSpline = None
@@ -142,9 +143,20 @@ def create_omega_k_plots(
 
         powerByK = powerStats.createVariable("powerByWavenumber", datatype="f4", dimensions=("wavenumber",))
         powerByOmega = powerStats.createVariable("powerByFrequency", datatype="f4", dimensions=("frequency",))
+        frequencyOfMaxPowerByK = powerStats.createVariable("frequencyOfMaxPowerByK", datatype="f4", dimensions=("wavenumber",))
     else:
         powerByK = statsFile.groups["power"].variables["powerByWavenumber"]
         powerByOmega = statsFile.groups["power"].variables["powerByFrequency"]
+        frequencyOfMaxPowerByK = statsFile.groups["power"].variables["frequencyOfMaxPowerByK"]
+
+    maxPowerFrequenciesByK = {}
+    for k in spec.coords["wavenumber"]:
+        try:
+            maxPowerInKIndex = spec.sel(wavenumber=k).argmax()
+            maxPowerFrequenciesByK[float(k.data)] = float(spec.coords["frequency"].data[maxPowerInKIndex])
+        except ValueError:
+            maxPowerFrequenciesByK[float(k.data)] = 0.0
+    frequencyOfMaxPowerByK[:] = [v for v in maxPowerFrequenciesByK.values()]
 
     # Power by omega over all k
     fig, axs = plt.subplots(figsize=(15, 10))
@@ -236,6 +248,8 @@ def create_omega_k_plots(
     
     del(spec)
     del(log_spec)
+
+    return maxPowerFrequenciesByK
 
 def create_t_k_spectrum(
         originalFftSpectrum : xr.DataArray, 
@@ -538,6 +552,7 @@ def create_netCDF_fieldGrowthRate_structure(
 
             k_var = group.createVariable("wavenumber", datatype="f4", dimensions=("wavenumber",))
             k_var.units = "wCI/vA"
+            group.createVariable("frequencyOfMaxPowerInK", datatype="f4", dimensions=("wavenumber",))
             group.createVariable("peakPower", datatype="f4", dimensions=("wavenumber",))
             group.createVariable("totalPower", datatype="f4", dimensions=("wavenumber",))
             t_var = group.createVariable("time", datatype="f4", dimensions=("wavenumber",))
@@ -612,6 +627,7 @@ def find_best_growth_rates(
         tkSpectrum : xr.DataArray,
         gammaWindowPctMin : int,
         gammaWindowPctMax : int,
+        wavenumberToFrequencyTable : dict,
         useSmoothing : bool = True,
         debug : bool = False):
 
@@ -698,26 +714,11 @@ def find_best_growth_rates(
                                 stdErr=std_err,
                                 rawWindowVariance=np.var(rawSignal[window_start:window_start+window_width]),
                                 wavenumber=signalK,
+                                maxPowerFrequency=wavenumberToFrequencyTable[signalK],
                                 timeMidpoint=float(spectrum.coords['time'][window_start+(int(window_width/2))]),
                                 peakPower = signalPeak,
                                 totalPower = signalTotal,
                                 smoothingFunction=smoothingFunction))
-        # else:
-        #     best_pos_growth_rates.append(
-        #         LinearGrowthRate(timeStartIndex=-1.0,
-        #                         timeEndIndex=-1,
-        #                         timeMidpointIndex=-1,
-        #                         gamma=0.0,
-        #                         yIntercept=-1.0,
-        #                         rSquared=0.0,
-        #                         stdErr=-1.0,
-        #                         rawWindowVariance=-1.0,
-        #                         wavenumber=signalK,
-        #                         timeMidpoint=-1.0,
-        #                         peakPower = signalPeak,
-        #                         totalPower = signalTotal,
-        #                         smoothingFunction=smoothingFunction))
-
             
         if best_neg_params is not None:
             gamma, y_int, window_width, window_start, r_sqrd, std_err = best_neg_params
@@ -731,25 +732,12 @@ def find_best_growth_rates(
                                 stdErr=std_err,
                                 rawWindowVariance=np.var(rawSignal[window_start:window_start+window_width]),
                                 wavenumber=signalK,
+                                maxPowerFrequency=wavenumberToFrequencyTable[signalK],
                                 timeMidpoint=float(spectrum.coords['time'][window_start+(int(window_width/2))]),
                                 peakPower = signalPeak,
                                 totalPower = signalTotal,
                                 smoothingFunction=smoothingFunction))
-        # else:
-        #     best_neg_growth_rates.append(
-        #         LinearGrowthRate(timeStartIndex=-1.0,
-        #                         timeEndIndex=-1,
-        #                         timeMidpointIndex=-1,
-        #                         gamma=0.0,
-        #                         yIntercept=-1.0,
-        #                         rSquared=0.0,
-        #                         stdErr=-1.0,
-        #                         rawWindowVariance=-1.0,
-        #                         wavenumber=signalK,
-        #                         timeMidpoint=-1.0,
-        #                         peakPower = signalPeak,
-        #                         totalPower = signalTotal,
-        #                         smoothingFunction=smoothingFunction))
+            
         del(rawSignal)
         del(signal)
         
@@ -771,13 +759,14 @@ def process_growth_rates(
         gammaWindowPctMax : float,
         saveGrowthRatePlots : bool,
         numGrowthRatesToPlot : int,
+        wavenumberToFrequencyTable : dict,
         displayPlots : bool,
         noTitle : bool,
         debug : bool):
 
     print("Processing growth rates....")
 
-    best_pos_gammas, best_neg_gammas = find_best_growth_rates(tkSpectrum, gammaWindowPctMin, gammaWindowPctMax, useSmoothing = True, debug = debug)
+    best_pos_gammas, best_neg_gammas = find_best_growth_rates(tkSpectrum, gammaWindowPctMin, gammaWindowPctMax, wavenumberToFrequencyTable, useSmoothing = True, debug = debug)
     maxNumGammas = np.max([len(best_pos_gammas), len(best_neg_gammas)])
     growthRateStatsRoot = create_netCDF_fieldGrowthRate_structure(fieldRoot, maxNumGammas)
 
@@ -791,6 +780,7 @@ def process_growth_rates(
     for i in range(len(best_pos_gammas)):
         gamma = best_pos_gammas[i]
         posGammaNc.variables["wavenumber"][i] = gamma.wavenumber
+        posGammaNc.variables["frequencyOfMaxPowerInK"][i] = gamma.maxPowerFrequency
         posGammaNc.variables["peakPower"][i] = gamma.peakPower
         posGammaNc.variables["totalPower"][i] = gamma.totalPower
         posGammaNc.variables["time"][i] = gamma.timeMidpoint
@@ -815,6 +805,7 @@ def process_growth_rates(
         group.stdErr = float(gamma.stdErr)
         group.rawWindowVariance = float(gamma.rawWindowVariance)
         group.wavenumber=float(gamma.wavenumber)
+        group.frequencyOfMaxPowerInK=float(gamma.maxPowerFrequency)
         group.peakPower=float(gamma.peakPower)
         group.totalPower=float(gamma.totalPower)
 
@@ -823,6 +814,7 @@ def process_growth_rates(
     for i in range(len(best_neg_gammas)):
         gamma = best_neg_gammas[i]
         negGammaNc.variables["wavenumber"][i] = gamma.wavenumber
+        negGammaNc.variables["frequencyOfMaxPowerInK"][i] = gamma.maxPowerFrequency
         negGammaNc.variables["peakPower"][i] = gamma.peakPower
         negGammaNc.variables["totalPower"][i] = gamma.totalPower
         negGammaNc.variables["time"][i] = gamma.timeMidpoint
@@ -845,6 +837,7 @@ def process_growth_rates(
         group.stdErr = float(gamma.stdErr)
         group.rawWindowVariance = float(gamma.rawWindowVariance)
         group.wavenumber=float(gamma.wavenumber)
+        group.frequencyOfMaxPowerInK=float(gamma.maxPowerFrequency)
         group.peakPower=float(gamma.peakPower)
         group.totalPower=float(gamma.totalPower)
 

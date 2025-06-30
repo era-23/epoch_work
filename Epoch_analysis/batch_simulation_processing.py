@@ -594,7 +594,6 @@ def process_simulation_batch(
         bkgdSpecies : str = 'p+',
         bigLabels : bool = False,
         noTitle : bool = False,
-        createPlots = False,
         displayPlots = False,
         saveGrowthRatePlots = False,
         numGrowthRatesToPlot : int = 0,
@@ -625,7 +624,6 @@ def process_simulation_batch(
         beam = True -- Take ion ring beam (fast) as significant ion species 
         fastSpecies : str = 'proton' -- Fast (ion ring beam) species, if present
         bkgdSpecies : str = 'proton' -- Background ion species
-        createPlots = True -- Generate plots
         displayPlots = False -- Display plots as they are generated
     """
 
@@ -719,7 +717,7 @@ def process_simulation_batch(
             del(delta)
             del(squared_delta)
 
-            if createPlots or growthRates or bispectra:
+            if growthRates or bispectra:
                 # Take FFT
                 original_spec : xr.DataArray = xrft.xrft.fft(ds[field], true_amplitude=True, true_phase=True, window=None)
                 original_spec = original_spec.rename(freq_time="frequency", freq_x_space="wavenumber")
@@ -729,16 +727,15 @@ def process_simulation_batch(
                 tk_spec = e_utils.create_t_k_spectrum(original_spec, fieldStats, maxK, load=True, debug=debug)
 
                 # Dispersion relations
-                if createPlots:
-                    e_utils.create_omega_k_plots(original_spec, fieldStats, field, field_unit, plotFieldFolder, simFolder.name, inputDeck, bkgdSpecies, fastSpecies, maxK=maxK, maxW=maxW, display=displayPlots, debug=debug)
-                    e_utils.create_t_k_plot(tk_spec, field, field_unit, plotFieldFolder, simFolder.name, maxK, displayPlots)
+                wavenumberToFrequencyTable = e_utils.create_omega_k_plots(original_spec, fieldStats, field, field_unit, plotFieldFolder, simFolder.name, inputDeck, bkgdSpecies, fastSpecies, maxK=maxK, maxW=maxW, display=displayPlots, debug=debug)
+                e_utils.create_t_k_plot(tk_spec, field, field_unit, plotFieldFolder, simFolder.name, maxK, displayPlots)
 
                 if bispectra:
                     e_utils.bispectral_analysis(tk_spec, simFolder.name, field, displayPlots, plotFieldFolder, maxK = maxK)
 
                 # Linear growth rates
                 if growthRates:
-                    e_utils.process_growth_rates(tk_spec, fieldStats, plotFieldFolder, simFolder, field, gammaWindowPctMin, gammaWindowPctMax, saveGrowthRatePlots, numGrowthRatesToPlot, displayPlots, noTitle, debug)
+                    e_utils.process_growth_rates(tk_spec, fieldStats, plotFieldFolder, simFolder, field, gammaWindowPctMin, gammaWindowPctMax, saveGrowthRatePlots, numGrowthRatesToPlot, wavenumberToFrequencyTable, displayPlots, noTitle, debug)
     
         statsRoot.close()
         ds.close()
@@ -821,12 +818,6 @@ if __name__ == "__main__":
         help="Run number to analyse (folder must be in directory and named \'run_##\' where ## is runNumber).",
         required = False,
         type=int
-    )
-    parser.add_argument(
-        "--createPlots",
-        action="store_true",
-        help="Create dispersion plots and save to file.",
-        required = False
     )
     parser.add_argument(
         "--displayPlots",
@@ -915,7 +906,6 @@ if __name__ == "__main__":
         gammaWindowPctMin=args.minGammaFitWindow,
         gammaWindowPctMax=args.maxGammaFitWindow,
         numGrowthRatesToPlot=args.numGrowthRatesToPlot, 
-        createPlots=args.createPlots,
         displayPlots=args.displayPlots,
         bigLabels=args.bigLabels,
         noTitle=args.noTitle,
