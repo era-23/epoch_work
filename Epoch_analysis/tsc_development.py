@@ -115,10 +115,13 @@ def clustering(dataDirectory : Path, workingDir : Path, numClusters : int, algor
         os.mkdir(algorithm_path)
         
         cluster_sims = {c : [] for c in pipeline.clusterer_.labels_}
-        for i in range(len(ids)):
-            cluster_sims[pipeline.clusterer_.labels_[i]].append(ids[i])
+        for i in range(len(pipeline.clusterer_.labels_)):
+            sim_id = ids[i]
+            cluster_id = pipeline.clusterer_.labels_[i]
+            cluster_sims[cluster_id].append(sim_id)
 
         cluster_sims_ordered = dict(sorted(cluster_sims.items()))
+        # cluster_sims_ordered = cluster_sims
         c_metadata = []
         for c in cluster_sims_ordered.keys():
             
@@ -130,7 +133,7 @@ def clustering(dataDirectory : Path, workingDir : Path, numClusters : int, algor
             b0s = []
             bAngles = []
             for s in cluster_sims_ordered[c]:
-                print(f"cluster {c}: simulations {s}")
+                print(f"cluster {c}: simulation {s}")
                 print(f"Copying sim {s} energy plots to cluster {c} folder....")
                 shutil.copy(plots_path / f"run_{s}_percentage_energy_change.png", cluster_path)
 
@@ -157,12 +160,6 @@ def clustering(dataDirectory : Path, workingDir : Path, numClusters : int, algor
             continue
         plt.savefig(algorithm_path / "matrix.png")
         plt.close("all")
-
-        for c in c_metadata:
-            matrix_plot(
-                c, 
-                labels= param_labels,
-                show=True)
 
 if __name__ == "__main__":
     

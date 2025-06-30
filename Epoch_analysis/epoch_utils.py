@@ -5,6 +5,7 @@ import xarray as xr
 import netCDF4 as nc
 import astropy.units as u
 import xrft  # noqa: E402
+import copy
 from scipy import stats
 from scipy.interpolate import make_smoothing_spline, BSpline
 from plasmapy.formulary import frequencies as ppf
@@ -929,9 +930,9 @@ def my_matrix_plot(
     axis_limits = []
     axis_arrays = []
     if type(data_series[0][0]) is list:
-        parameters = data_series[0]
+        parameters = copy.deepcopy(data_series[0])
     else:
-        parameters = [s.tolist() for s in data_series[0]] 
+        parameters = copy.deepcopy([s.tolist() for s in data_series[0]]) 
     for n_series in range(1, N_series):
         for n_sample in range(N_par):
             if type(data_series[n_series][n_sample]) is list:
@@ -1006,7 +1007,9 @@ def my_matrix_plot(
             # are we on the diagonal?
             if i == j:
                 sample = samples[i]
-                estimate = estimates[i]
+                #estimate = estimates[i]
+                pdf = GaussianKDE(sample)
+                estimate = np.array(pdf(axis_arrays[i]))
                 ax.plot(
                     axis_arrays[i],
                     0.9 * (estimate / estimate.max()) if normalisePDF else 0.9 * (estimate / estimate_maxes[i]),
@@ -1126,7 +1129,7 @@ def my_matrix_plot(
     handles, labels = plt.gca().get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
     fig.legend(by_label.values(), by_label.keys(), loc="upper right")
-    
+
     # set the plot spacing
     fig.tight_layout()
     fig.subplots_adjust(wspace=0.0, hspace=0.0)
