@@ -28,7 +28,10 @@ class LinearGrowthRate:
     yIntercept : float = None
     rSquared : float = None
     stdErr : float = None
-    rawWindowVariance : float = None
+    pValue : float = None
+    rawRSquared : float = None
+    rawStdErr : float = None
+    rawPValue : float = None
     wavenumber : float = None
     maxPowerFrequency : float = None
     peakPower : float = None
@@ -560,10 +563,13 @@ def create_netCDF_fieldGrowthRate_structure(
             gamma_var = group.createVariable("growthRate", datatype="f8", dimensions=("wavenumber",))
             gamma_var.units = "wCI"
             gamma_var.standard_name = "linear_growth_rate"
-            group.createVariable("rSquared", datatype="f4", dimensions=("wavenumber",))
             group.createVariable("yIntercept", datatype="f4", dimensions=("wavenumber",))
+            group.createVariable("rSquared", datatype="f4", dimensions=("wavenumber",))
             group.createVariable("stdErr", datatype="f4", dimensions=("wavenumber",))
-            group.createVariable("rawWindowVariance", datatype="f4", dimensions=("wavenumber",))
+            group.createVariable("pValue", datatype="f4", dimensions=("wavenumber",))
+            group.createVariable("rawRSquared", datatype="f4", dimensions=("wavenumber",))
+            group.createVariable("rawStdErr", datatype="f4", dimensions=("wavenumber",))
+            group.createVariable("rawPValue", datatype="f4", dimensions=("wavenumber",))
 
     return growth_rate_group
 
@@ -696,14 +702,19 @@ def find_best_growth_rates(
                     if result.slope > 0.0:
                         if r_squared > best_pos_r_squared:
                             best_pos_r_squared = r_squared
-                            best_pos_params = (result.slope, result.intercept, width, window, r_squared, result.stderr)
+                            best_pos_params = (result.slope, result.intercept, width, window, r_squared, result.stderr, result.pvalue)
                     else:
                         if r_squared > best_neg_r_squared:
                             best_neg_r_squared = r_squared
-                            best_neg_params = (result.slope, result.intercept, width, window, r_squared, result.stderr)
+                            best_neg_params = (result.slope, result.intercept, width, window, r_squared, result.stderr, result.pvalue)
 
         if best_pos_params is not None:
-            gamma, y_int, window_width, window_start, r_sqrd, std_err = best_pos_params
+
+            gamma, y_int, window_width, window_start, r_sqrd, std_err, p_value = best_pos_params
+
+            # Re-fit to raw data to get stats
+            rawDataFit = stats.linregress(rawSignal.coords["time"][window:(width + window)], np.log(rawSignal[window:(width + window)]))
+
             best_pos_growth_rates.append(
                 LinearGrowthRate(timeStartIndex=window_start,
                                 timeEndIndex=(window_start + window_width),
@@ -712,7 +723,10 @@ def find_best_growth_rates(
                                 yIntercept=y_int,
                                 rSquared=r_sqrd,
                                 stdErr=std_err,
-                                rawWindowVariance=np.var(rawSignal[window_start:window_start+window_width]),
+                                pValue=p_value,
+                                rawRSquared=rawDataFit.rvalue ** 2,
+                                rawStdErr=rawDataFit.stderr,
+                                rawPValue=rawDataFit.pvalue,
                                 wavenumber=signalK,
                                 maxPowerFrequency=wavenumberToFrequencyTable[signalK],
                                 timeMidpoint=float(spectrum.coords['time'][window_start+(int(window_width/2))]),
@@ -721,7 +735,11 @@ def find_best_growth_rates(
                                 smoothingFunction=smoothingFunction))
             
         if best_neg_params is not None:
-            gamma, y_int, window_width, window_start, r_sqrd, std_err = best_neg_params
+            gamma, y_int, window_width, window_start, r_sqrd, std_err, p_value = best_neg_params
+
+            # Re-fit to raw data to get stats
+            rawDataFit = stats.linregress(rawSignal.coords["time"][window:(width + window)], np.log(rawSignal[window:(width + window)]))
+
             best_neg_growth_rates.append(
                 LinearGrowthRate(timeStartIndex=window_start,
                                 timeEndIndex=(window_start + window_width),
@@ -730,7 +748,10 @@ def find_best_growth_rates(
                                 yIntercept=y_int,
                                 rSquared=r_sqrd,
                                 stdErr=std_err,
-                                rawWindowVariance=np.var(rawSignal[window_start:window_start+window_width]),
+                                pValue=p_value,
+                                rawRSquared=rawDataFit.rvalue ** 2,
+                                rawStdErr=rawDataFit.stderr,
+                                rawPValue=rawDataFit.pvalue,
                                 wavenumber=signalK,
                                 maxPowerFrequency=wavenumberToFrequencyTable[signalK],
                                 timeMidpoint=float(spectrum.coords['time'][window_start+(int(window_width/2))]),
@@ -787,7 +808,10 @@ def process_growth_rates(
         posGammaNc.variables["growthRate"][i] = gamma.gamma
         posGammaNc.variables["rSquared"][i] = gamma.rSquared
         posGammaNc.variables["stdErr"][i] = gamma.stdErr
-        posGammaNc.variables["rawWindowVariance"][i] = gamma.rawWindowVariance
+        posGammaNc.variables["pValue"][i] = gamma.pValue
+        posGammaNc.variables["rawRSquared"][i] = gamma.rawRSquared
+        posGammaNc.variables["rawStdErr"][i] = gamma.rawStdErr
+        posGammaNc.variables["rawPValue"][i] = gamma.rawPValue
         posGammaNc.variables["yIntercept"][i] = gamma.yIntercept
 
     keyMetricsIndices = {
@@ -803,7 +827,10 @@ def process_growth_rates(
         group.yIntercept=float(gamma.yIntercept)
         group.rSquared=float(gamma.rSquared)
         group.stdErr = float(gamma.stdErr)
-        group.rawWindowVariance = float(gamma.rawWindowVariance)
+        group.pValue = float(gamma.pValue)
+        group.rawRSquared = float(gamma.rawRSquared)
+        group.rawStdErr = float(gamma.rawStdErr)
+        group.rawPValue = float(gamma.rawPValue)
         group.wavenumber=float(gamma.wavenumber)
         group.frequencyOfMaxPowerInK=float(gamma.maxPowerFrequency)
         group.peakPower=float(gamma.peakPower)
@@ -821,7 +848,10 @@ def process_growth_rates(
         negGammaNc.variables["growthRate"][i] = gamma.gamma
         negGammaNc.variables["rSquared"][i] = gamma.rSquared
         negGammaNc.variables["stdErr"][i] = gamma.stdErr
-        negGammaNc.variables["rawWindowVariance"][i] = gamma.rawWindowVariance
+        negGammaNc.variables["pValue"][i] = gamma.pValue
+        negGammaNc.variables["rawRSquared"][i] = gamma.rawRSquared
+        negGammaNc.variables["rawStdErr"][i] = gamma.rawStdErr
+        negGammaNc.variables["rawPValue"][i] = gamma.rawPValue
         negGammaNc.variables["yIntercept"][i] = gamma.yIntercept
 
     keyMetricsIndices["maxFoundInSimulation"] = np.argmin([g.gamma for g in best_neg_gammas])
@@ -835,23 +865,26 @@ def process_growth_rates(
         group.yIntercept=float(gamma.yIntercept)
         group.rSquared=float(gamma.rSquared)
         group.stdErr = float(gamma.stdErr)
-        group.rawWindowVariance = float(gamma.rawWindowVariance)
+        group.pValue = float(gamma.pValue)
+        group.rawRSquared = float(gamma.rawRSquared)
+        group.rawStdErr = float(gamma.rawStdErr)
+        group.rawPValue = float(gamma.rawPValue)
         group.wavenumber=float(gamma.wavenumber)
         group.frequencyOfMaxPowerInK=float(gamma.maxPowerFrequency)
         group.peakPower=float(gamma.peakPower)
         group.totalPower=float(gamma.totalPower)
 
 def my_matrix_plot(
-    data_series,
+    data_series: list[list],
     series_labels: list[str] = None,
     parameter_labels: list[str] = None,
     show: bool = True,
-    normalisePDF: bool = True,
     reference: Sequence[float] = None,
     filename: str = None,
     plot_style: str = "contour",
     colormap_list: list = ["Blues", "Greens"],
     show_ticks: bool = None,
+    equalise_pdf_heights: bool = True,
     point_colors: Sequence[float] = None,
     hdi_fractions=(0.35, 0.65, 0.95),
     point_size: int = 1,
@@ -1017,12 +1050,9 @@ def my_matrix_plot(
         )
 
     # Pre-compute estimates for correct scaling of data_series
-    all_estimates = []
-    all_estimate_maxes = []
+    all_estimates = [[] for _ in range(N_par)]
     for n_series in range(N_series):
         samples = data_series[n_series]
-        series_estimates = []
-        series_estimate_maxes = []
         for tup in inds_list:
             i, j = tup
             ax = axes[tup]
@@ -1030,18 +1060,17 @@ def my_matrix_plot(
             if i == j:
                 sample = samples[i]
                 pdf = GaussianKDE(sample)
-                s_estimate = np.array(pdf(axis_arrays[i]))
-                series_estimates.append(s_estimate)
-                series_estimate_maxes.append(np.max(series_estimates))
-        all_estimates.append(series_estimates)
-        all_estimate_maxes.append(series_estimate_maxes)
+                estimate = np.array(pdf(axis_arrays[i], equalise_pdf_heights))
+                all_estimates[i].append(estimate)
+
+    all_estimate_maxes = [np.max(m) for m in all_estimates]
     
     initialiseAxes = True
     for n_series in range(N_series):
         
         samples = data_series[n_series]
-        estimates = all_estimates[n_series]
-        estimate_maxes = all_estimate_maxes[n_series]
+        estimates = [par[n_series] for par in all_estimates]
+        #estimate_maxes = [par[n_series] for par in parameter_maxes]
         marginal_color = marginal_colors[n_series]
         cmap = cmaps[n_series]
 
@@ -1051,20 +1080,17 @@ def my_matrix_plot(
             ax = axes[tup]
             # are we on the diagonal?
             if i == j:
-                sample = samples[i]
-                #estimate = estimates[i]
-                pdf = GaussianKDE(sample)
-                estimate = np.array(pdf(axis_arrays[i]))
+                estimate = estimates[i]
                 ax.plot(
                     axis_arrays[i],
-                    0.9 * (estimate / estimate.max()) if normalisePDF else 0.9 * (estimate / estimate_maxes[i]),
+                    0.9 * (estimate / estimate.max()) if equalise_pdf_heights else 0.9 * (estimate / all_estimate_maxes[i]),
                     lw=1,
                     color=marginal_color,
                     label = series_labels[n_series]
                 )
                 ax.fill_between(
                     axis_arrays[i],
-                    0.9 * (estimate / estimate.max()) if normalisePDF else 0.9 * (estimate / estimate_maxes[i]),
+                    0.9 * (estimate / estimate.max()) if equalise_pdf_heights else 0.9 * (estimate / all_estimate_maxes[i]),
                     color=marginal_color,
                     alpha=0.1,
                 )
@@ -1082,17 +1108,7 @@ def my_matrix_plot(
                 y = samples[i]
 
                 # plot the 2D marginals
-                if plot_style == "contour":
-                    # Filled contour plotting using 2D gaussian KDE
-                    pdf = KDE2D(x=x, y=y)
-                    x_ax = axis_arrays[j][::4]
-                    y_ax = axis_arrays[i][::4]
-                    X, Y = np.meshgrid(x_ax, y_ax)
-                    prob = np.array(pdf(X.flatten(), Y.flatten())).reshape([L // 4, L // 4])
-                    ax.set_facecolor(cmap(256 // 20))
-                    ax.contourf(X, Y, prob, 10, cmap=cmap)
-
-                elif plot_style == "hdi":
+                if plot_style == "hdi":
                     # Filled contour plotting using 2D gaussian KDE
                     pdf = KDE2D(x=x, y=y)
                     sample_probs = pdf(x, y)
@@ -1107,12 +1123,6 @@ def my_matrix_plot(
                     levels = sorted(levels)
                     ax.contourf(X, Y, prob, levels=levels, cmap=cmap, alpha=0.7)
                     ax.contour(X, Y, prob, levels=levels, alpha=0.2)
-
-                elif plot_style == "histogram":
-                    # hexagonal-bin histogram
-                    ax.set_facecolor(cmap(0))
-                    ax.hexbin(x, y, gridsize=35, cmap=cmap)
-
                 else:
                     # scatterplot
                     if point_colors is None:

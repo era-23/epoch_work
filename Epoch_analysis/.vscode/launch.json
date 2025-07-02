@@ -13,6 +13,20 @@
             "args": ["--dir", "/home/era536/Documents/Epoch/Data/run_23"]
         },
         {
+            "name": "Python Debugger: Growth Rate Development",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "growth_rate_development.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "--dir", "/home/era536/Documents/Epoch/Data/irb_may25_analysis/data",
+                "--outputDir", "/home/era536/Documents/Epoch/Data/irb_may25_analysis/plots/",
+                "--fields", "Magnetic_Field_Bz", "Electric_Field_Ex",
+                "--displayPlots",
+            ]
+        },
+        {
             "name": "Python Debugger: Time-Series Development",
             "type": "debugpy",
             "request": "launch",
@@ -228,10 +242,10 @@
             ]
         },
         {
-            "name": "Python Debugger: Energy Analysis",
+            "name": "Python Debugger: Energy Development",
             "type": "debugpy",
             "request": "launch",
-            "program": "energy_analysis.py",
+            "program": "energy_development.py",
             "console": "integratedTerminal",
             "args": [
                 "--dir", "/home/era536/Documents/Epoch/Data/irb_scan_analysis/data",

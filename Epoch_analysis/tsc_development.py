@@ -106,7 +106,7 @@ def clustering(dataDirectory : Path, workingDir : Path, numClusters : int, algor
         
         # Fit
         pipeline.fit(input_data)
-        print(pipeline.get_fitted_params())
+        print("\n".join(f"{k}: {v}" for k, v in pipeline.get_fitted_params().items()))
 
         # Create folder
         algorithm_path = workingDir / algo

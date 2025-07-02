@@ -416,7 +416,7 @@ def analyse_peak_characteristics(analysisDirectory : Path):
     }
     fiLossAndBiGainIndices = np.intersect1d(overallFiLossIndices, overallBiGainIndices)
     fiLossOrBiGainIndices = np.union1d(overallFiLossIndices, overallBiGainIndices)
-    noFiToBiTransferIndices = np.setdiff1d(np.arange(len(simParameters["B0"])), fiLossAndBiGainIndices)
+    noFiToBiTransferIndices = np.setdiff1d(np.arange(len(simParameters["B0"])), fiLossOrBiGainIndices)
     fiLossAndBiGainParams = {
         "B0 (T)" : simParameters["B0"][fiLossAndBiGainIndices], 
         "B0 angle (deg)" : simParameters["B0_angle"][fiLossAndBiGainIndices], 
@@ -433,6 +433,12 @@ def analyse_peak_characteristics(analysisDirectory : Path):
     biGainSamples = [v for v in biGainParams.values()]
     noTransferSamples = [v for v in noFiToBiTransferParams.values()]
     fiLossBiGainSamples = [v for v in fiLossAndBiGainParams.values()]
+
+    print(f"FI loss samples: {len(fiLossSamples[0])}")
+    print(f"BI gain samples: {len(biGainSamples[0])}")
+    print(f"No transfer samples: {len(noTransferSamples[0])}")
+    print(f"FI loss and BI gain samples: {len(fiLossBiGainSamples[0])}")
+
     utils.my_matrix_plot(
         data_series=[fiLossSamples, biGainSamples, noTransferSamples, fiLossBiGainSamples], 
         series_labels=["Overall FI Loss", "Overall BI Gain", "Neither FI loss or BI gain", "Both FI loss and BI gain"], 
@@ -440,41 +446,8 @@ def analyse_peak_characteristics(analysisDirectory : Path):
         plot_style="hdi", 
         colormap_list=["Greys", "Greens", "Blues", "Reds"], 
         show=True,
-        normalisePDF=True,
+        equalise_pdf_heights=False,
     )
-
-    print("Woh")
-    # mciName = "E transfer"
-    # noMciName = "No E transfer"
-    # mciXAxis = [mciName for _ in mciB0]
-    # noMciXAxis = [noMciName for _ in noMciB0]
-
-    # fig, axs = plt.subplots(1, 4, sharey=False, figsize=[12,8])
-    # axs[0].scatter(mciXAxis, mciB0)
-    # axs[0].scatter(noMciXAxis, noMciB0)
-    # #axs[0].scatter([mciName], [np.mean(mciB0)], "x", color = "purple")
-    # #axs[0].scatter([noMciName], [np.mean(noMciB0)], "x", color = "red")
-    # axs[0].set_ylabel("B0 [T]")
-    # axs[1].scatter(mciXAxis, mciBangle)
-    # axs[1].scatter(noMciXAxis, noMciBangle)
-    # #axs[1].scatter([mciName], [np.mean(mciBangle)], "x", color = "purple")
-    # #axs[1].scatter([noMciName], [np.mean(noMciBangle)], "x", color = "red")
-    # axs[1].set_ylabel("B0 angle [degrees]")
-    # axs[2].scatter(mciXAxis, mciDensities)
-    # axs[2].scatter(noMciXAxis, noMciDensities)
-    # #axs[2].scatter([mciName], [np.mean(mciDensities)], "x", color = "purple")
-    # #axs[2].scatter([noMciName], [np.mean(noMciDensities)], "x", color = "red")
-    # axs[2].set_ylabel("Density [/m^3]")
-    # axs[2].set_yscale("log")
-    # axs[3].scatter(mciXAxis, mciBeamFracs)
-    # axs[3].scatter(noMciXAxis, noMciBeamFracs)
-    # #axs[3].scatter([mciName], [np.mean(mciBeamFracs)], "x", color = "purple")
-    # #axs[3].scatter([noMciName], [np.mean(noMciBeamFracs)], "x", color = "red")
-    # axs[3].set_yscale("log")
-    # axs[3].set_ylabel("Beam fraction [au]")
-    
-    # plt.tight_layout()
-    # plt.show()
 
 if __name__ == "__main__":
 
