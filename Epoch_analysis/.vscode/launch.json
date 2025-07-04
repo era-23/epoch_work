@@ -23,7 +23,12 @@
                 "--dir", "/home/era536/Documents/Epoch/Data/irb_may25_analysis/data",
                 "--outputDir", "/home/era536/Documents/Epoch/Data/irb_may25_analysis/plots/",
                 "--fields", "Magnetic_Field_Bz", "Electric_Field_Ex",
-                "--displayPlots",
+                "--rSquaredThreshold", "0.99",
+                "--rawRSquaredThreshold", "0.7",
+                "--stdErrThreshold", "0.002",
+                "--rawStdErrThreshold", "0.01",
+                "--kTransition", "20.0",
+                // "--displayPlots",
             ]
         },
         {

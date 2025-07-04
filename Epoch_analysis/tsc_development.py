@@ -153,7 +153,7 @@ def clustering(dataDirectory : Path, workingDir : Path, numClusters : int, algor
                 plot_style="hdi", 
                 colormap_list=["Reds", "Greens", "Blues", "Purples", "Greys", "Oranges"], 
                 show=False,
-                normalisePDF=True
+                equalise_pdf_heights=False
             )       
         except ValueError:
             print("Error in matrix plot, skipping")
