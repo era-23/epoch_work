@@ -197,7 +197,7 @@ def eval_CDPR_scanning(species = "p+", density = 2.5e19, B = 2.5):
     print(f"Upper hybrid at {omega_uh} or {omega_uh/cyclo_freq_i}omega_ci")
 
     min_omega = 0.0001 * cyclo_freq_i.value
-    max_omega = 1.5 * omega_lh.value
+    max_omega = 2.0 * omega_lh.value
     omega_vals = np.linspace(min_omega, max_omega, 2000)
 
     # Parallel

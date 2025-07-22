@@ -103,8 +103,10 @@ def calculate_simulation_metadata(
     number_density_bkgd = background_density * (1.0 - beam_frac)
     alfven_velocity = pps.Alfven_speed(B0 * u.T, number_density_bkgd, bkgdSpecies)
     grid_spacing = float(np.min([debye_length.value, electron_gyroradius.value]))
-    pixels_per_k = inputDeck['constant']['pixels_per_k']
-    est_min_cells = int(np.ceil((pixels_per_k * ion_gyroperiod_s.value * alfven_velocity.value) / grid_spacing))
+    est_min_cells = None
+    if 'pixels_per_k' in inputDeck['constant'].keys(): 
+        pixels_per_k = inputDeck['constant']['pixels_per_k']
+        est_min_cells = int(np.ceil((pixels_per_k * ion_gyroperiod_s.value * alfven_velocity.value) / grid_spacing))
     num_cells = dataset["X_Grid_mid"].size
     outputNcRoot.numCells = num_cells
 
@@ -167,7 +169,8 @@ def calculate_simulation_metadata(
         print(f"Sim time in SI: {sim_time}")
         print(f"Sampling frequency: {num_t/sim_time}")
         print(f"Nyquist frequency: {num_t/(2.0 *sim_time)}")
-        print(f"Estimated minimum cells needed: {est_min_cells}")
+        if est_min_cells is not None:
+            print(f"Estimated minimum cells needed: {est_min_cells}")
         print(f"Num cells: {num_cells}")
         print(f"Sim length: {sim_L}")
         print(f"Sampling frequency: {num_cells/sim_L}")
@@ -224,7 +227,8 @@ def run_energy_analysis(
     savePlotsFolder : Path,
     statsFile : nc.Dataset,
     displayPlots : bool = False,
-    noTitle : bool = False
+    noTitle : bool = False,
+    noLegend : bool = False,
 ):
     beam = False
     if "frac_beam" in inputDeck["constant"].keys():
@@ -478,8 +482,9 @@ def run_energy_analysis(
                 print("...................................................................................")
             ax.scatter(timeCoords[ed_troughs], smoothPctData[ed_troughs], marker="+", color="black")
             minTroughIndices[variable] = ed_troughs[np.argmin([smoothPctData[p] for p in ed_troughs])]
-        
-    ax.legend()
+
+    if not noLegend:  
+        ax.legend()
     ax.set_xlabel(r"Time [$\tau_{ci}$]")
     ax.set_ylabel("Change in energy density [%]")
     ax.grid()
@@ -571,7 +576,8 @@ def run_energy_analysis(
     ax.set_ylabel(r"Change in energy density [$J/m^3$]")
     if not noTitle: 
         ax.set_title(f"{simName}: Absolute energy in particles and EM fields", wrap=True)
-    ax.legend()
+    if not noLegend:
+        ax.legend()
     ax.grid()
     fig.tight_layout()
     fig.savefig(savePlotsFolder / filename)
@@ -594,6 +600,7 @@ def process_simulation_batch(
         bkgdSpecies : str = 'p+',
         bigLabels : bool = False,
         noTitle : bool = False,
+        noLegend : bool = False,
         displayPlots = False,
         saveGrowthRatePlots = False,
         numGrowthRatesToPlot : int = 0,
@@ -679,7 +686,7 @@ def process_simulation_batch(
         # Energy analysis
         if energy:
             energyPlotFolder = plotsFolder / "energy"
-            run_energy_analysis(ds, inputDeck, simFolder.name, energyPlotFolder, statsRoot, displayPlots = displayPlots, noTitle=noTitle)
+            run_energy_analysis(ds, inputDeck, simFolder.name, energyPlotFolder, statsRoot, displayPlots = displayPlots, noTitle=noTitle, noLegend=noLegend)
 
         if "all" in fields:
             fields = [str(f) for f in ds.data_vars.keys() if str(f).startswith("Electric_Field") or str(f).startswith("Magnetic_Field")]
@@ -838,6 +845,12 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
+        "--noLegend",
+        action="store_true",
+        help="No legend on plots for posters, papers etc. which will include captions or a centralised legend instead.",
+        required = False
+    )
+    parser.add_argument(
         "--energy",
         action="store_true",
         help="Run energy analysis.",
@@ -909,5 +922,6 @@ if __name__ == "__main__":
         displayPlots=args.displayPlots,
         bigLabels=args.bigLabels,
         noTitle=args.noTitle,
+        noLegend=args.noLegend,
         saveGrowthRatePlots=args.saveGammaPlots,
         energy=args.energy)

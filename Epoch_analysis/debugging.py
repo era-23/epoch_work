@@ -14,7 +14,7 @@ def debug_input_deck(directory : Path):
 
     # Read input deck
     input = {}
-    with open(glob.glob(str(directory / "run_10_input.deck"))[0]) as id:
+    with open(glob.glob(str(directory / "run_6_input.deck"))[0]) as id:
         input = epydeck.loads(id.read())
 
     input_vals = input['constant']

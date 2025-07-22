@@ -38,13 +38,14 @@ def preprocess_input_data(inputData : dict, log_fields : list = []) -> tuple:
     )
     # preprocess = Pipeline(steps=[('log', log_transform), ('scale', scale)])
     preprocess = Pipeline(steps=[('scale', scale)])
-    return list(inputData.keys()), preprocess.fit_transform(inputData_asColVec)
+    return list(inputData.keys()), preprocess.fit_transform(inputData_asColVec), preprocess
 
-def preprocess_output_data(outputData : list, arcsinh = False):
+def preprocess_output_data(outputData : list, arcsinh = False) -> tuple:
     if arcsinh:
         outputData = np.arcsinh(outputData)
     outputData_shaped = np.array(outputData).reshape(-1, 1)
-    return StandardScaler().fit(outputData_shaped).transform(outputData_shaped)
+    scaler = StandardScaler()
+    return scaler.fit(outputData_shaped).transform(outputData_shaped), scaler
 
 def untrained_GP(kernel : str, cv_lower = 1e-5, cv_upper = 1e5, ls_lower = 1e-5, ls_upper=1e5, a_lower = 1e-5, a_upper = 1e5, nl_lower = 1e-5, nl_upper = 1e5):
     if kernel == 'RQ':
@@ -168,7 +169,19 @@ def sobol_analysis(gpModels : list, noTitle : bool = False):
         print(f"Sum of SOBOL indices: ST = {np.sum(sobol_indices['ST'])}, S1 = {np.sum(sobol_indices['S1'])}, abs(S1) = {np.sum(abs(sobol_indices['S1']))} S2 = {np.nansum(sobol_indices['S2'])}, abs(S2) = {np.nansum(abs(sobol_indices['S2']))}")
         plt.rcParams["figure.figsize"] = (14,10)
         #fig, ax = plt.subplots()
-        sobol_indices.plot()
+        Si_df = sobol_indices.to_df()
+        _, ax = plt.subplots(1, len(Si_df), sharey=True)
+        CONF_COLUMN = "_conf"
+        for idx, f in enumerate(Si_df):
+            conf_cols = f.columns.str.contains(CONF_COLUMN)
+
+            confs = f.loc[:, conf_cols]
+            confs.columns = [c.replace(CONF_COLUMN, "") for c in confs.columns]
+
+            Sis = f.loc[:, ~conf_cols]
+
+            ax[idx] = Sis.plot(kind="bar", yerr=confs, ax=ax[idx])
+        print(plt.ylim())
         plt.subplots_adjust(bottom=0.3)
         if not noTitle:
             plt.title(f"{model.kernelName} kernel: {ml_utils.fieldNameToText(model.outputName)}")
@@ -283,30 +296,33 @@ def regress_simulations(
         plt.rcParams.update({'ytick.labelsize': 14.0})
         plt.rcParams.update({'legend.fontsize': 14.0})
 
-    output_files = glob.glob(str(directory / "*.nc")) 
+    data_files = glob.glob(str(directory / "*.nc")) 
 
     # Input data
     inputs = {inp : [] for inp in inputFields}
-    inputs = ml_utils.read_data(output_files, inputs)
+    inputs = ml_utils.read_data(data_files, inputs)
 
     # Output data
     outputs = {outp : [] for outp in outputFields}
-    outputs = ml_utils.read_data(output_files, outputs)
+    outputs = ml_utils.read_data(data_files, outputs)
 
     # Preprocess inputs (multiple returned as column vector)
-    inNames, normalisedInputData = preprocess_input_data(inputs, list(set(logFields).intersection(inputFields)))
+    inNames, normalisedInputData, preprocessingPipeline = preprocess_input_data(inputs, list(set(logFields).intersection(inputFields)))
 
     # Preprocess output (singular, for now -- 1 GP each)
     normalisedOutputs = {}
+    outputScaler = None
     for outputName, outputData in outputs.items():
-        normalisedOutputs[outputName] = np.array([n[0] for n in preprocess_output_data(outputData, arcsinh=(outputName in logFields))])
+        data, outputScaler = preprocess_output_data(outputData, arcsinh=(outputName in logFields))
+        normalisedOutputs[outputName] = np.array([n[0] for n in data])
 
     # Display matrix plots
     if matrixPlot:
         ml_utils.display_matrix_plots(inputs, normalisedInputData, outputs, normalisedOutputs)
 
     # Train individual models for each output
-    kernels = ["RBF", "RQ"]
+    # kernels = ["RBF", "RQ"]
+    kernels = ["RQ"]
     models = []
     for k in kernels:
         for outputName, outputData in normalisedOutputs.items():
@@ -324,7 +340,7 @@ def regress_simulations(
 
     successfulModels = [model for model in models if model.fitSuccess]
     if plotModels:
-        ml_utils.plot_models(successfulModels, showModels, saveAnimation, noTitle)
+        ml_utils.plot_models(gpModels=successfulModels, rawInputData=inputs, rawOutputData=outputs, showModels=showModels, saveAnimation=saveAnimation, noTitle=noTitle)
 
     # Evaluate model
     if evaluateModels:
