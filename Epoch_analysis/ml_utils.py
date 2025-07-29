@@ -2,6 +2,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import itertools
+import csv
 from scipy.stats import norm
 from scipy.interpolate import griddata
 from scipy.signal import find_peaks
@@ -23,6 +24,7 @@ from sktime.regression.interval_based import TimeSeriesForestRegressor
 from sktime.regression.kernel_based import TimeSeriesSVRTslearn, RocketRegressor
 from sktime.regression.compose import ComposableTimeSeriesForestRegressor
 from sklearn.preprocessing import StandardScaler
+import dataclasses as dc
 from dataclasses import dataclass
 from numpy.typing import ArrayLike
 import SALib.sample as salsamp
@@ -49,6 +51,7 @@ class SimulationMetadata:
 
 @dataclass
 class SpectralFeatures1D:
+    peaksFound : bool = False
     peakPowers : ArrayLike = None # Powers of all peaks
     peakCoordinates : ArrayLike  = None # Coordinates (e.g. frequencies) of all peaks
     numPeaks : int = 0 # Number of peaks
@@ -75,6 +78,7 @@ class SpectralFeatures1D:
     activeRegionCoordWidths : ArrayLike = None # Width in coordinate units of each active region
     activeRegionMeanCoordWidths : float = 0.0 # Mean of active region coordinate widths
     activeRegionVarCoordWidths : float = 0.0 # Variance in active region coordinate widths
+    totalActiveProportion : float = 0.0 # Total proportion of signal that is in active regions (in coordinate units)
     spectrumSum : float = 0.0 # Total sum of spectral power
     spectrumMean : float = 0.0 # Mean of spectral power
     spectrumVar : float = 0.0 # Variance in spectral power
@@ -245,6 +249,44 @@ def read_data(dataFiles, data_dict : dict, with_names : bool = False, with_coord
             data_dict["sim_ids"].append(simulation.split("/")[-1].split("_")[1])
 
     return data_dict
+
+def read_spectral_features_from_csv(csvFile : Path) -> list:
+    featureSet = []
+    with open(csvFile, mode="r") as featureFile:
+        allRows = csv.DictReader(featureFile)
+        for row in allRows:
+            instance = SpectralFeatures1D()
+            for k, v in row.items():
+                if '[[' in v:
+                    # List of lists
+                    instance.__dict__[k] = [[int(x.replace('[','').replace(']','')) for x in y.split(', ')] for y in v.split('], [')]
+                elif '[' in v:
+                    # List
+                    v = v.replace('[','').replace(']','')
+                    vs = v.split(' ')
+                    instance.__dict__[k] = np.array([float(f) for f in vs if f and not f.isspace()])
+                elif v == 'nan':
+                    # nan
+                    instance.__dict__[k] - np.nan
+                elif '.' in v:
+                    # Float
+                    instance.__dict__[k] = float(v)
+                elif v == "False" or v == "True":
+                    # Bool
+                    instance.__dict__[k] = bool(v) 
+                elif v:
+                    # Int
+                    instance.__dict__[k] = int(v) 
+            featureSet.append(instance)
+
+    return featureSet
+
+def write_spectral_features_to_csv(csvFile : Path, featureSet : list):
+    with open(csvFile, mode="w") as featureFile:
+        writer = csv.DictWriter(featureFile, fieldnames=[f.name for f in dc.fields(SpectralFeatures1D)])
+        writer.writeheader()
+        for instance in featureSet:
+            writer.writerow(instance.__dict__)
 
 def anim_init(fig, ax, xx, yy, zz):
     ax.scatter(xx, yy, zz, color="black")
@@ -455,6 +497,29 @@ def plot_models(gpModels : list, rawInputData : dict = None, rawOutputData : dic
                 plt.title(f"GP predictions for {fieldNameToText(model.outputName)} ({model.kernelName} kernel), all other input dimensions fixed to mean value", wrap=True)
             plt.show()
 
+def convert_input_for_multi_output_GPy_model(x, num_outputs):
+    """
+    This functions brings test data to the correct shape making it possible to use the `predict()` method of a trained
+    `GPy.util.multioutput.ICM` model (in the case that all outputs have the same input data).
+
+    Behind the scenes, this model is using an extended input space with an additional dimension that points at the
+    output each data point belongs to. To make use of the prediction function of GPy, this model needs the input array
+    to have the extended format, i.e. adding a column indicating which input should be used for which output.
+
+    This function works also for input dimensions > 1.
+
+    :param x: the x data you want to predict on
+    :param num_outputs: The number of outputs in your model
+    """
+
+    xt2d = np.array([x[:, i] for i in range(x.shape[1])]).T
+    xt = [xt2d] * num_outputs
+    identity_matrix = np.hstack([np.repeat(j, _x.shape[0]) for _x, j in zip(xt, range(num_outputs))])
+    xt = np.vstack(xt)
+    xt = np.hstack([xt, identity_matrix[:, None]])
+
+    return xt
+
 def extract_features_from_1D_power_spectrum(
         spectrum : np.ndarray, 
         coordinates : np.ndarray, 
@@ -498,11 +563,14 @@ def extract_features_from_1D_power_spectrum(
 
     plt.plot(coordinates, spectrum, label="spectrum")
     plt.scatter(coordinates[peaks_idx], spectrum[peaks_idx], color="red", marker="o", label="peak")
+    activeTotal = 0.0
     if active_regions_idx:
         for region in active_regions_idx:
             if len(region) > 1:
+                activeTotal += coordinates[region[1]] - coordinates[region[0]]
                 plt.axvspan(coordinates[region[0]], coordinates[region[1]], color='orange', alpha=0.3, label="active region")
             else:
+                activeTotal += coordinates[region[0]] 
                 plt.axvline(coordinates[region[0]], color='orange', alpha=0.3, label="active region")
     # Set legend
     handles, labels = plt.gca().get_legend_handles_labels()
@@ -531,8 +599,8 @@ def extract_features_from_1D_power_spectrum(
     active_region_coordWidths = []
     for region_idx in active_regions_idx:
         region_peaks_idx = np.intersect1d(range(region_idx[0], region_idx[-1]+1), peaks_idx) if len(region_idx) > 1 else region_idx
-        active_region_powers.append(spectrum[region_peaks_idx])
-        region_peak_coords = coordinates[region_peaks_idx]
+        active_region_powers.append(np.array(spectrum[region_peaks_idx]))
+        region_peak_coords = np.array(coordinates[region_peaks_idx])
         active_region_coords.append(region_peak_coords)
         active_region_coordWidths.append(coordinates[region_idx[-1]] - coordinates[region_idx[0]])
         if len(region_peak_coords) == 1:
@@ -546,38 +614,41 @@ def extract_features_from_1D_power_spectrum(
     active_region_coordSeparations = np.array(active_region_coordSeparations)
     if len(peaks_idx) > 0:
         features = SpectralFeatures1D(
+            peaksFound = True,
             peakPowers = spectrum[peaks_idx],
             peakCoordinates = coordinates[peaks_idx],
             numPeaks = len(peaks_idx),
             maxPeakPower = float(peakPowersRanked[0]),
             maxPeakCoordinate = float(peakPowersCoordsRanked[0]),
-            meanPeakNPowers = meanPeakNPowers,
+            meanPeakNPowers = np.array(meanPeakNPowers),
             meanPeak4Powers = float(meanPeakNPowers[3]) if len(meanPeakNPowers) > 3 else 0.0,
             meanPeak3Powers = float(meanPeakNPowers[2]) if len(meanPeakNPowers) > 2 else 0.0,
             meanPeak2Powers = float(meanPeakNPowers[1]) if len(meanPeakNPowers) > 1 else 0.0,
-            varPeakNPowers = varPeakNPowers,
+            varPeakNPowers = np.array(varPeakNPowers),
             varPeak4Powers = float(varPeakNPowers[3]) if len(varPeakNPowers) > 3 else 0.0,
             varPeak3Powers = float(varPeakNPowers[2]) if len(varPeakNPowers) > 2 else 0.0,
             varPeak2Powers = float(varPeakNPowers[1]) if len(varPeakNPowers) > 1 else 0.0,
-            peakProminences = list(peaks_properties["prominences"]),
+            peakProminences = np.array(list(peaks_properties["prominences"])),
             maxPeakPowerProminence = list(peaks_properties["prominences"])[np.argmax(spectrum[peaks_idx])],
             activeRegions = active_regions_idx,
             numActiveRegions = len(active_regions_idx),
-            activeRegionMeanPowers = [np.mean(r) for r in active_region_powers],
-            activeRegionVarPowers = [np.var(r) for r in active_region_powers],
-            activeRegionMeanCoordinates = [np.mean(r) for r in active_region_coords],
+            activeRegionMeanPowers = np.array([np.mean(r) for r in active_region_powers]),
+            activeRegionVarPowers = np.array([np.var(r) for r in active_region_powers]),
+            activeRegionMeanCoordinates = np.array([np.mean(r) for r in active_region_coords]),
             activeRegionPeakSeparations = active_region_coordSeparations,
             activeRegionMeanPeakSeparations = float(np.mean(active_region_coordSeparations[active_region_coordSeparations != 0.0])),
             activeRegionVarPeakSeparations = float(np.var(active_region_coordSeparations[active_region_coordSeparations != 0.0])),
-            activeRegionCoordWidths = active_region_coordWidths,
+            activeRegionCoordWidths = np.array(active_region_coordWidths),
             activeRegionMeanCoordWidths = float(np.mean(active_region_coordWidths)),
             activeRegionVarCoordWidths = float(np.var(active_region_coordWidths)),
+            totalActiveProportion = activeTotal,
             spectrumSum = float(np.sum(spectrum)),
             spectrumMean = float(np.mean(spectrum)),
             spectrumVar = float(np.var(spectrum))
         )
     else:
         features = SpectralFeatures1D(
+            peaksFound = False, 
             spectrumSum = np.sum(spectrum),
             spectrumMean = np.mean(spectrum),
             spectrumVar = np.var(spectrum)
