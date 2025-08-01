@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import itertools
 import csv
+import GPy
 from scipy.stats import norm
 from scipy.interpolate import griddata
 from scipy.signal import find_peaks
@@ -36,10 +37,26 @@ class GPModel:
     normalisedInputs : np.ndarray
     outputName : str
     output : np.ndarray
-    regressionModel : GaussianProcessRegressor = None
+    regressionModel : GaussianProcessRegressor | GPy.models.GPCoregionalizedRegression | GPy.models.GPMultioutRegression = None
     classificationModel : GaussianProcessClassifier = None
     modelParams : dict = None
     fitSuccess : bool = None
+
+@dataclass
+class GPResults:
+    kernelNames : list
+    inputNames : list
+    outputNames : list
+    output : np.ndarray
+    sobolIndicesO1 : list
+    sobolIndicesO2 : list
+    sobolIndicesTotal : list
+    cvAccuracyMean : float = 0.0
+    cvAccuracyVar : float = 0.0
+    spectrumName : str = None
+    regressionModel : GaussianProcessRegressor | GPy.models.GPCoregionalizedRegression | GPy.models.GPMultioutRegression = None
+    fitSuccess : bool = False
+    objective : float = 0.0
 
 @dataclass
 class SimulationMetadata:
@@ -66,6 +83,9 @@ class SpectralFeatures1D:
     varPeak3Powers : float = 0.0 # Power variance of 4 highest peaks, if applicable
     varPeak2Powers : float = 0.0 # Power variance of 4 highest peaks, if applicable
     peakProminences: ArrayLike = None # Prominences of all peaks, in coordinate order
+    maxPeakProminence : float = 0.0 # Maximum peak prominence found in spectrum
+    meanPeakProminence : float = 0.0 # Mean peak prominence found in spectrum
+    varPeakProminence : float = 0.0 # Variance in peak prominence found in spectrum
     maxPeakPowerProminence : float = 0.0 # Prominence of highest power peak
     activeRegions : ArrayLike = None # Indices of active spectral regions, i.e regions with any peaks within short distance (configurable) of each other
     numActiveRegions : int = 0 # Number of active regions
@@ -78,7 +98,8 @@ class SpectralFeatures1D:
     activeRegionCoordWidths : ArrayLike = None # Width in coordinate units of each active region
     activeRegionMeanCoordWidths : float = 0.0 # Mean of active region coordinate widths
     activeRegionVarCoordWidths : float = 0.0 # Variance in active region coordinate widths
-    totalActiveProportion : float = 0.0 # Total proportion of signal that is in active regions (in coordinate units)
+    totalActiveCoordinateProportion : float = 0.0 # Total proportion of signal that is in active regions (in coordinate units)
+    totalActivePowerProportion : float = 0.0 # Total proportion of signal power that is in active regions (in y-axis/power units)
     spectrumSum : float = 0.0 # Total sum of spectral power
     spectrumMean : float = 0.0 # Mean of spectral power
     spectrumVar : float = 0.0 # Variance in spectral power
@@ -273,7 +294,7 @@ def read_spectral_features_from_csv(csvFile : Path) -> list:
                     instance.__dict__[k] = float(v)
                 elif v == "False" or v == "True":
                     # Bool
-                    instance.__dict__[k] = bool(v) 
+                    instance.__dict__[k] = bool(v == "True") 
                 elif v:
                     # Int
                     instance.__dict__[k] = int(v) 
@@ -561,17 +582,50 @@ def extract_features_from_1D_power_spectrum(
         else:
             active_regions_idx.append([peaks_idx[0]])
 
+    # Collate features and plot
+    peakPowersRanked = np.sort(spectrum[peaks_idx])[::-1]
+    meanPeakNPowers = []
+    varPeakNPowers = []
+    peakPowersCoordsRanked = np.sort(coordinates[peaks_idx])[::-1]
+    for i in range(1, len(peakPowersRanked)+1):
+        meanPeakNPowers.append(np.mean(peakPowersRanked[:i]))
+        varPeakNPowers.append(np.var(peakPowersRanked[:i]))
+    active_region_powers = []
+    active_region_coords = []
+    active_region_coordSeparations = []
+    active_region_coordWidths = []
+    prominences = np.array(list(peaks_properties["prominences"]))
     plt.plot(coordinates, spectrum, label="spectrum")
     plt.scatter(coordinates[peaks_idx], spectrum[peaks_idx], color="red", marker="o", label="peak")
-    activeTotal = 0.0
+    activeTotalCoords = 0.0
+    activeTotalPower = 0.0
     if active_regions_idx:
-        for region in active_regions_idx:
-            if len(region) > 1:
-                activeTotal += coordinates[region[1]] - coordinates[region[0]]
-                plt.axvspan(coordinates[region[0]], coordinates[region[1]], color='orange', alpha=0.3, label="active region")
+        for region_idx in active_regions_idx:    
+            region_peaks_idx = np.intersect1d(range(region_idx[0], region_idx[-1]+1), peaks_idx) if len(region_idx) > 1 else region_idx
+            active_region_powers.append(np.array(spectrum[region_peaks_idx]))
+            region_peak_coords = np.array(coordinates[region_peaks_idx])
+            active_region_coords.append(region_peak_coords)
+            
+            if len(region_idx) > 1:
+                separations = []
+                for i in range(1, len(region_peak_coords)):
+                    separations.append(region_peak_coords[i] - region_peak_coords[i-1])
+                active_region_coordSeparations.append(np.mean(separations))
+                active_region_coordWidths.append(coordinates[region_idx[-1]] - coordinates[region_idx[0]]) 
+                activeTotalCoords += coordinates[region_idx[1]] - coordinates[region_idx[0]]
+                activeTotalPower += np.sum(spectrum[region_idx[0]:region_idx[1]+1])
+                plt.axvspan(coordinates[region_idx[0]], coordinates[region_idx[1]], color='orange', alpha=0.3, label="active region")
             else:
-                activeTotal += coordinates[region[0]] 
-                plt.axvline(coordinates[region[0]], color='orange', alpha=0.3, label="active region")
+                active_region_coordSeparations.append(coordinates[1] - coordinates[0])
+                active_region_coordWidths.append(coordinates[1] - coordinates[0]) # Append sampling width of one coordinate
+                activeTotalCoords += coordinates[region_idx[0]]
+                activeTotalPower += spectrum[region_idx[0]]
+                plt.axvline(coordinates[region_idx[0]], color='orange', alpha=0.3, label="active region")
+    
+    activeTotalCoords /= np.sum(coordinates)
+    activeTotalPower /= np.sum(spectrum)
+    active_region_coordSeparations = np.array(active_region_coordSeparations)
+
     # Set legend
     handles, labels = plt.gca().get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
@@ -584,34 +638,7 @@ def extract_features_from_1D_power_spectrum(
         plt.savefig(savePath / f"run_{spectrum_name}_feature_extraction.png")
     #plt.show()
     plt.close("all")
-
-    # Collate features
-    peakPowersRanked = np.sort(spectrum[peaks_idx])[::-1]
-    meanPeakNPowers = []
-    varPeakNPowers = []
-    peakPowersCoordsRanked = np.sort(coordinates[peaks_idx])[::-1]
-    for i in range(1, len(peakPowersRanked)+1):
-        meanPeakNPowers.append(np.mean(peakPowersRanked[:i]))
-        varPeakNPowers.append(np.var(peakPowersRanked[:i]))
-    active_region_powers = []
-    active_region_coords = []
-    active_region_coordSeparations = []
-    active_region_coordWidths = []
-    for region_idx in active_regions_idx:
-        region_peaks_idx = np.intersect1d(range(region_idx[0], region_idx[-1]+1), peaks_idx) if len(region_idx) > 1 else region_idx
-        active_region_powers.append(np.array(spectrum[region_peaks_idx]))
-        region_peak_coords = np.array(coordinates[region_peaks_idx])
-        active_region_coords.append(region_peak_coords)
-        active_region_coordWidths.append(coordinates[region_idx[-1]] - coordinates[region_idx[0]])
-        if len(region_peak_coords) == 1:
-            active_region_coordSeparations.append(0.0)
-        else:
-            separations = []
-            for i in range(1, len(region_peak_coords)):
-                separations.append(region_peak_coords[i] - region_peak_coords[i-1])
-            active_region_coordSeparations.append(np.mean(separations))
-    
-    active_region_coordSeparations = np.array(active_region_coordSeparations)
+         
     if len(peaks_idx) > 0:
         features = SpectralFeatures1D(
             peaksFound = True,
@@ -628,8 +655,11 @@ def extract_features_from_1D_power_spectrum(
             varPeak4Powers = float(varPeakNPowers[3]) if len(varPeakNPowers) > 3 else 0.0,
             varPeak3Powers = float(varPeakNPowers[2]) if len(varPeakNPowers) > 2 else 0.0,
             varPeak2Powers = float(varPeakNPowers[1]) if len(varPeakNPowers) > 1 else 0.0,
-            peakProminences = np.array(list(peaks_properties["prominences"])),
-            maxPeakPowerProminence = list(peaks_properties["prominences"])[np.argmax(spectrum[peaks_idx])],
+            peakProminences = prominences,
+            maxPeakProminence = prominences.max(),
+            meanPeakProminence = np.mean(prominences),
+            varPeakProminence = np.var(prominences),
+            maxPeakPowerProminence = prominences[np.argmax(spectrum[peaks_idx])],
             activeRegions = active_regions_idx,
             numActiveRegions = len(active_regions_idx),
             activeRegionMeanPowers = np.array([np.mean(r) for r in active_region_powers]),
@@ -641,7 +671,8 @@ def extract_features_from_1D_power_spectrum(
             activeRegionCoordWidths = np.array(active_region_coordWidths),
             activeRegionMeanCoordWidths = float(np.mean(active_region_coordWidths)),
             activeRegionVarCoordWidths = float(np.var(active_region_coordWidths)),
-            totalActiveProportion = activeTotal,
+            totalActiveCoordinateProportion = float(activeTotalCoords),
+            totalActivePowerProportion = float(activeTotalPower),
             spectrumSum = float(np.sum(spectrum)),
             spectrumMean = float(np.mean(spectrum)),
             spectrumVar = float(np.var(spectrum))

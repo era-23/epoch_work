@@ -2,9 +2,13 @@ import argparse
 import glob
 import os
 import GPy
+import SALib.sample as salsamp
 import ml_utils
 import pylab as pb
 import numpy as np
+from SALib import ProblemSpec
+from SALib.analyze import sobol
+from sklearn.model_selection import train_test_split, cross_val_score, KFold
 from pathlib import Path
 from matplotlib import pyplot as plt
 from dataclasses import fields
@@ -14,25 +18,81 @@ def plot_4outputs_training_data(xTrain, xName, yOut_1, yOut_2, yOut_3, yOut_4, n
     plt.suptitle(f'Input: {xName}')
     # Output 1
     ax1 = fig.add_subplot(411)
-    #ax1.set_xlim(xlim)
-    ax1.set_title(f'Output 1: {name_1}')
+    ax1.set_ylabel(f'{name_1}')
     ax1.plot(xTrain,yOut_1,'kx',mew=1.5)
     # Output 2
     ax2 = fig.add_subplot(412)
-    #ax2.set_xlim(xlim)
-    ax2.set_title(f'Output 2: {name_2}')
+    ax2.set_ylabel(f'{name_2}')
     ax2.plot(xTrain,yOut_2,'kx',mew=1.5)
     # Output 3
     ax3 = fig.add_subplot(413)
-    ax3.set_title(f'Output 3: {name_3}')
+    ax3.set_ylabel(f'{name_3}')
     ax3.plot(xTrain,yOut_3,'kx',mew=1.5)
     # Output 4
     ax4 = fig.add_subplot(414)
-    ax4.set_title(f'Output 4: {name_4}')
+    ax4.set_ylabel(f'{name_4}')
     ax4.plot(xTrain,yOut_4,'kx',mew=1.5)
     plt.show()
 
-def demo_plot_2outputs(m, Xt1, Yt1, Xt2, Yt2, xlim, ylim):
+def plot_outputs(m, output_names, feature_names, xlim):
+    
+    num_datapoints = m.Y.shape[0]//len(output_names)
+
+    for i in range(len(feature_names)):
+
+        # fixed_inputs = [(f, 0.0) for f in range(0, len(feature_names)) if f != i]
+        #fixed_inputs.append((len(feature_names), i))
+        # print(fixed_inputs)
+
+        fig = plt.figure(figsize=(18,8))
+        f_name = feature_names[i]
+        plt.suptitle(f'Input: {f_name}')
+
+        #Output 1
+        output_index = 0
+        fixed_inputs = [(len(feature_names),output_index)]
+        # fixed_inputs.append((len(feature_names),output_index))
+        y_name = output_names[output_index]
+        ax1 = fig.add_subplot(221)
+        ax1.set_xlim(xlim)
+        ax1.set_ylabel(y_name)
+        m.plot(plot_limits=xlim,fixed_inputs=fixed_inputs, which_data_rows=slice(0, num_datapoints), ax=ax1, plot_data=True, visible_dims=[i])
+        
+        #Output 2
+        output_index = 1
+        fixed_inputs = [(len(feature_names),output_index)]
+        # fixed_inputs.append((len(feature_names),output_index))
+        y_name = output_names[output_index]
+        ax2 = fig.add_subplot(222)
+        ax2.set_xlim(xlim)
+        ax2.set_ylabel(y_name)
+        m.plot(plot_limits=xlim,fixed_inputs=fixed_inputs, which_data_rows=slice(num_datapoints, 2*num_datapoints), ax=ax2, plot_data=True, visible_dims=[i])
+        
+        #Output 3
+        output_index = 2
+        fixed_inputs = [(len(feature_names),output_index)]
+        # fixed_inputs.append((len(feature_names),output_index))
+        y_name = output_names[output_index]
+        ax3 = fig.add_subplot(223)
+        ax3.set_xlim(xlim)
+        ax3.set_ylabel(y_name)
+        m.plot(plot_limits=xlim,fixed_inputs=fixed_inputs, which_data_rows=slice(2*num_datapoints, 3*num_datapoints), ax=ax3, plot_data=True, visible_dims=[i])
+        
+        #Output 4
+        output_index = 3
+        fixed_inputs = [(len(feature_names),output_index)]
+        # fixed_inputs.append((len(feature_names),output_index))
+        y_name = output_names[output_index]
+        ax4 = fig.add_subplot(224)
+        ax4.set_xlim(xlim)
+        ax4.set_ylabel(y_name)
+        m.plot(plot_limits=xlim,fixed_inputs=fixed_inputs, which_data_rows=slice(3*num_datapoints,4*num_datapoints), ax=ax4, plot_data=True, visible_dims=[i])
+        
+        # Display
+        plt.show()
+        plt.close("all")
+
+def demo_plot_2outputs(m, Xt1, Yt1, Xt2, Yt2, xlim):
     fig = pb.figure(figsize=(12,8))
     #Output 1
     ax1 = fig.add_subplot(211)
@@ -143,47 +203,55 @@ def regress(directory : Path, inputFieldName : str, outputFields : list, spectra
     # Output data
     outputs = {outp : [] for outp in outputFields}
     outputs = ml_utils.read_data(data_files, outputs, with_names = False, with_coords=False)
-    
-    features = create_spectral_features(directory, inputFieldName, inputs, spectralFeatures, peaksOnly)
-    feature_names = np.array(list(features.keys()))
-    feature_values = np.array(list(features.values()))
-    # feature_values_columns = feature_values.T
 
-    output_names = list(outputs.keys())
-    # output_values = np.array(list(outputs.values()))
-    # output_values_columns = output_values.T
+    # Transformation of B0angle
+    if "B0angle" in outputs:
+        transf = np.array(outputs["B0angle"])
+        transf = 90.0 - transf
+        outputs["B0angle"] = transf
+    
+    features, indices = create_spectral_features(directory, inputFieldName, inputs, spectralFeatures, peaksOnly)
 
     logFields = [
         "maxPeakPower", 
-        # "meanPeak4Powers", 
-        # "meanPeak3Powers", 
-        # "meanPeak2Powers",
-        # "varPeak4Powers", 
-        # "varPeak3Powers", 
-        # "varPeak2Powers",
+        "meanPeak4Powers", 
+        "meanPeak3Powers", 
+        "meanPeak2Powers",
+        "maxPeakProminence",
+        "meanPeakProminence",
         "maxPeakPowerProminence",
-        # "activeRegionVarPeakSeparations",
-        # "activeRegionMeanCoordWidths",
-        # "activeRegionVarCoordWidths",
-        "totalActiveProportion",
+        "activeRegionVarPeakSeparations",
+        "activeRegionMeanCoordWidths",
+        "activeRegionVarCoordWidths",
+        "totalActiveCoordinateProportion",
+        "totalActivePowerProportion",
         "spectrumVar",
         "spectrumSum",
-        "spectrumMean"
+        "spectrumMean",
+        "backgroundDensity",
+        # "B0strength",
+        # "B0angle",
+        "beamFraction"
     ]
-    for f_name in logFields:
-        if f_name in features:
-            features[f_name] = np.log(features[f_name])
+    for f_name in features:
+        if f_name in logFields:
+            features[f_name] = np.log10(features[f_name])
+    for o_name in outputs:
+        if o_name in logFields:
+            outputs[o_name] = np.log10(outputs[o_name])
+
+    feature_names = np.array(list(features.keys()))
+    feature_values = np.array(list(features.values()))
+    features_array = np.array(feature_values)
+
+    output_names = list(outputs.keys())
+    output_array = np.array([a[indices] for a in np.array(list(outputs.values()))])
 
     # Normalise
-    features_array = np.array(list(features.values()))
     if normalise:
         features_array = np.array([(f - np.nanmean(f)) / np.nanstd(f) for f in features_array])
-    features_columns = features_array.T
-    
-    # Normalise this as well
-    output_array = np.array(list(outputs.values()))
-    if normalise:
         output_array = np.array([(p - np.nanmean(p)) / np.nanstd(p) for p in output_array])
+    features_columns = features_array.T
     output_columns = output_array.T
 
     # Plot training data
@@ -192,8 +260,8 @@ def regress(directory : Path, inputFieldName : str, outputFields : list, spectra
     # for f in range(len(feature_names)):
     #     y1 = output[:,0]
     #     y2 = output[:,1]
-    #     y3 = np.log10(output[:,2])
-    #     y4 = np.log10(output[:,3])
+    #     y3 = output[:,2]
+    #     y4 = output[:,3]
     #     y1_name = output_names[0]
     #     y2_name = output_names[1]
     #     y3_name = output_names[2]
@@ -216,13 +284,17 @@ def regress(directory : Path, inputFieldName : str, outputFields : list, spectra
         all_Y.append(Y_out[:,i].reshape(-1,1))
     #k_list = [GPy.kern.RBF(input_dim, ARD=True) for _ in range(output_dim)]
     k_list = []
-    k_list.append(GPy.kern.White(input_dim=input_dim))
-    k_list.append(GPy.kern.Matern32(input_dim=input_dim, ARD = True))
-    lcm = GPy.util.multioutput.LCM(input_dim=input_dim, num_outputs=output_dim, kernels_list=k_list)
-    m = GPy.models.GPCoregionalizedRegression([X_in for _ in all_Y],all_Y,kernel=lcm)
+    # k_list.append(GPy.kern.White(input_dim=input_dim))
+    k_list.append(GPy.kern.Linear(input_dim=input_dim))
+    k_list.append(GPy.kern.RatQuad(input_dim=input_dim, ARD = True))
+    kerns = GPy.util.multioutput.LCM(input_dim=input_dim, num_outputs=output_dim, kernels_list=k_list, W_rank=3)
+    # kerns_mult = np.prod(k_list)
+    # kerns = GPy.util.multioutput.ICM(input_dim=input_dim, num_outputs=output_dim, kernel=kerns_mult, W_rank=3)
+    m = GPy.models.GPCoregionalizedRegression([X_in for _ in all_Y],all_Y,kernel=kerns)
+    m['.*lengthscale'].constrain_bounded(lower=0.0, upper=0.2)
     print(f"Default gradients: {m.gradient}")
-    # m.optimize_restarts(verbose=True)
-    m.optimize(messages=True)
+    m.optimize_restarts(num_restarts=5, verbose=True)
+    #m.optimize(messages=True)
     print(f"Optimised gradients: {m.gradient}")
     print(m)
     for part in m.kern.parts:
@@ -230,24 +302,75 @@ def regress(directory : Path, inputFieldName : str, outputFields : list, spectra
         if None not in sigs:
             print(f'{part.name}: 3 most significant input dims (descending): {feature_names[sigs[0]-1]}, {feature_names[sigs[1]-1]}, {feature_names[sigs[2]-1]}')
 
+    # Visualise model
+    plot_outputs(m, output_names, feature_names, (-3,3))
+
+    # Analyse model (sobol)
+    sobol_analysis(m, features_columns, feature_names, output_columns, output_names)
+
+    # Evaluate model (CV)
+
+def sobol_analysis(model : GPy.Model, features : np.ndarray, features_names : list, outputs : np.ndarray, output_names : list, noTitle : bool = False):
+
+    num_inputs = len(features_names)
+    num_outputs = len(output_names)
+
+    # SALib SOBOL indices
+    sp = ProblemSpec({
+        'num_vars': num_inputs,
+        'names': list(features_names),
+        'bounds': [[np.min(column), np.max(column)] for column in features.T]
+    })
+    test_values = salsamp.sobol.sample(sp, int(2**14), calc_second_order = (num_inputs > 1))
+
+    # Format test values for each output
+    num_sample_points = test_values.shape[0]
+    output_num = np.zeros((num_sample_points))
+    test_values_formatted = test_values
+    for i in range(1, num_outputs):
+        output_num = np.concatenate((output_num, np.ones(num_sample_points)*i))
+        test_values_formatted = np.vstack([test_values_formatted, test_values])
+    output_num = output_num[:,None]
+    test_values_formatted = np.hstack([test_values_formatted, output_num])
+
+    # Tell GPy which indices correspond to which output noise model
+    noise_dict = {'output_index' : test_values_formatted[:,-1].astype(int)}
+    
+    # Sample predictions here
+    y_prediction, y_var_diag = model.predict(test_values_formatted, Y_metadata = noise_dict) # y_prediction is 1-D for all of output 0, then all of output 1 etc.
+    print(f"{model.name} predictions for {output_names} -- y_std: {np.sqrt(y_var_diag)}")
+    
+    for n in range(num_outputs):
+        print(f"SOBOL analysing {model.name} model of {features_names} against {output_names[n]}....")
+        predictions = y_prediction[n*num_sample_points:(n+1)*num_sample_points][:,0]
+        sobol_indices = sobol.analyze(sp, predictions, print_to_console=True, calc_second_order = (num_inputs > 1))
+        print(f"Sobol indices for output {output_names[n]}:")
+        print(sobol_indices)
+        # print(f"Sum of SOBOL indices: ST = {np.sum(sobol_indices['ST'])}, S1 = {np.sum(sobol_indices['S1'])}, abs(S1) = {np.sum(abs(sobol_indices['S1']))} S2 = {np.nansum(sobol_indices['S2'])}, abs(S2) = {np.nansum(abs(sobol_indices['S2']))}")
+        plt.rcParams["figure.figsize"] = (14,10)
+        #fig, ax = plt.subplots()
+        Si_df = sobol_indices.to_df()
+        _, ax = plt.subplots(1, len(Si_df), sharey=True)
+        CONF_COLUMN = "_conf"
+        for idx, f in enumerate(Si_df):
+            conf_cols = f.columns.str.contains(CONF_COLUMN)
+
+            confs = f.loc[:, conf_cols]
+            confs.columns = [c.replace(CONF_COLUMN, "") for c in confs.columns]
+
+            Sis = f.loc[:, ~conf_cols]
+
+            ax[idx] = Sis.plot(kind="bar", yerr=confs, ax=ax[idx])
+        print(plt.ylim())
+        plt.subplots_adjust(bottom=0.3)
+        if not noTitle:
+            plt.title(f"GPy {model.name} kernel: {output_names[n]}")
+        plt.tight_layout()
+        plt.show()
+        plt.close()
+
 # Single-valued features only for now
 def create_spectral_features(directory : Path, field : str, spectrum_data : dict, features : list = None, peaks_only : bool = True):
-    # if bigLabels:
-    #     plt.rcParams.update({'axes.titlesize': 26.0})
-    #     plt.rcParams.update({'axes.labelsize': 24.0})
-    #     plt.rcParams.update({'xtick.labelsize': 20.0})
-    #     plt.rcParams.update({'ytick.labelsize': 20.0})
-    #     plt.rcParams.update({'legend.fontsize': 18.0})
-    # else:
-    #     plt.rcParams.update({'axes.titlesize': 18.0})
-    #     plt.rcParams.update({'axes.labelsize': 16.0})
-    #     plt.rcParams.update({'xtick.labelsize': 14.0})
-    #     plt.rcParams.update({'ytick.labelsize': 14.0})
-    #     plt.rcParams.update({'legend.fontsize': 14.0})
-
-    # example_model = GPy.examples.regression.sparse_GP_regression_1D(plot=True, optimize=False)
-    # plt.show()
-    # print(example_model)
 
     featureSets = []
 
@@ -269,26 +392,24 @@ def create_spectral_features(directory : Path, field : str, spectrum_data : dict
         ml_utils.write_spectral_features_to_csv(write_path, featureSets)
 
     singleValueFields = [f.name for f in fields(ml_utils.SpectralFeatures1D) if f.type is float or f.type is int]
-    extracted_features = {}
-
+    if features is None or "all" in features:
+        features = singleValueFields
+    features_to_extract = np.intersect1d(features, singleValueFields)
+    extracted_features = {f : [] for f in features_to_extract}
+    extracted_indices = set()
     if peaks_only:
-        if features is None or "all" in features:
-            for feature in singleValueFields:
-                extracted_features[feature] = [simData.__dict__[feature] for simData in featureSets if simData.peaksFound]
-        else:
-            for feature in features:
-                if feature in singleValueFields:
-                    extracted_features[feature] = [simData.__dict__[feature] for simData in featureSets if simData.peaksFound]
+        for simIndex in range(len(featureSets)):
+            if featureSets[simIndex].peaksFound:
+                for feature in features_to_extract:
+                    extracted_features[feature].append(featureSets[simIndex].__dict__[feature])
+                    extracted_indices.add(simIndex)
     else:
-        if features is None or "all" in features:
-            for feature in singleValueFields:
-                extracted_features[feature] = [simData.__dict__[feature] for simData in featureSets]
-        else:
-            for feature in features:
-                if feature in singleValueFields:
-                    extracted_features[feature] = [simData.__dict__[feature] for simData in featureSets]
+        for simIndex in range(len(featureSets)):
+            for feature in features_to_extract:
+                extracted_features[feature].append(featureSets[simIndex].__dict__[feature])
+                extracted_indices.add(simIndex)
     
-    return extracted_features
+    return extracted_features, list(extracted_indices)
 
 if __name__ == "__main__":
     
