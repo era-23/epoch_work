@@ -8,7 +8,8 @@ import pylab as pb
 import numpy as np
 from SALib import ProblemSpec
 from SALib.analyze import sobol
-from sklearn.model_selection import train_test_split, cross_val_score, KFold
+from sklearn.model_selection import train_test_split, cross_val_score, RepeatedKFold, LeavePOut
+from sklearn.metrics import r2_score
 from pathlib import Path
 from matplotlib import pyplot as plt
 from dataclasses import fields
@@ -219,6 +220,7 @@ def regress(directory : Path, inputFieldName : str, outputFields : list, spectra
         "meanPeak2Powers",
         "maxPeakProminence",
         "meanPeakProminence",
+        # "varPeakProminence",
         "maxPeakPowerProminence",
         "activeRegionVarPeakSeparations",
         "activeRegionMeanCoordWidths",
@@ -284,23 +286,25 @@ def regress(directory : Path, inputFieldName : str, outputFields : list, spectra
         all_Y.append(Y_out[:,i].reshape(-1,1))
     #k_list = [GPy.kern.RBF(input_dim, ARD=True) for _ in range(output_dim)]
     k_list = []
-    # k_list.append(GPy.kern.White(input_dim=input_dim))
+    k_list.append(GPy.kern.White(input_dim=input_dim))
     k_list.append(GPy.kern.Linear(input_dim=input_dim))
     k_list.append(GPy.kern.RatQuad(input_dim=input_dim, ARD = True))
     kerns = GPy.util.multioutput.LCM(input_dim=input_dim, num_outputs=output_dim, kernels_list=k_list, W_rank=3)
     # kerns_mult = np.prod(k_list)
     # kerns = GPy.util.multioutput.ICM(input_dim=input_dim, num_outputs=output_dim, kernel=kerns_mult, W_rank=3)
+    # print(X_in[:5])
+    # print(Y_out[:5])
     m = GPy.models.GPCoregionalizedRegression([X_in for _ in all_Y],all_Y,kernel=kerns)
     m['.*lengthscale'].constrain_bounded(lower=0.0, upper=0.2)
     print(f"Default gradients: {m.gradient}")
-    m.optimize_restarts(num_restarts=5, verbose=True)
+    # m.optimize_restarts(num_restarts=5, verbose=True)
     #m.optimize(messages=True)
-    print(f"Optimised gradients: {m.gradient}")
-    print(m)
-    for part in m.kern.parts:
-        sigs = part.get_most_significant_input_dimensions()
-        if None not in sigs:
-            print(f'{part.name}: 3 most significant input dims (descending): {feature_names[sigs[0]-1]}, {feature_names[sigs[1]-1]}, {feature_names[sigs[2]-1]}')
+    # print(f"Optimised gradients: {m.gradient}")
+    #print(m)
+    # for part in m.kern.parts:
+    #     sigs = part.get_most_significant_input_dimensions()
+    #     if None not in sigs:
+    #         print(f'{part.name}: 3 most significant input dims (descending): {feature_names[sigs[0]-1]}, {feature_names[sigs[1]-1]}, {feature_names[sigs[2]-1]}')
 
     # Visualise model
     plot_outputs(m, output_names, feature_names, (-3,3))
@@ -309,6 +313,80 @@ def regress(directory : Path, inputFieldName : str, outputFields : list, spectra
     sobol_analysis(m, features_columns, feature_names, output_columns, output_names)
 
     # Evaluate model (CV)
+    evaluate_model(m, output_names)
+
+def evaluate_model(model : GPy.Model, output_names, k_folds = 7, n_repeats = 3, leave_p_out = 7):
+    num_features = model.X.shape[1]-1
+    num_outputs = len(output_names)
+    num_samples = int(model.Y.shape[0]/num_outputs)
+    print(num_features)
+    print(num_samples)
+    x_dummy = np.arange(num_samples)
+    x_data = model.X[:num_samples,:]
+    y_data = model.Y.reshape(num_outputs, num_samples).T
+
+    # Repeated K Folds
+    rkf = RepeatedKFold(n_splits=k_folds, n_repeats=n_repeats)
+    fold_R2s = []
+    for fold, (train, test) in enumerate(rkf.split(x_dummy)):
+        print(f'FOLD {fold}:')
+        # print(f'     TRAIN IDX: {train},\n     TEST IDX: {test}')
+
+        print(f"Fold {fold} -- Preparing data....")
+        x_train = x_data[train,:num_features]
+        y_train = y_data[train,:]
+
+        x_test = x_data[test,:num_features]
+        y_test = y_data[test,:]
+
+        y_test_formatted = y_test.flatten('F')
+
+        num_test_samples = len(test)
+
+        fold_Y = []
+        for i in range(num_outputs):
+            fold_Y.append(y_train[:,i].reshape(-1,1))
+
+        k_list = []
+        # k_list.append(GPy.kern.White(input_dim=input_dim))
+        k_list.append(GPy.kern.Linear(input_dim=num_features))
+        k_list.append(GPy.kern.RatQuad(input_dim=num_features, ARD = True))
+        kerns = GPy.util.multioutput.LCM(input_dim=num_features, num_outputs=num_outputs, kernels_list=k_list, W_rank=3)
+        model = GPy.models.GPCoregionalizedRegression([x_train for _ in fold_Y],fold_Y,kernel=kerns)
+
+        # Having to rebuild model above is not ideal. It seems set_XY is not properly implemented for coregionalized models where X and Y are lists.
+
+        print(f"Fold {fold} -- Training data....")
+        model.optimize()
+
+        print(f"Fold {fold} -- Predicting data....")
+        output_num = np.zeros((num_test_samples))
+        x_test_formatted = x_test
+        for i in range(1, num_outputs):
+            output_num = np.concatenate((output_num, np.ones(num_test_samples)*i))
+            x_test_formatted = np.vstack([x_test_formatted, x_test])
+        output_num = output_num[:,None]
+        x_test_formatted = np.hstack([x_test_formatted, output_num])
+
+        # Tell GPy which indices correspond to which output noise model
+        noise_dict = {'output_index' : x_test_formatted[:,-1].astype(int)}
+
+        y_preds, y_var_diag = model.predict(x_test_formatted, Y_metadata = noise_dict)
+
+        overallR2 = r2_score(y_test_formatted, y_preds)
+        print(f'Fold {fold} -- Overall R^2: {overallR2}')
+        assert len(y_preds)//num_test_samples == num_outputs
+        for i in range(num_outputs):
+            field = output_names[i]
+            field_y_test = y_test[:,i]
+            field_y_preds = y_preds[int(i*num_test_samples):int((i+1)*num_test_samples)]
+            field_R2 = r2_score(field_y_test, field_y_preds)
+            print(f'Fold {fold} -- {field} R^2: {field_R2}')
+
+        fold_R2s.append(overallR2)
+
+    print(f"Mean R^2 across {k_folds} folds and {n_repeats} repeats: {np.mean(fold_R2s)}+-{np.std(fold_R2s)/np.sqrt(len(fold_R2s))}")
+
 
 def sobol_analysis(model : GPy.Model, features : np.ndarray, features_names : list, outputs : np.ndarray, output_names : list, noTitle : bool = False):
 
