@@ -68,6 +68,7 @@ class SimulationMetadata:
 
 @dataclass
 class SpectralFeatures1D:
+    simID : str = None
     peaksFound : bool = False
     peakPowers : ArrayLike = None # Powers of all peaks
     peakCoordinates : ArrayLike  = None # Coordinates (e.g. frequencies) of all peaks
@@ -235,15 +236,13 @@ def get_algorithm(name, **kwargs):
 def read_data(dataFiles, data_dict : dict, with_names : bool = False, with_coords : bool = False) -> dict:
     
     dataFields = list(data_dict.keys())
+    sim_ids = []
 
     if with_coords:
         for fieldPath in dataFields:
             dimCoordsKey = fieldPath + "_coords"
             data_dict[dimCoordsKey] = []
 
-    if with_names:
-        data_dict["sim_ids"] = []
-    
     for simulation in dataFiles:
 
         data = xr.open_datatree(
@@ -265,9 +264,22 @@ def read_data(dataFiles, data_dict : dict, with_names : bool = False, with_coord
                     dimName = data[group].variables[fieldName].dims[0]
                     dimVals = data[group].coords[dimName].values
                     data_dict[dimCoordsKey].append(dimVals)
+
+        sim_ids.append(simulation.split("/")[-1].split("_")[1])
         
-        if with_names:
-            data_dict["sim_ids"].append(simulation.split("/")[-1].split("_")[1])
+    # Sort by sim ID to reduce confusion later
+    # sorted_idx = list(np.array([int(id) for id in sim_ids]).argsort())
+    try:
+        int_ids = [int(id) for id in sim_ids]
+        sorted_idx = np.array(int_ids).argsort()
+    except Exception:
+        sorted_idx = np.array(sim_ids).argsort()
+
+    for field, vals in data_dict.items():
+        data_dict[field] = [vals[i] for i in sorted_idx]
+
+    if with_names:
+        data_dict["sim_ids"] = [sim_ids[i] for i in sorted_idx]
 
     return data_dict
 
@@ -544,12 +556,15 @@ def convert_input_for_multi_output_GPy_model(x, num_outputs):
 def extract_features_from_1D_power_spectrum(
         spectrum : np.ndarray, 
         coordinates : np.ndarray, 
-        peak_prominence_factor : float = 0.125, 
+        peak_prominence_factor : float = 0.1, 
         peak_distance_coordUnits : float = 0.5, 
         excited_region_distance_coordUnits : float = 3.0, 
         spectrum_name : list = None, 
         savePath : Path = None,
-        xLabel : str = None) -> dict:
+        xLabel : str = None,
+        yLabel : str = None,
+        xUnit : str = None,
+        yUnit : str = None) -> dict:
 
     # Find peaks
     max_height = np.max(spectrum)
@@ -633,7 +648,9 @@ def extract_features_from_1D_power_spectrum(
     plt.ylabel("Power")
     plt.title(f"run {spectrum_name}")
     if xLabel:
-        plt.xlabel(xLabel)
+        plt.xlabel(f"{xLabel} [{xUnit}]")
+    if yLabel:
+        plt.ylabel(f"{yLabel} [{yUnit}]")
     if savePath:
         plt.savefig(savePath / f"run_{spectrum_name}_feature_extraction.png")
     #plt.show()
@@ -641,6 +658,7 @@ def extract_features_from_1D_power_spectrum(
          
     if len(peaks_idx) > 0:
         features = SpectralFeatures1D(
+            simID = spectrum_name,
             peaksFound = True,
             peakPowers = spectrum[peaks_idx],
             peakCoordinates = coordinates[peaks_idx],
@@ -679,6 +697,7 @@ def extract_features_from_1D_power_spectrum(
         )
     else:
         features = SpectralFeatures1D(
+            simID = spectrum_name,
             peaksFound = False, 
             spectrumSum = np.sum(spectrum),
             spectrumMean = np.mean(spectrum),

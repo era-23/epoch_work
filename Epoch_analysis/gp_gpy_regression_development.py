@@ -4,91 +4,163 @@ import os
 import GPy
 import SALib.sample as salsamp
 import ml_utils
+import epoch_utils
 import pylab as pb
 import numpy as np
+from scipy.stats import linregress
 from SALib import ProblemSpec
 from SALib.analyze import sobol
-from sklearn.model_selection import train_test_split, cross_val_score, RepeatedKFold, LeavePOut
-from sklearn.metrics import r2_score
+from sklearn.model_selection import RepeatedKFold, LeaveOneOut
+from sklearn.metrics import r2_score, root_mean_squared_error
 from pathlib import Path
 from matplotlib import pyplot as plt
+from matplotlib.collections import PathCollection
 from dataclasses import fields
 
-def plot_4outputs_training_data(xTrain, xName, yOut_1, yOut_2, yOut_3, yOut_4, name_1, name_2, name_3, name_4):
+def plot_4inputs_training_data(train, yName, xIn_1, xIn_2, xIn_3, xIn_4, name_1, name_2, name_3, name_4):
     fig = plt.figure(figsize=(12,12))
-    plt.suptitle(f'Input: {xName}')
-    # Output 1
+    # fig.subplots_adjust(bottom=0.2)
+    plt.suptitle(f'Output: {yName}')
+    # Input 1
     ax1 = fig.add_subplot(411)
-    ax1.set_ylabel(f'{name_1}')
-    ax1.plot(xTrain,yOut_1,'kx',mew=1.5)
-    # Output 2
+    ax1.set_xlabel(f'{name_1}')
+    ax1.plot(xIn_1,train,'kx',mew=1.5)
+    # Input 2
     ax2 = fig.add_subplot(412)
-    ax2.set_ylabel(f'{name_2}')
-    ax2.plot(xTrain,yOut_2,'kx',mew=1.5)
-    # Output 3
+    ax2.set_xlabel(f'{name_2}')
+    ax2.plot(xIn_2,train,'kx',mew=1.5)
+    # Input 3
     ax3 = fig.add_subplot(413)
-    ax3.set_ylabel(f'{name_3}')
-    ax3.plot(xTrain,yOut_3,'kx',mew=1.5)
-    # Output 4
+    ax3.set_xlabel(f'{name_3}')
+    ax3.plot(xIn_3,train,'kx',mew=1.5)
+    # Input 4
     ax4 = fig.add_subplot(414)
-    ax4.set_ylabel(f'{name_4}')
-    ax4.plot(xTrain,yOut_4,'kx',mew=1.5)
+    ax4.set_xlabel(f'{name_4}')
+    ax4.plot(xIn_4,train,'kx',mew=1.5)
+    plt.tight_layout()
     plt.show()
 
-def plot_outputs(m, output_names, feature_names, xlim):
+def plot_outputs(m, input_names, output_feature_names, xlim):
     
-    num_datapoints = m.Y.shape[0]//len(output_names)
+    num_datapoints = m.Y.shape[0]//len(output_feature_names)
+    exponential_alpha_scaling_factor = 20
 
-    for i in range(len(feature_names)):
-
-        # fixed_inputs = [(f, 0.0) for f in range(0, len(feature_names)) if f != i]
-        #fixed_inputs.append((len(feature_names), i))
-        # print(fixed_inputs)
+    for i in range(len(output_feature_names)):
 
         fig = plt.figure(figsize=(18,8))
-        f_name = feature_names[i]
-        plt.suptitle(f'Input: {f_name}')
+        output_name = output_feature_names[i]
+        plt.suptitle(f'Output: {output_name}')
+        fixed_inputs = [(len(input_names),i)]
+        data_slice = slice(i*num_datapoints, (i+1)*num_datapoints)
+        training_data = np.delete(m.X[data_slice,:], -1, axis=1)
 
-        #Output 1
-        output_index = 0
-        fixed_inputs = [(len(feature_names),output_index)]
-        # fixed_inputs.append((len(feature_names),output_index))
-        y_name = output_names[output_index]
+        #Input 1
+        input_index = 0
+        x_name = input_names[input_index]
         ax1 = fig.add_subplot(221)
         ax1.set_xlim(xlim)
-        ax1.set_ylabel(y_name)
-        m.plot(plot_limits=xlim,fixed_inputs=fixed_inputs, which_data_rows=slice(0, num_datapoints), ax=ax1, plot_data=True, visible_dims=[i])
+        ax1.set_xlabel(x_name)
+        p : PathCollection = m.plot(
+            plot_limits = xlim,
+            fixed_inputs = fixed_inputs, 
+            which_data_rows = data_slice, 
+            ax = ax1, 
+            plot_data = True, 
+            visible_dims = [input_index]
+        )['dataplot'][0]
+        this_axis = training_data[:,input_index]
+        other_axes = np.delete(training_data, input_index, axis=1)
+        geometric_distances = []
+        for t_idx in range(len(this_axis)):
+            t = this_axis[t_idx]
+            rows = [(t-x)**2 for x in other_axes[t_idx,:]]
+            geometric_distances.append(np.sqrt(np.sum(rows)))
+        g = geometric_distances / np.max(geometric_distances)
+        dist_from_0 = np.clip(1.0 - g, a_min = 0.1, a_max = None)
+        dist_from_0 = exponential_alpha_scaling_factor**dist_from_0 / np.max(exponential_alpha_scaling_factor**dist_from_0)
+        p.set_color("red")
+        p.set_alpha(dist_from_0)
         
-        #Output 2
-        output_index = 1
-        fixed_inputs = [(len(feature_names),output_index)]
-        # fixed_inputs.append((len(feature_names),output_index))
-        y_name = output_names[output_index]
+        #Input 2
+        input_index = 1
+        x_name = input_names[input_index]
         ax2 = fig.add_subplot(222)
         ax2.set_xlim(xlim)
-        ax2.set_ylabel(y_name)
-        m.plot(plot_limits=xlim,fixed_inputs=fixed_inputs, which_data_rows=slice(num_datapoints, 2*num_datapoints), ax=ax2, plot_data=True, visible_dims=[i])
-        
-        #Output 3
-        output_index = 2
-        fixed_inputs = [(len(feature_names),output_index)]
-        # fixed_inputs.append((len(feature_names),output_index))
-        y_name = output_names[output_index]
+        ax2.set_xlabel(x_name)
+        p : PathCollection = m.plot(
+            plot_limits = xlim,
+            fixed_inputs = fixed_inputs, 
+            which_data_rows = data_slice, 
+            ax = ax2, 
+            plot_data = True, 
+            visible_dims = [input_index]
+        )['dataplot'][0]
+        this_axis = training_data[:,input_index]
+        other_axes = np.delete(training_data, input_index, axis=1)
+        geometric_distances = []
+        for t_idx in range(len(this_axis)):
+            t = this_axis[t_idx]
+            rows = [(t-x)**2 for x in other_axes[t_idx,:]]
+            geometric_distances.append(np.sqrt(np.sum(rows)))
+        g = geometric_distances / np.max(geometric_distances)
+        dist_from_0 = np.clip(1.0 - g, a_min = 0.1, a_max = None)
+        dist_from_0 = exponential_alpha_scaling_factor**dist_from_0 / np.max(exponential_alpha_scaling_factor**dist_from_0)
+        p.set_color("red")
+        p.set_alpha(dist_from_0)
+
+        #Input 3
+        input_index = 2
+        x_name = input_names[input_index]
         ax3 = fig.add_subplot(223)
         ax3.set_xlim(xlim)
-        ax3.set_ylabel(y_name)
-        m.plot(plot_limits=xlim,fixed_inputs=fixed_inputs, which_data_rows=slice(2*num_datapoints, 3*num_datapoints), ax=ax3, plot_data=True, visible_dims=[i])
-        
-        #Output 4
-        output_index = 3
-        fixed_inputs = [(len(feature_names),output_index)]
-        # fixed_inputs.append((len(feature_names),output_index))
-        y_name = output_names[output_index]
+        ax3.set_xlabel(x_name)
+        p : PathCollection = m.plot(
+            plot_limits = xlim,
+            fixed_inputs = fixed_inputs, 
+            which_data_rows = data_slice, 
+            ax = ax3, 
+            plot_data = True, 
+            visible_dims = [input_index]
+        )['dataplot'][0]
+        this_axis = training_data[:,input_index]
+        other_axes = np.delete(training_data, input_index, axis=1)
+        geometric_distances = []
+        for t_idx in range(len(this_axis)):
+            t = this_axis[t_idx]
+            rows = [(t-x)**2 for x in other_axes[t_idx,:]]
+            geometric_distances.append(np.sqrt(np.sum(rows)))
+        g = geometric_distances / np.max(geometric_distances)
+        dist_from_0 = np.clip(1.0 - g, a_min = 0.1, a_max = None)
+        dist_from_0 = exponential_alpha_scaling_factor**dist_from_0 / np.max(exponential_alpha_scaling_factor**dist_from_0)
+        p.set_color("red")
+        p.set_alpha(dist_from_0)
+
+        #Input 4
+        input_index = 3
+        x_name = input_names[input_index]
         ax4 = fig.add_subplot(224)
         ax4.set_xlim(xlim)
-        ax4.set_ylabel(y_name)
-        m.plot(plot_limits=xlim,fixed_inputs=fixed_inputs, which_data_rows=slice(3*num_datapoints,4*num_datapoints), ax=ax4, plot_data=True, visible_dims=[i])
-        
+        ax4.set_xlabel(x_name)
+        p : PathCollection = m.plot(
+            plot_limits = xlim,
+            fixed_inputs = fixed_inputs, 
+            which_data_rows = data_slice, 
+            ax = ax4, 
+            plot_data = True, 
+            visible_dims = [input_index]
+        )['dataplot'][0]
+        this_axis = training_data[:,input_index]
+        other_axes = np.delete(training_data, input_index, axis=1)
+        geometric_distances = []
+        for t_idx in range(len(this_axis)):
+            t = this_axis[t_idx]
+            rows = [(t-x)**2 for x in other_axes[t_idx,:]]
+            geometric_distances.append(np.sqrt(np.sum(rows)))
+        g = geometric_distances / np.max(geometric_distances)
+        dist_from_0 = np.clip(1.0 - g, a_min = 0.1, a_max = None)
+        dist_from_0 = exponential_alpha_scaling_factor**dist_from_0 / np.max(exponential_alpha_scaling_factor**dist_from_0)
+        p.set_color("red")
+        p.set_alpha(dist_from_0)
         # Display
         plt.show()
         plt.close("all")
@@ -189,7 +261,48 @@ def demo():
     m.optimize()
     demo_plot_2outputs(m, Xt1, Yt1, Xt2, Yt2, xlim=(0,100),ylim=(-20,60))
 
-def regress(directory : Path, inputFieldName : str, outputFields : list, spectralFeatures : list = None, normalise : bool = True, peaksOnly : bool = True):
+def get_model(kernels, X_in, Y_out, W_rank = 3, bound_length = True) -> GPy.Model:
+    
+    # Dimensions
+    input_dim = X_in.shape[1]
+    output_dim = len(Y_out)
+    
+    # Kernels
+    k_list = []
+    for k in kernels:
+        match k:
+            case "white":
+                k_list.append(GPy.kern.White(input_dim=input_dim))
+            case "linear":
+                k_list.append(GPy.kern.Linear(input_dim=input_dim))
+            case "ratQuad":
+                k_list.append(GPy.kern.RatQuad(input_dim=input_dim, ARD = True))
+            case "rbf":
+                k_list.append(GPy.kern.RBF(input_dim=input_dim, ARD = True))
+            case "matern32":
+                k_list.append(GPy.kern.Matern32(input_dim=input_dim, ARD = True))
+            case "matern52":
+                k_list.append(GPy.kern.Matern52(input_dim=input_dim, ARD = True))
+    
+    kerns = GPy.util.multioutput.LCM(input_dim=input_dim, num_outputs=output_dim, kernels_list=k_list, W_rank=W_rank)
+    model = GPy.models.GPCoregionalizedRegression([X_in for _ in Y_out],Y_out,kernel=kerns)
+    if bound_length:
+        model['.*lengthscale'].constrain_bounded(lower=0.0, upper=0.2)
+    # print(f"Default gradients: {m.gradient}")
+
+    return model
+
+def regress(
+        directory : Path, 
+        inputFieldNames : list, 
+        outputField : str, 
+        spectralFeatures : list = None, 
+        normalise : bool = True, 
+        peaksOnly : bool = True,
+        spec_xLabel : str = None,
+        spec_yLabel : str = None,
+        spec_xUnit : str = None,
+        spec_yUnit : str = None):
     
     if directory.name != "data":
         data_dir = directory / "data"
@@ -198,23 +311,21 @@ def regress(directory : Path, inputFieldName : str, outputFields : list, spectra
     data_files = glob.glob(str(data_dir / "*.nc")) 
 
     # Input data
-    inputs = {inputFieldName : []}
-    inputs = ml_utils.read_data(data_files, inputs, with_names = True, with_coords = True)
+    inputs = {inp : [] for inp in inputFieldNames}
+    inputs = ml_utils.read_data(data_files, inputs, with_names = False, with_coords = False)
 
     # Output data
-    outputs = {outp : [] for outp in outputFields}
-    outputs = ml_utils.read_data(data_files, outputs, with_names = False, with_coords=False)
+    outputs = {outputField : []}
+    outputs = ml_utils.read_data(data_files, outputs, with_names = True, with_coords=True)
 
     # Transformation of B0angle
-    if "B0angle" in outputs:
-        transf = np.array(outputs["B0angle"])
-        transf = 90.0 - transf
-        outputs["B0angle"] = transf
+    if "B0angle" in inputs:
+        transf = np.array(inputs["B0angle"])
+        inputs["B0angle"] = np.abs(transf - 90.0)
     
-    features, indices = create_spectral_features(directory, inputFieldName, inputs, spectralFeatures, peaksOnly)
-
     logFields = [
         "maxPeakPower", 
+        "maxPeakCoordinate", 
         "meanPeak4Powers", 
         "meanPeak3Powers", 
         "meanPeak2Powers",
@@ -235,87 +346,189 @@ def regress(directory : Path, inputFieldName : str, outputFields : list, spectra
         # "B0angle",
         "beamFraction"
     ]
-    for f_name in features:
-        if f_name in logFields:
-            features[f_name] = np.log10(features[f_name])
-    for o_name in outputs:
-        if o_name in logFields:
-            outputs[o_name] = np.log10(outputs[o_name])
 
-    feature_names = np.array(list(features.keys()))
-    feature_values = np.array(list(features.values()))
-    features_array = np.array(feature_values)
+    inputs, features, indices, unextracted_indices = create_spectral_features(directory, outputField, inputs, outputs, spectralFeatures, logFields, peaksOnly, spec_xLabel, spec_yLabel, spec_xUnit, spec_yUnit)
 
-    output_names = list(outputs.keys())
-    output_array = np.array([a[indices] for a in np.array(list(outputs.values()))])
+    input_names = list(inputs.keys())
+    input_array = np.array([a[indices] for a in np.array(list(inputs.values()))])
+
+    output_feature_names = np.array(list(features.keys()))
+    output_feature_values = np.array(list(features.values()))
+    output_features_array = np.array(output_feature_values)
 
     # Normalise
     if normalise:
-        features_array = np.array([(f - np.nanmean(f)) / np.nanstd(f) for f in features_array])
-        output_array = np.array([(p - np.nanmean(p)) / np.nanstd(p) for p in output_array])
-    features_columns = features_array.T
-    output_columns = output_array.T
+        input_array = np.array([(p - np.nanmean(p)) / np.nanstd(p) for p in input_array])
+        output_features_array = np.array([(f - np.nanmean(f)) / np.nanstd(f) for f in output_features_array])
+    input_columns = input_array.T
+    output_features_columns = output_features_array.T
 
     # Plot training data
-    # output = output_columns
-    # input = features_columns
-    # for f in range(len(feature_names)):
-    #     y1 = output[:,0]
-    #     y2 = output[:,1]
-    #     y3 = output[:,2]
-    #     y4 = output[:,3]
-    #     y1_name = output_names[0]
-    #     y2_name = output_names[1]
-    #     y3_name = output_names[2]
-    #     y4_name = output_names[3]
-    #     plot_4outputs_training_data(input[:,f], feature_names[f], y1, y2, y3, y4, y1_name, y2_name, y3_name, y4_name)
+    # input = input_columns
+    # output = output_features_columns
+    # for f in range(len(output_feature_names)):
+    #     x1 = input[:,0]
+    #     x2 = input[:,1]
+    #     x3 = input[:,2]
+    #     x4 = input[:,3]
+    #     x1_name = input_names[0]
+    #     x2_name = input_names[1]
+    #     x3_name = input_names[2]
+    #     x4_name = input_names[3]
+    #     plot_4inputs_training_data(output[:,f], output_feature_names[f], x1, x2, x3, x4, x1_name, x2_name, x3_name, x4_name)
+    #     plt.close("all")
 
     ##### Attempt regression
     # Format data
     # inputs_formatted = ml_utils.convert_input_for_multi_output_GPy_model(features_peaksOnly_normValues_columns, num_outputs=4)
     # Set up kernels
-    input_dim = features_columns.shape[1]
-    output_dim = output_columns.shape[1]
+    input_dim = input_columns.shape[1]
+    output_dim = output_features_columns.shape[1]
     print("----------------------------------------------------------------------------------------------")
-    print(f"Regressing {input_dim} inputs ({feature_names}) against {output_dim} outputs ({output_names})")
+    print(f"Regressing {input_dim} inputs ({input_names}) against {output_dim} outputs ({output_feature_names})")
     print("----------------------------------------------------------------------------------------------")
-    X_in = features_columns
-    Y_out = output_columns
+    X_in = input_columns
+    Y_out = output_features_columns
     all_Y = []
     for i in range(output_dim):
         all_Y.append(Y_out[:,i].reshape(-1,1))
-    #k_list = [GPy.kern.RBF(input_dim, ARD=True) for _ in range(output_dim)]
-    k_list = []
-    k_list.append(GPy.kern.White(input_dim=input_dim))
-    k_list.append(GPy.kern.Linear(input_dim=input_dim))
-    k_list.append(GPy.kern.RatQuad(input_dim=input_dim, ARD = True))
-    kerns = GPy.util.multioutput.LCM(input_dim=input_dim, num_outputs=output_dim, kernels_list=k_list, W_rank=3)
-    # kerns_mult = np.prod(k_list)
-    # kerns = GPy.util.multioutput.ICM(input_dim=input_dim, num_outputs=output_dim, kernel=kerns_mult, W_rank=3)
-    # print(X_in[:5])
-    # print(Y_out[:5])
-    m = GPy.models.GPCoregionalizedRegression([X_in for _ in all_Y],all_Y,kernel=kerns)
-    m['.*lengthscale'].constrain_bounded(lower=0.0, upper=0.2)
-    print(f"Default gradients: {m.gradient}")
-    # m.optimize_restarts(num_restarts=5, verbose=True)
-    #m.optimize(messages=True)
-    # print(f"Optimised gradients: {m.gradient}")
-    #print(m)
+
+    # kernel_names = ["white", "linear", "ratQuad"]
+    kernel_names = ["linear", "ratQuad"]
+    m = get_model(kernels=kernel_names, X_in=X_in, Y_out=all_Y, W_rank=3, bound_length=True)
+    m.optimize(messages=True)
+    print(m)
     # for part in m.kern.parts:
     #     sigs = part.get_most_significant_input_dimensions()
     #     if None not in sigs:
     #         print(f'{part.name}: 3 most significant input dims (descending): {feature_names[sigs[0]-1]}, {feature_names[sigs[1]-1]}, {feature_names[sigs[2]-1]}')
 
     # Visualise model
-    plot_outputs(m, output_names, feature_names, (-3,3))
+    # plot_outputs(m, input_names, output_feature_names, (-3,3))
 
     # Analyse model (sobol)
-    sobol_analysis(m, features_columns, feature_names, output_columns, output_names)
+    # sobol_analysis(m, input_columns, input_names, output_features_columns, output_feature_names)
 
     # Evaluate model (CV)
-    evaluate_model(m, output_names)
+    evaluate_model_k_folds(m, kernel_names, output_feature_names)
+    # good_test_idx, bad_test_idx = evaluate_model_loo(m, kernel_names, output_names)
+    # print(f"Simulations predicted better than baseline by GP: {good_test_idx}")
+    # print(f"Simulations predicted worse than baseline by GP: {bad_test_idx}")
+    # good_test_idx = np.array(good_test_idx)
+    # bad_test_idx = np.array(bad_test_idx)
+    # good_points = [np.array(arr)[good_test_idx] for arr in output_array]
+    # bad_points = [np.array(arr)[bad_test_idx] for arr in output_array]
+    # epoch_utils.my_matrix_plot(data_series=[good_points, bad_points], series_labels=["Simulations perdicted better by GP", "Simulations predicted worse by GP"], parameter_labels=output_names, plot_style="hdi", equalise_pdf_heights=False, filename="/home/era536/Documents/for_discussion/2025.08.07/R2_matrix.png")
 
-def evaluate_model(model : GPy.Model, output_names, k_folds = 7, n_repeats = 3, leave_p_out = 7):
+def evaluate_model_loo(model : GPy.Model, kernel_names, output_names):
+    num_features = model.X.shape[1]-1
+    num_outputs = len(output_names)
+    num_samples = int(model.Y.shape[0]/num_outputs)
+    print(num_features)
+    print(num_samples)
+    x_dummy = np.arange(num_samples)
+    x_data = model.X[:num_samples,:]
+    y_data = model.Y.reshape(num_outputs, num_samples).T
+
+    # Repeated K Folds
+    loo = LeaveOneOut()
+    fold_R2s = []
+    fold_RMSEs = []
+    fold_individualField_RMSEs = []
+    test_indices_yielding_positive_R2 = []
+    test_indices_yielding_negative_R2 = []
+    for fold, (train, test) in enumerate(loo.split(x_dummy)):
+
+        print(f'FOLD {fold}:')
+        print(f'TEST IDX: {test}')
+
+        print(f"Fold {fold} -- Preparing data....")
+        x_train = x_data[train,:num_features]
+        y_train = y_data[train,:]
+
+        x_test = x_data[test,:num_features]
+        y_test = y_data[test,:]
+
+        y_test_formatted = y_test.flatten('F')
+
+        num_test_samples = len(test)
+
+        fold_Y = []
+        for i in range(num_outputs):
+            fold_Y.append(y_train[:,i].reshape(-1,1))
+
+        # Rebuild model
+        print(f"Fold {fold} -- Training data....")
+        m = get_model(kernels=kernel_names, X_in=x_train, Y_out=fold_Y, W_rank=3, bound_length=True)
+        m.optimize(messages=True)
+        # Having to rebuild model above is not ideal. It seems set_XY is not properly implemented for coregionalized models where X and Y are lists.
+
+        print(f"Fold {fold} -- Predicting data....")
+        output_num = np.zeros((num_test_samples))
+        x_test_formatted = x_test
+        for i in range(1, num_outputs):
+            output_num = np.concatenate((output_num, np.ones(num_test_samples)*i))
+            x_test_formatted = np.vstack([x_test_formatted, x_test])
+        output_num = output_num[:,None]
+        x_test_formatted = np.hstack([x_test_formatted, output_num])
+
+        # Tell GPy which indices correspond to which output noise model
+        noise_dict = {'output_index' : x_test_formatted[:,-1].astype(int)}
+
+        y_preds, y_var_diag = m.predict(x_test_formatted, Y_metadata = noise_dict)
+
+        overallR2 = r2_score(y_test_formatted, y_preds)
+        overallRMSE = root_mean_squared_error(y_test_formatted, y_preds)
+        print(f'Fold {fold} -- Overall R^2: {overallR2}')
+        print(f'Fold {fold} -- Overall RMSE: {overallRMSE}')
+
+        assert len(y_preds)//num_test_samples == num_outputs
+        fold_individualField_RMSEs.append([])
+        for i in range(num_outputs):
+            field = output_names[i]
+            field_y_test = y_test[:,i]
+            field_y_preds = y_preds[int(i*num_test_samples):int((i+1)*num_test_samples)]
+            field_RMSE = root_mean_squared_error(field_y_test, field_y_preds)
+            fold_individualField_RMSEs[-1].append(field_RMSE)
+            print(f'Fold {fold} -- {field} RMSE: {field_RMSE}')
+
+        if overallR2 > 0.0:
+            test_indices_yielding_positive_R2.append(test[0])
+        else:
+            test_indices_yielding_negative_R2.append(test[0])
+
+        if overallR2 <= -10.0:
+            y_preds_flat = [p[0] for p in y_preds]
+            plt.scatter(output_names, y_preds_flat, label="predictions")
+            plt.scatter(output_names, y_test_formatted, label="true values")
+            plt.title(f'Fold: {fold}')
+            plt.legend()
+            plt.show()
+
+            res = linregress(y_test_formatted, y_preds_flat)
+            plt.scatter(y_test_formatted, y_preds_flat)
+            xvals = np.linspace(np.min([np.min(y_test_formatted), np.min(y_preds_flat)]), np.max([np.max(y_test_formatted), np.max(y_preds_flat)]))
+            plt.plot(xvals, res.intercept + res.slope*xvals, "r", label="fit")
+            plt.title(f'Fold: {fold}')
+            plt.legend()
+            plt.xlabel("true values")
+            plt.ylabel("predictions")
+            plt.show()
+
+        fold_R2s.append(overallR2)
+        fold_RMSEs.append(overallRMSE)
+
+    print(f"Mean overall R^2 across leave-one-out CV ({len(fold_R2s)} tests): {np.mean(fold_R2s)}+-{np.std(fold_R2s)/np.sqrt(len(fold_R2s))}")
+    print(f"Mean overall RMSE across leave-one-out CV ({len(fold_R2s)} tests): {np.mean(fold_RMSEs)}+-{np.std(fold_RMSEs)/np.sqrt(len(fold_RMSEs))}")
+    fold_individualField_RMSEs = np.array(fold_individualField_RMSEs).T
+    for i in range(num_outputs):
+        field = output_names[i]
+        rmse = fold_individualField_RMSEs[i]
+        print(f"Mean {field} RMSE across leave-one-out CV ({len(fold_R2s)} tests): {np.mean(rmse)}+-{np.std(rmse)/np.sqrt(len(rmse))}")
+
+    return test_indices_yielding_positive_R2, test_indices_yielding_negative_R2
+
+def evaluate_model_k_folds(model : GPy.Model, kernel_names, output_names, k_folds = 7, n_repeats = 3):
     num_features = model.X.shape[1]-1
     num_outputs = len(output_names)
     num_samples = int(model.Y.shape[0]/num_outputs)
@@ -328,6 +541,9 @@ def evaluate_model(model : GPy.Model, output_names, k_folds = 7, n_repeats = 3, 
     # Repeated K Folds
     rkf = RepeatedKFold(n_splits=k_folds, n_repeats=n_repeats)
     fold_R2s = []
+    fold_individualField_R2s = []
+    fold_RMSEs = []
+    fold_individualField_RMSEs = []
     for fold, (train, test) in enumerate(rkf.split(x_dummy)):
         print(f'FOLD {fold}:')
         # print(f'     TRAIN IDX: {train},\n     TEST IDX: {test}')
@@ -347,17 +563,11 @@ def evaluate_model(model : GPy.Model, output_names, k_folds = 7, n_repeats = 3, 
         for i in range(num_outputs):
             fold_Y.append(y_train[:,i].reshape(-1,1))
 
-        k_list = []
-        # k_list.append(GPy.kern.White(input_dim=input_dim))
-        k_list.append(GPy.kern.Linear(input_dim=num_features))
-        k_list.append(GPy.kern.RatQuad(input_dim=num_features, ARD = True))
-        kerns = GPy.util.multioutput.LCM(input_dim=num_features, num_outputs=num_outputs, kernels_list=k_list, W_rank=3)
-        model = GPy.models.GPCoregionalizedRegression([x_train for _ in fold_Y],fold_Y,kernel=kerns)
-
-        # Having to rebuild model above is not ideal. It seems set_XY is not properly implemented for coregionalized models where X and Y are lists.
-
+        # Rebuild model
         print(f"Fold {fold} -- Training data....")
-        model.optimize()
+        m = get_model(kernels=kernel_names, X_in=x_train, Y_out=fold_Y, W_rank=3, bound_length=True)
+        m.optimize(messages=True)
+        # Having to rebuild model above is not ideal. It seems set_XY is not properly implemented for coregionalized models where X and Y are lists.
 
         print(f"Fold {fold} -- Predicting data....")
         output_num = np.zeros((num_test_samples))
@@ -371,22 +581,37 @@ def evaluate_model(model : GPy.Model, output_names, k_folds = 7, n_repeats = 3, 
         # Tell GPy which indices correspond to which output noise model
         noise_dict = {'output_index' : x_test_formatted[:,-1].astype(int)}
 
-        y_preds, y_var_diag = model.predict(x_test_formatted, Y_metadata = noise_dict)
+        y_preds, y_var_diag = m.predict(x_test_formatted, Y_metadata = noise_dict)
 
         overallR2 = r2_score(y_test_formatted, y_preds)
-        print(f'Fold {fold} -- Overall R^2: {overallR2}')
+        overallRMSE = root_mean_squared_error(y_test_formatted, y_preds)
+        fold_individualField_R2s.append([])
+        fold_individualField_RMSEs.append([])
+        print(f'Fold {fold} -- Overall R^2: {overallR2}, Overall RMSE: {overallRMSE}')
         assert len(y_preds)//num_test_samples == num_outputs
         for i in range(num_outputs):
             field = output_names[i]
             field_y_test = y_test[:,i]
             field_y_preds = y_preds[int(i*num_test_samples):int((i+1)*num_test_samples)]
             field_R2 = r2_score(field_y_test, field_y_preds)
-            print(f'Fold {fold} -- {field} R^2: {field_R2}')
+            field_RMSE = root_mean_squared_error(field_y_test, field_y_preds)
+            fold_individualField_R2s[-1].append(field_R2)
+            fold_individualField_RMSEs[-1].append(field_RMSE)
+            print(f'Fold {fold} -- {field} R^2: {field_R2}, RMSE: {field_RMSE}')
 
         fold_R2s.append(overallR2)
+        fold_RMSEs.append(overallRMSE)
 
-    print(f"Mean R^2 across {k_folds} folds and {n_repeats} repeats: {np.mean(fold_R2s)}+-{np.std(fold_R2s)/np.sqrt(len(fold_R2s))}")
-
+    print(f"Mean overall R^2 across {k_folds} folds and {n_repeats} repeats: {np.mean(fold_R2s)}+-{np.std(fold_R2s)/np.sqrt(len(fold_R2s))}")
+    print(f"Mean overall RMSE across {k_folds} folds and {n_repeats} repeats: {np.mean(fold_RMSEs)}+-{np.std(fold_RMSEs)/np.sqrt(len(fold_RMSEs))}")
+    fold_individualField_R2s = np.array(fold_individualField_R2s).T
+    fold_individualField_RMSEs = np.array(fold_individualField_RMSEs).T
+    for i in range(num_outputs):
+        field = output_names[i]
+        r2s = fold_individualField_R2s[i]
+        rmses = fold_individualField_RMSEs[i]
+        print(f"Mean {field} R^2 across {k_folds} folds and {n_repeats} repeats: {np.mean(r2s)}+-{np.std(r2s)/np.sqrt(len(r2s))}")
+        print(f"Mean {field} RMSE across {k_folds} folds and {n_repeats} repeats: {np.mean(rmses)}+-{np.std(rmses)/np.sqrt(len(rmses))}")
 
 def sobol_analysis(model : GPy.Model, features : np.ndarray, features_names : list, outputs : np.ndarray, output_names : list, noTitle : bool = False):
 
@@ -399,7 +624,7 @@ def sobol_analysis(model : GPy.Model, features : np.ndarray, features_names : li
         'names': list(features_names),
         'bounds': [[np.min(column), np.max(column)] for column in features.T]
     })
-    test_values = salsamp.sobol.sample(sp, int(2**14), calc_second_order = (num_inputs > 1))
+    test_values = salsamp.sobol.sample(sp, int(2**12), calc_second_order = (num_inputs > 1))
 
     # Format test values for each output
     num_sample_points = test_values.shape[0]
@@ -448,7 +673,18 @@ def sobol_analysis(model : GPy.Model, features : np.ndarray, features_names : li
         plt.close()
 
 # Single-valued features only for now
-def create_spectral_features(directory : Path, field : str, spectrum_data : dict, features : list = None, peaks_only : bool = True):
+def create_spectral_features(
+        directory : Path, 
+        field : str, 
+        input_data : dict, 
+        spectrum_data : dict, 
+        features : list = None, 
+        log_fields = [], 
+        peaks_only : bool = True,
+        xLabel : str = None,
+        yLabel : str = None,
+        xUnit : str = None,
+        yUnit : str = None):
 
     featureSets = []
 
@@ -465,8 +701,11 @@ def create_spectral_features(directory : Path, field : str, spectrum_data : dict
                 spectrum=spectrum_data[field][spectrum_idx], 
                 coordinates=spectrum_data[field + "_coords"][spectrum_idx], 
                 spectrum_name=spectrum_data["sim_ids"][spectrum_idx], 
-                # savePath=save_path,
-                xLabel=field))
+                savePath=save_path,
+                xLabel=xLabel,
+                yLabel=yLabel,
+                xUnit=xUnit,
+                yUnit=yUnit))
         ml_utils.write_spectral_features_to_csv(write_path, featureSets)
 
     singleValueFields = [f.name for f in fields(ml_utils.SpectralFeatures1D) if f.type is float or f.type is int]
@@ -475,19 +714,44 @@ def create_spectral_features(directory : Path, field : str, spectrum_data : dict
     features_to_extract = np.intersect1d(features, singleValueFields)
     extracted_features = {f : [] for f in features_to_extract}
     extracted_indices = set()
+    unextracted_indices = set()
     if peaks_only:
         for simIndex in range(len(featureSets)):
             if featureSets[simIndex].peaksFound:
                 for feature in features_to_extract:
                     extracted_features[feature].append(featureSets[simIndex].__dict__[feature])
-                    extracted_indices.add(simIndex)
+                extracted_indices.add(simIndex)
+            else:
+                unextracted_indices.add(simIndex)
     else:
         for simIndex in range(len(featureSets)):
             for feature in features_to_extract:
                 extracted_features[feature].append(featureSets[simIndex].__dict__[feature])
                 extracted_indices.add(simIndex)
+
+    for f_name in features:
+        if f_name in log_fields:
+            extracted_features[f_name] = np.log10(extracted_features[f_name])
+    for f_name in input_data.keys():
+        if f_name in log_fields:
+            input_data[f_name] = np.log10(input_data[f_name])
     
-    return extracted_features, list(extracted_indices)
+    if unextracted_indices:
+        series_labels = ["spectral peaks", "no spectral peaks"]
+        param_labels = list(input_data.keys())
+        ex_data = []
+        unex_data = []
+        for p in range(len(param_labels)):
+            param_name = param_labels[p]
+            ex_data.append([input_data[param_name][i] for i in extracted_indices])
+            unex_data.append([input_data[param_name][i] for i in unextracted_indices])
+            if param_name in log_fields:
+                param_labels[p] = "log " + param_name
+            
+        epoch_utils.my_matrix_plot([ex_data, unex_data], series_labels=series_labels, parameter_labels=param_labels, show = False, filename=save_path/"peaks_matrix.png", plot_style="hdi", equalise_pdf_heights=False)
+        plt.clf()
+
+    return input_data, extracted_features, list(extracted_indices), list(unextracted_indices)
 
 if __name__ == "__main__":
     
@@ -500,10 +764,18 @@ if __name__ == "__main__":
         type=Path
     )
     parser.add_argument(
-        "--inputField",
+        "--inputFields",
         action="store",
-        help="Spectral field to use for GP input.",
+        help="Spectral fields to use for GP input.",
         required = True,
+        type=str,
+        nargs="*"
+    )
+    parser.add_argument(
+        "--outputField",
+        action="store",
+        help="Fields to use for GP output.",
+        required = False,
         type=str
     )
     parser.add_argument(
@@ -523,12 +795,32 @@ if __name__ == "__main__":
         nargs="*"
     )
     parser.add_argument(
-        "--outputFields",
+        "--spectrumXLabel",
         action="store",
-        help="Fields to use for GP output.",
+        help="X-axis label of input spectrum for plotting.",
         required = False,
-        type=str,
-        nargs="*"
+        type=str
+    )
+    parser.add_argument(
+        "--spectrumYLabel",
+        action="store",
+        help="Y-axis label of input spectrum for plotting.",
+        required = False,
+        type=str
+    )
+    parser.add_argument(
+        "--spectrumXUnits",
+        action="store",
+        help="X-axis units of input spectrum for plotting/output.",
+        required = False,
+        type=str
+    )
+    parser.add_argument(
+        "--spectrumYUnits",
+        action="store",
+        help="Y-axis units of input spectrum for plotting/output.",
+        required = False,
+        type=str
     )
     parser.add_argument(
         "--normalise",
@@ -587,5 +879,5 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    regress(args.dir, args.inputField, args.outputFields, args.spectralFeatures, args.normalise, args.peaksOnly)
+    regress(args.dir, args.inputFields, args.outputField, args.spectralFeatures, args.normalise, args.peaksOnly, args.spectrumXLabel, args.spectrumYLabel, args.spectrumXUnits, args.spectrumYUnits)
     # demo()
