@@ -487,6 +487,7 @@ def run_energy_analysis(
         ax.legend()
     ax.set_xlabel(r"Time [$\tau_{ci}$]")
     ax.set_ylabel("Change in energy density [%]")
+    # ax.set_yscale("symlog")
     ax.grid()
     if not noTitle:
         if beam:
@@ -574,6 +575,7 @@ def run_energy_analysis(
     ax.plot(timeCoords, totalDeltaMeanEnergyDensity, label = r"Total", color="black")
     ax.set_xlabel(r'Time [$\tau_{ci}$]')
     ax.set_ylabel(r"Change in energy density [$J/m^3$]")
+    # ax.set_yscale("symlog")
     if not noTitle: 
         ax.set_title(f"{simName}: Absolute energy in particles and EM fields", wrap=True)
     if not noLegend:

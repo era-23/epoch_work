@@ -11,8 +11,138 @@ import numpy as np
 import xarray as xr
 import argparse
 
-def calculate_energy(directory : Path, irb : bool, pct : bool):
+def plot_energy(directory : Path, energy_dict : dict, irb : bool, pct : bool, rawData : bool):
 
+    density = energy_dict["density"]
+    frac_beam = energy_dict["frac_beam"]
+    proton_density = density * (1.0 - frac_beam) # m^-3
+    electron_density = density # m^-3
+    t_in_ci = energy_dict["time"]
+
+    proton_KE_load = energy_dict["proton"].load() # J
+    electron_KE_load = energy_dict["electron"].load() # J
+    Bx_load = energy_dict["Bx"].load() if "Bx" in energy_dict else np.zeros(len(t_in_ci)) # T
+    By_load = energy_dict["By"].load() if "By" in energy_dict else np.zeros(len(t_in_ci)) # T
+    Bz_load = energy_dict["Bz"].load() # T
+    Ex_load = energy_dict["Ex"].load() # V/m
+    Ey_load = energy_dict["Ey"].load() if "Ey" in energy_dict else np.zeros(len(t_in_ci)) # V/m
+    Ez_load = energy_dict["Ez"].load() if "Ez" in energy_dict else np.zeros(len(t_in_ci)) # V/m
+
+    plt.rcParams.update({'axes.labelsize': 16})
+    plt.rcParams.update({'axes.titlesize': 18})
+    plt.rcParams.update({'xtick.labelsize': 14})
+    plt.rcParams.update({'ytick.labelsize': 14})
+    
+    if rawData:
+        # Mean over all cells for mean particle/field energy
+        pro_ke_mean : xr.DataArray = proton_KE_load.mean(dim = "X_Grid_mid") # J
+        e_ke_mean : xr.DataArray = electron_KE_load.mean(dim = "X_Grid_mid") # J
+
+        E_field = np.sqrt(Ex_load**2 + Ey_load**2 + Ez_load**2)
+        E_E_density : xr.DataArray = (constants.epsilon_0 * E_field**2) / 2.0 # J / m^3
+        E_mean : xr.DataArray = E_E_density.mean(dim="X_Grid_mid") # J / m^3
+
+        B_field = np.sqrt(Bx_load**2 + By_load**2 + Bz_load**2)
+        B_E_density : xr.DataArray = (B_field**2 / (2.0 * constants.mu_0)) # J / m^3
+        B_mean : xr.DataArray = B_E_density.mean(dim = "X_Grid_mid") # J / m^3
+
+        # Calculate B energy and convert others to to J/m3
+        B_dE_density = B_mean - B_mean[0] # J / m^3
+        E_dE_density = E_mean - E_mean[0] # J / m^3
+        proton_dKE = pro_ke_mean - pro_ke_mean[0] # J
+        electron_dKE = e_ke_mean - e_ke_mean[0] # J
+        
+        proton_dKE_density = proton_dKE * proton_density # J / m^3
+        electron_dKE_density = electron_dKE * electron_density # J / m^3
+
+        total_dKE_density = proton_dKE_density + electron_dKE_density + B_dE_density + E_dE_density
+    else:
+        B_dE_density = Bz_load # J / m^3
+        E_dE_density = Ex_load # J / m^3       
+        proton_dKE_density = proton_KE_load # J / m^3
+        electron_dKE_density = electron_KE_load # J / m^3
+
+        total_dKE_density = proton_dKE_density + electron_dKE_density + B_dE_density + E_dE_density
+
+    if irb:
+        irb_density = density * frac_beam # m^-3
+        irb_KE_load = energy_dict["fastIon"].load() # J
+        if rawData:
+            irb_ke_mean : xr.DataArray = irb_KE_load.mean(dim = "X_Grid_mid") # J
+            irb_dKE = irb_ke_mean - irb_ke_mean[0] # J
+            irb_dKE_density = irb_dKE * irb_density # J / m^3
+        else:
+            irb_ke_mean = irb_KE_load / irb_density # J
+            # irb_dKE = irb_ke_mean - irb_ke_mean[0] # J
+            irb_dKE_density = irb_KE_load # J / m^3
+        total_dKE_density += irb_dKE_density
+        plt.plot(t_in_ci, irb_dKE_density.data, label = r"ion ring beam KE")
+
+    plt.plot(t_in_ci, proton_dKE_density.data, label = r"background proton KE")
+    plt.plot(t_in_ci, electron_dKE_density.data, label = r"background electron KE")
+    plt.plot(t_in_ci, B_dE_density.data, label = r"Magnetic field E")
+    plt.plot(t_in_ci, E_dE_density.data, label = r"Electric field E")
+    plt.plot(t_in_ci, total_dKE_density.data, label = r"Total E")
+    plt.xlabel(r'Time [$\tau_{ci}$]')
+    plt.ylabel(r"Change in energy density [$J/m^3$]")
+    plt.title(f"{directory.name}: Evolution of energy in fast minority ions, background ions/electrons and EM fields")
+    plt.legend()
+    plt.tight_layout()
+    plt.grid()
+    plt.show()
+
+    if pct:
+        baseline = irb_dKE_density[0]
+
+        if rawData:
+            # Calculate B energy and convert others to to J/m3
+            B_dE_pct = 100.0 * (B_mean - B_mean[0])/B_mean[0] # %
+            E_dE_pct = 100.0 * (E_mean - E_mean[0])/E_mean[0] # %
+            proton_dKE_pct = 100.0 * (proton_dKE_density - proton_dKE_density[0])/proton_dKE_density[0] # %
+            electron_dKE_pct = 100.0 * (electron_dKE_density - electron_dKE_density[0])/electron_dKE_density[0] # %
+            total_E_density = B_mean + E_mean + proton_dKE_density + electron_dKE_density
+        else:
+            
+            B_dE_pct = 100.0 * (B_dE_density - baseline)/baseline # %
+            E_dE_pct = 100.0 * (E_dE_density - baseline)/baseline # %
+            proton_dKE_pct = 100.0 * (proton_dKE_density - baseline)/baseline # %
+            electron_dKE_pct = 100.0 * (electron_dKE_density - baseline)/baseline # %
+            total_E_density = B_dE_density + E_dE_density + proton_dKE_density + electron_dKE_density
+
+        if irb:
+            irb_dKE_pct = 100.0 * (irb_dKE_density - baseline)/baseline # J
+            plt.plot(t_in_ci, irb_dKE_pct.data, label = "ion ring beam KE")
+            total_E_density += irb_dKE_density
+            #total_dE_pct  = np.mean([B_dE_pct, E_dE_pct, proton_dKE_pct, electron_dKE_pct, irb_dKE_pct], axis=0)
+        #else:
+            #total_dE_pct  = np.mean(B_dE_pct + E_dE_pct + proton_dKE_pct + electron_dKE_pct, axis=0)
+
+        total_dE_density_pct = 100.0 * (total_E_density-baseline)/baseline
+        
+        plt.plot(t_in_ci, proton_dKE_pct.data, label = "background proton KE")
+        plt.plot(t_in_ci, electron_dKE_pct.data, label = "background electron KE")
+        plt.plot(t_in_ci, B_dE_pct.data, label = "Magnetic field E")
+        plt.plot(t_in_ci, E_dE_pct.data, label = "Electric field E")
+        plt.plot(t_in_ci, total_dE_density_pct, label = "Total E")
+        plt.yscale('symlog')
+        plt.xlabel(r'Time [$\tau_{ci}$]')
+        plt.ylabel("Percentage change in energy density [%]")
+        plt.title(f"{directory.name}: Evolution of energy in fast minority ions, background ions/electrons and EM fields")
+        plt.legend()
+        plt.grid()
+        plt.tight_layout()
+        plt.show()
+            
+    # e_KE_start = float(e_ke_mean[0].data)
+    # e_KE_end = float(e_ke_mean[-1].data)
+    # print(f"Change in electron energy density: e- KE t=start: {e_KE_start:.4f}, e- KE t=end: {e_KE_end:.4f} (+{((e_KE_end - e_KE_start)/e_KE_start)*100.0:.4f}%)")
+    # E_start = total_E_density[0]
+    # E_end = total_E_density[-1]
+    # print(f"Change in overall energy density: E t=start: {E_start:.4f}, E t=end: {E_end:.4f} (+{((E_end - E_start)/E_start)*100.0:.4f}%)")
+        
+# Untested
+def plot_energy_from_sdf(directory : Path, irb : bool, pct : bool):
+    
     # Read dataset
     ds = xr.open_mfdataset(
         str(directory / "*.sdf"),
@@ -32,32 +162,6 @@ def calculate_energy(directory : Path, irb : bool, pct : bool):
 
     density = input['constant']['background_density']
     frac_beam = input['constant']['frac_beam']
-        
-    proton_density = density * (1.0 - frac_beam) # m^-3
-    electron_density = density # m^-3
-
-    proton_E_array : xr.DataArray = ds['Derived_Average_Particle_Energy_proton']
-    electron_E_array : xr.DataArray = ds['Derived_Average_Particle_Energy_electron']
-    Bx_array : xr.DataArray = ds['Magnetic_Field_Bx']
-    By_array : xr.DataArray = ds['Magnetic_Field_By']
-    Bz_array : xr.DataArray = ds['Magnetic_Field_Bz']
-    Ex_array : xr.DataArray = ds['Electric_Field_Ex']
-    Ey_array : xr.DataArray = ds['Electric_Field_Ey']
-    Ez_array : xr.DataArray = ds['Electric_Field_Ez']
-
-    proton_KE_load = proton_E_array.load() # J
-    electron_KE_load = electron_E_array.load() # J
-    Bx_load = Bx_array.load() # T
-    By_load = By_array.load() # T
-    Bz_load = Bz_array.load() # T
-    Ex_load = Ex_array.load() # V/m
-    Ey_load = Ey_array.load() # V/m
-    Ez_load = Ez_array.load() # V/m
-
-    plt.rcParams.update({'axes.labelsize': 16})
-    plt.rcParams.update({'axes.titlesize': 18})
-    plt.rcParams.update({'xtick.labelsize': 14})
-    plt.rcParams.update({'ytick.labelsize': 14})
 
     # Time conversion
     TWO_PI = 2.0 * np.pi
@@ -66,97 +170,46 @@ def calculate_energy(directory : Path, irb : bool, pct : bool):
     ion_bkgd_mass = input['constant']['ion_mass_e'] * constants.electron_mass
     ion_bkgd_charge = input['species']['proton']['charge'] * constants.elementary_charge
     ion_gyroperiod = (TWO_PI * ion_bkgd_mass) / (ion_bkgd_charge * B0)
-    t_in_ci = proton_KE_load.coords["time"] / ion_gyroperiod
-    
-    # Mean over all cells for mean particle/field energy
-    pro_ke_mean : xr.DataArray = proton_KE_load.mean(dim = "X_Grid_mid") # J
-    e_ke_mean : xr.DataArray = electron_KE_load.mean(dim = "X_Grid_mid") # J
+    t_in_ci = ds['Derived_Average_Particle_Energy_proton'].coords["time"] / ion_gyroperiod
 
-    E_field = np.sqrt(Ex_load**2 + Ey_load**2 + Ez_load**2)
-    E_E_density : xr.DataArray = (constants.epsilon_0 * E_field**2) / 2.0 # J / m^3
-    E_mean : xr.DataArray = E_E_density.mean(dim="X_Grid_mid") # J / m^3
+    energy_dict = {}
+    energy_dict["proton"] = ds['Derived_Average_Particle_Energy_proton']
+    energy_dict["electron"] = ds['Derived_Average_Particle_Energy_electron']
+    energy_dict["Bx"] = ds['Magnetic_Field_Bx']
+    energy_dict["By"] = ds['Magnetic_Field_By']
+    energy_dict["Bz"] = ds['Magnetic_Field_Bz']
+    energy_dict["Ex"] = ds['Electric_Field_Ex']
+    energy_dict["Ey"] = ds['Electric_Field_Ey']
+    energy_dict["Ez"] = ds['Electric_Field_Ez']
+    energy_dict["density"] = density
+    energy_dict["frac_beam"] = frac_beam
+    energy_dict["time"] = t_in_ci
 
-    B_field = np.sqrt(Bx_load**2 + By_load**2 + Bz_load**2)
-    B_E_density : xr.DataArray = (B_field**2 / (2.0 * constants.mu_0)) # J / m^3
-    B_mean : xr.DataArray = B_E_density.mean(dim = "X_Grid_mid") # J / m^3
+    plot_energy(directory, energy_dict, irb, pct)
 
-    # Calculate B energy and convert others to to J/m3
-    B_dE_density = B_mean - B_mean[0] # J / m^3
-    E_dE_density = E_mean - E_mean[0] # J / m^3
-    proton_dKE = pro_ke_mean - pro_ke_mean[0] # J
-    electron_dKE = e_ke_mean - e_ke_mean[0] # J
-    
-    proton_dKE_density = proton_dKE * proton_density # J / m^3
-    electron_dKE_density = electron_dKE * electron_density # J / m^3
+def plot_energy_from_netcdf(filepath : Path, irb : bool, pct : bool):
 
-    #total_dKE_density = proton_dKE_density + B_dE_density + E_dE_density
-    total_dKE_density = proton_dKE_density + electron_dKE_density + B_dE_density + E_dE_density
+    # Open nc dataset
+    data = xr.open_datatree(
+        filepath,
+        engine="netcdf4"
+    )
 
-    if irb:
-        irb_density = density * frac_beam # m^-3
-        irb_E_array : xr.DataArray = ds['Derived_Average_Particle_Energy_ion_ring_beam']
-        irb_KE_load = irb_E_array.load() # J
-        irb_ke_mean : xr.DataArray = irb_KE_load.mean(dim = "X_Grid_mid") # J
-        irb_dKE = irb_ke_mean - irb_ke_mean[0] # J
-        irb_dKE_density = irb_dKE * irb_density # J / m^3
-        total_dKE_density += irb_dKE_density
-        plt.plot(t_in_ci, irb_dKE_density.data, label = r"ion ring beam KE")
+    # ASSUMES PROTONS
+    t_in_ci = data["/Energy/time"]
 
-    plt.plot(t_in_ci, proton_dKE_density.data, label = r"background proton KE")
-    plt.plot(t_in_ci, electron_dKE_density.data, label = r"background electron KE")
-    plt.plot(t_in_ci, B_dE_density.data, label = r"Magnetic field E")
-    plt.plot(t_in_ci, E_dE_density.data, label = r"Electric field E")
-    plt.plot(t_in_ci, total_dKE_density.data, label = r"Total E")
-    plt.xlabel(r'Time [$\tau_{ci}$]')
-    plt.ylabel(r"Change in energy density [$J/m^3$]")
-    plt.title(f"{directory.name}: Evolution of energy in fast minority ions, background ions/electrons and EM fields")
-    plt.legend()
-    plt.tight_layout()
-    plt.grid()
-    plt.show()
+    energy_dict = {}
+    energy_dict["proton"] = data["/Energy/protonMeanEnergyDensity"]
+    energy_dict["electron"] = data["/Energy/electronMeanEnergyDensity"]
+    energy_dict["fastIon"] = data["/Energy/fastIonMeanEnergyDensity"]
+    energy_dict["Bz"] = data["/Energy/magneticFieldMeanEnergyDensity"]
+    energy_dict["Ex"] = data["/Energy/electricFieldMeanEnergyDensity"]
+    energy_dict["density"] = data.backgroundDensity
+    energy_dict["frac_beam"] = data.beamFraction
+    energy_dict["time"] = t_in_ci
 
-    if pct:
-        # Calculate B energy and convert others to to J/m3
-        B_dE_pct = 100.0 * (B_mean - B_mean[0])/B_mean[0] # %
-        E_dE_pct = 100.0 * (E_mean - E_mean[0])/E_mean[0] # %
-        proton_dKE_density = pro_ke_mean * proton_density # J / m^3
-        electron_dKE_density = e_ke_mean * electron_density # J / m^3
-        proton_dKE_pct = 100.0 * (proton_dKE_density - proton_dKE_density[0])/proton_dKE_density[0] # %
-        electron_dKE_pct = 100.0 * (electron_dKE_density - electron_dKE_density[0])/electron_dKE_density[0] # %
-        total_E_density = B_mean + E_mean + proton_dKE_density + electron_dKE_density
+    plot_energy(filepath, energy_dict, irb, pct, rawData=False)
 
-        if irb:
-            irb_dKE_density = irb_ke_mean * irb_density # J / m^3
-            irb_dKE_pct = 100.0 * (irb_dKE_density - irb_dKE_density[0])/irb_dKE_density[0] # J
-            plt.plot(t_in_ci, irb_dKE_pct.data, label = "ion ring beam KE")
-            total_E_density += irb_dKE_density
-            #total_dE_pct  = np.mean([B_dE_pct, E_dE_pct, proton_dKE_pct, electron_dKE_pct, irb_dKE_pct], axis=0)
-        #else:
-            #total_dE_pct  = np.mean(B_dE_pct + E_dE_pct + proton_dKE_pct + electron_dKE_pct, axis=0)
-
-        total_dE_density_pct = 100.0 * (total_E_density-total_E_density[0])/total_E_density[0]
-        
-        plt.plot(t_in_ci, proton_dKE_pct.data, label = "background proton KE")
-        plt.plot(t_in_ci, electron_dKE_pct.data, label = "background electron KE")
-        plt.plot(t_in_ci, B_dE_pct.data, label = "Magnetic field E")
-        plt.plot(t_in_ci, E_dE_pct.data, label = "Electric field E")
-        plt.plot(t_in_ci, total_dE_density_pct, label = "Total E")
-        plt.yscale('symlog')
-        plt.xlabel(r'Time [$\tau_{ci}$]')
-        plt.ylabel("Percentage change in energy density [%]")
-        plt.title(f"{directory.name}: Evolution of energy in fast minority ions, background ions/electrons and EM fields")
-        plt.legend()
-        plt.grid()
-        plt.tight_layout()
-        plt.show()
-            
-    e_KE_start = float(e_ke_mean[0].data)
-    e_KE_end = float(e_ke_mean[-1].data)
-    print(f"Change in electron energy density: e- KE t=start: {e_KE_start:.4f}, e- KE t=end: {e_KE_end:.4f} (+{((e_KE_end - e_KE_start)/e_KE_start)*100.0:.4f}%)")
-    E_start = total_E_density[0]
-    E_end = total_E_density[-1]
-    print(f"Change in overall energy density: E t=start: {E_start:.4f}, E t=end: {E_end:.4f} (+{((E_end - E_start)/E_start)*100.0:.4f}%)")
-        
 def analyse_electron_heating(analysisDirectory : Path):
 
     electronDeltaPct = []
@@ -455,8 +508,15 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dir",
         action="store",
-        help="Directory.",
-        required = True,
+        help="Directory if multiple files.",
+        required = False,
+        type=Path
+    )
+    parser.add_argument(
+        "--filepath",
+        action="store",
+        help="Filepath to single file for analysis.",
+        required = False,
         type=Path
     )
     parser.add_argument(
@@ -499,7 +559,9 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    analyse_peak_characteristics(Path("/home/era536/Documents/Epoch/Data/irb_may25_analysis/data/"))
+    plot_energy_from_netcdf(args.filepath, args.irb, args.pct)
+
+    # analyse_peak_characteristics(Path("/home/era536/Documents/Epoch/Data/irb_may25_analysis/data/"))
 
     # if args.electronHeating:
     #     analyse_electron_heating(args.dir)
