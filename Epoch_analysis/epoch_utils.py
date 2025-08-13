@@ -6,6 +6,7 @@ import netCDF4 as nc
 import astropy.units as u
 import xrft  # noqa: E402
 import copy
+import os
 from scipy import stats
 from scipy.interpolate import make_smoothing_spline, BSpline
 from plasmapy.formulary import frequencies as ppf
@@ -793,6 +794,8 @@ def process_growth_rates(
 
     if saveGrowthRatePlots:
         gammaPlotFolder = plotFieldFolder / "growth_rates"
+        if not os.path.exists(gammaPlotFolder):
+            os.mkdir(gammaPlotFolder)
         plot_growth_rates(tkSpectrum, field, best_pos_gammas, numGrowthRatesToPlot, "peak", saveGrowthRatePlots, displayPlots, noTitle, gammaPlotFolder, simFolder.name, debug)
         plot_growth_rates(tkSpectrum, field, best_neg_gammas, numGrowthRatesToPlot, "total", saveGrowthRatePlots, displayPlots, noTitle, gammaPlotFolder, simFolder.name, debug)
 

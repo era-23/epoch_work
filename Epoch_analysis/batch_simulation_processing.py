@@ -226,6 +226,7 @@ def run_energy_analysis(
     simName : str,
     savePlotsFolder : Path,
     statsFile : nc.Dataset,
+    log : bool = False,
     displayPlots : bool = False,
     noTitle : bool = False,
     noLegend : bool = False,
@@ -487,7 +488,8 @@ def run_energy_analysis(
         ax.legend()
     ax.set_xlabel(r"Time [$\tau_{ci}$]")
     ax.set_ylabel("Change in energy density [%]")
-    # ax.set_yscale("symlog")
+    if log:
+        ax.set_yscale("symlog")
     ax.grid()
     if not noTitle:
         if beam:
@@ -606,7 +608,8 @@ def process_simulation_batch(
         displayPlots = False,
         saveGrowthRatePlots = False,
         numGrowthRatesToPlot : int = 0,
-        energy = True):
+        energy = True,
+        logEnergy = False):
     """
     Processes a batch of simulations:
     - Calculates plasma characteristics
@@ -688,7 +691,7 @@ def process_simulation_batch(
         # Energy analysis
         if energy:
             energyPlotFolder = plotsFolder / "energy"
-            run_energy_analysis(ds, inputDeck, simFolder.name, energyPlotFolder, statsRoot, displayPlots = displayPlots, noTitle=noTitle, noLegend=noLegend)
+            run_energy_analysis(ds, inputDeck, simFolder.name, energyPlotFolder, statsRoot, log=logEnergy, displayPlots = displayPlots, noTitle=noTitle, noLegend=noLegend)
 
         if "all" in fields:
             fields = [str(f) for f in ds.data_vars.keys() if str(f).startswith("Electric_Field") or str(f).startswith("Magnetic_Field")]
@@ -859,6 +862,12 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
+        "--logEnergy",
+        action="store_true",
+        help="Produce log plots for energy.",
+        required = False
+    )
+    parser.add_argument(
         "--saveGammaPlots",
         action="store_true",
         help="Save max growth rate plots to file.",
@@ -926,4 +935,5 @@ if __name__ == "__main__":
         noTitle=args.noTitle,
         noLegend=args.noLegend,
         saveGrowthRatePlots=args.saveGammaPlots,
-        energy=args.energy)
+        energy=args.energy,
+        logEnergy=args.logEnergy)
