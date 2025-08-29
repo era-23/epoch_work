@@ -25,8 +25,10 @@ from sktime.regression.interval_based import TimeSeriesForestRegressor
 from sktime.regression.kernel_based import TimeSeriesSVRTslearn, RocketRegressor
 from sktime.regression.compose import ComposableTimeSeriesForestRegressor
 from sklearn.preprocessing import StandardScaler
+import json
 import dataclasses as dc
 from dataclasses import dataclass
+from dataclasses_json import dataclass_json
 from numpy.typing import ArrayLike
 import SALib.sample as salsamp
 
@@ -42,21 +44,44 @@ class GPModel:
     modelParams : dict = None
     fitSuccess : bool = None
 
+@dataclass_json
 @dataclass
 class GPResults:
-    kernelNames : list
-    inputNames : list
-    outputNames : list
-    output : np.ndarray
-    sobolIndicesO1 : list
-    sobolIndicesO2 : list
-    sobolIndicesTotal : list
-    cvAccuracyMean : float = 0.0
-    cvAccuracyVar : float = 0.0
-    spectrumName : str = None
-    regressionModel : GaussianProcessRegressor | GPy.models.GPCoregionalizedRegression | GPy.models.GPMultioutRegression = None
+    directory : str = None
+    kernelNames : ArrayLike = None
+    inputNames : ArrayLike = None
+    outputSpectrumName : str = None
+    outputNames : ArrayLike = None
+    logFields : ArrayLike = None
+    normalised : bool = False
+    original_output_means : dict = None
+    original_output_stdevs : dict = None
+    original_input_means : dict = None
+    original_input_stdevs : dict = None
+    numObservations : int = 0
+    numFeatures : int = 0
+    numOutputs : int = 0
+    wRank : int = 0
+    fixedParams : dict = None
+    sobolSamples : int = 0
+    sobolIndicesO1 : dict = None
+    sobolIndicesO2 : dict = None
+    sobolIndicesTotal : dict = None
+    cvStrategy : str = None
+    cvFolds : int = 0
+    cvRepeats : int = 0
+    cvR2_mean : float = 0.0
+    cvR2_var : float = 0.0
+    cvR2_stderr : float = 0.0
+    cvRMSE_mean : float = 0.0
+    cvRMSE_var : float = 0.0
+    cvRMSE_stderr : float = 0.0
+    cvMSLL_mean : float = 0.0
+    cvMSLL_var : float = 0.0
+    cvMSLL_stderr : float = 0.0
+    gpPackage : str = None
+    model : dict = None
     fitSuccess : bool = False
-    objective : float = 0.0
 
 @dataclass
 class SimulationMetadata:
@@ -283,6 +308,33 @@ def read_data(dataFiles, data_dict : dict, with_names : bool = False, with_coord
 
     return data_dict
 
+# Normalises data row-wise (mean and sd taken row-wise)
+def normalise_dataset(data: ArrayLike):
+    orig_mean = [np.nanmean(row) for row in data]
+    orig_sd = [np.nanstd(row) for row in data]
+
+    normed_data = []
+    for row_id in range(data.shape[0]):
+        normed_data.append((data[row_id] - orig_mean[row_id]) / orig_sd[row_id])
+
+    return np.array(normed_data), orig_mean, orig_sd
+
+# De-normalises data row-wise (mean and sd taken row-wise)
+def denormalise_dataset(data: ArrayLike, orig_mean : float, orig_sd : float, unlog : bool):
+    denormed_data = []
+    
+    for row_id in range(data.shape[0]):
+        denormed_data.append(denormalise_datapoint(data[row_id], orig_mean[row_id], orig_sd[row_id], unlog))
+    
+    return denormed_data
+
+# Denormalises a single data point
+def denormalise_datapoint(datapoint : float, orig_mean : float, orig_sd : float, unlog : bool):
+    denormed = (datapoint * orig_sd) + orig_mean
+    if unlog:
+        denormed = 10**denormed
+    return  denormed
+
 def read_spectral_features_from_csv(csvFile : Path) -> list:
     featureSet = []
     with open(csvFile, mode="r") as featureFile:
@@ -320,6 +372,22 @@ def write_spectral_features_to_csv(csvFile : Path, featureSet : list):
         writer.writeheader()
         for instance in featureSet:
             writer.writerow(instance.__dict__)
+
+def __encode_GP_result_to_JSON_dict(result : GPResults) -> str:
+    results_dict = dc.asdict(result)
+    for name, val in results_dict.items():
+        if isinstance(val, np.ndarray):
+            results_dict[name] = val.tolist()
+        elif isinstance(val, dict):
+            for name2, val2 in val.items():
+                if isinstance(val2, np.ndarray):
+                    val[name2] = val2.tolist()
+    return results_dict
+
+def write_GP_result_to_file(result : GPResults, filepath : Path):
+    with open(filepath, "w", encoding='utf-8') as f:
+        result_json = __encode_GP_result_to_JSON_dict(result)
+        json.dump(result_json, f, ensure_ascii=False, indent=4)
 
 def anim_init(fig, ax, xx, yy, zz):
     ax.scatter(xx, yy, zz, color="black")
@@ -705,3 +773,47 @@ def extract_features_from_1D_power_spectrum(
         )
 
     return features
+
+# Calculate NLL for a single data point
+def negative_log_likelihood(prediction : float | np.ndarray, true_value : float | np.ndarray, variance : float | np.ndarray):
+    if isinstance(true_value, np.ndarray):
+        assert prediction.shape == true_value.shape
+        assert prediction.shape == variance.shape
+        return 0.5 * (np.add(np.log(2.0 * np.pi * variance), (np.subtract(true_value, prediction)**2/variance)))
+    else:
+        return 0.5 * (np.log(2.0 * np.pi * variance) + ((true_value - prediction)**2/variance))
+
+# Calculate standardized log loss
+def standardized_log_loss(
+        prediction : float | np.ndarray, 
+        prediction_variance : float | np.ndarray,
+        true_value : float | np.ndarray,
+        training_mean : float,
+        training_variance : float):
+    
+    nll = negative_log_likelihood(prediction, true_value, prediction_variance)
+    if training_mean.size == 1:
+        training_mean = float(training_mean)
+        training_variance = float(training_variance)
+    nll_baseline = negative_log_likelihood(prediction, training_mean, training_variance)
+    msll = nll - nll_baseline
+
+    return msll
+
+# Calculate squared error
+def squared_error(prediction : float, true_value : float) -> float:
+    return (prediction - true_value)**2
+
+def mean_squared_error(predictions : ArrayLike, true_values : ArrayLike) -> tuple:
+    assert len(predictions) == len(true_values)
+    n = len(predictions)
+    preds = np.array(predictions)
+    truth = np.array(true_values)
+    ses = squared_error(preds, truth)
+    ses_var = np.var(ses)
+    ses_stdErr = np.std(ses)/np.sqrt(len(ses))
+    return np.sum(ses)/n, ses_var, ses_stdErr
+
+def root_mean_squared_error(predictions : ArrayLike, true_values : ArrayLike) -> tuple:
+    mses, var, stdErr = mean_squared_error(predictions, true_values)
+    return np.sqrt(mses), var, stdErr

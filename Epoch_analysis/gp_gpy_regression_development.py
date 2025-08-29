@@ -7,6 +7,7 @@ import ml_utils
 import epoch_utils
 import pylab as pb
 import numpy as np
+import xarray as xr
 from scipy.stats import linregress
 from SALib import ProblemSpec
 from SALib.analyze import sobol
@@ -44,6 +45,7 @@ def plot_outputs(m, input_names, output_feature_names, xlim):
     
     num_datapoints = m.Y.shape[0]//len(output_feature_names)
     exponential_alpha_scaling_factor = 20
+    plt.close("all")
 
     for i in range(len(output_feature_names)):
 
@@ -68,18 +70,13 @@ def plot_outputs(m, input_names, output_feature_names, xlim):
             plot_data = True, 
             visible_dims = [input_index]
         )['dataplot'][0]
-        this_axis = training_data[:,input_index]
         other_axes = np.delete(training_data, input_index, axis=1)
-        geometric_distances = []
-        for t_idx in range(len(this_axis)):
-            t = this_axis[t_idx]
-            rows = [(t-x)**2 for x in other_axes[t_idx,:]]
-            geometric_distances.append(np.sqrt(np.sum(rows)))
-        g = geometric_distances / np.max(geometric_distances)
-        dist_from_0 = np.clip(1.0 - g, a_min = 0.1, a_max = None)
-        dist_from_0 = exponential_alpha_scaling_factor**dist_from_0 / np.max(exponential_alpha_scaling_factor**dist_from_0)
+        mean_of_other_points = [np.mean(r) for r in other_axes]
+        g = np.abs(mean_of_other_points) / np.max(mean_of_other_points)
+        proximity_score = np.clip(1.0 - g, a_min = 0.1, a_max = None)
+        proximity_score = exponential_alpha_scaling_factor**proximity_score / np.max(exponential_alpha_scaling_factor**proximity_score)
         p.set_color("red")
-        p.set_alpha(dist_from_0)
+        p.set_alpha(proximity_score)
         
         #Input 2
         input_index = 1
@@ -95,18 +92,13 @@ def plot_outputs(m, input_names, output_feature_names, xlim):
             plot_data = True, 
             visible_dims = [input_index]
         )['dataplot'][0]
-        this_axis = training_data[:,input_index]
         other_axes = np.delete(training_data, input_index, axis=1)
-        geometric_distances = []
-        for t_idx in range(len(this_axis)):
-            t = this_axis[t_idx]
-            rows = [(t-x)**2 for x in other_axes[t_idx,:]]
-            geometric_distances.append(np.sqrt(np.sum(rows)))
-        g = geometric_distances / np.max(geometric_distances)
-        dist_from_0 = np.clip(1.0 - g, a_min = 0.1, a_max = None)
-        dist_from_0 = exponential_alpha_scaling_factor**dist_from_0 / np.max(exponential_alpha_scaling_factor**dist_from_0)
+        mean_of_other_points = [np.mean(r) for r in other_axes]
+        g = np.abs(mean_of_other_points) / np.max(mean_of_other_points)
+        proximity_score = np.clip(1.0 - g, a_min = 0.1, a_max = None)
+        proximity_score = exponential_alpha_scaling_factor**proximity_score / np.max(exponential_alpha_scaling_factor**proximity_score)
         p.set_color("red")
-        p.set_alpha(dist_from_0)
+        p.set_alpha(proximity_score)
 
         #Input 3
         input_index = 2
@@ -122,18 +114,13 @@ def plot_outputs(m, input_names, output_feature_names, xlim):
             plot_data = True, 
             visible_dims = [input_index]
         )['dataplot'][0]
-        this_axis = training_data[:,input_index]
         other_axes = np.delete(training_data, input_index, axis=1)
-        geometric_distances = []
-        for t_idx in range(len(this_axis)):
-            t = this_axis[t_idx]
-            rows = [(t-x)**2 for x in other_axes[t_idx,:]]
-            geometric_distances.append(np.sqrt(np.sum(rows)))
-        g = geometric_distances / np.max(geometric_distances)
-        dist_from_0 = np.clip(1.0 - g, a_min = 0.1, a_max = None)
-        dist_from_0 = exponential_alpha_scaling_factor**dist_from_0 / np.max(exponential_alpha_scaling_factor**dist_from_0)
+        mean_of_other_points = [np.mean(r) for r in other_axes]
+        g = np.abs(mean_of_other_points) / np.max(mean_of_other_points)
+        proximity_score = np.clip(1.0 - g, a_min = 0.1, a_max = None)
+        proximity_score = exponential_alpha_scaling_factor**proximity_score / np.max(exponential_alpha_scaling_factor**proximity_score)
         p.set_color("red")
-        p.set_alpha(dist_from_0)
+        p.set_alpha(proximity_score)
 
         #Input 4
         input_index = 3
@@ -149,21 +136,15 @@ def plot_outputs(m, input_names, output_feature_names, xlim):
             plot_data = True, 
             visible_dims = [input_index]
         )['dataplot'][0]
-        this_axis = training_data[:,input_index]
         other_axes = np.delete(training_data, input_index, axis=1)
-        geometric_distances = []
-        for t_idx in range(len(this_axis)):
-            t = this_axis[t_idx]
-            rows = [(t-x)**2 for x in other_axes[t_idx,:]]
-            geometric_distances.append(np.sqrt(np.sum(rows)))
-        g = geometric_distances / np.max(geometric_distances)
-        dist_from_0 = np.clip(1.0 - g, a_min = 0.1, a_max = None)
-        dist_from_0 = exponential_alpha_scaling_factor**dist_from_0 / np.max(exponential_alpha_scaling_factor**dist_from_0)
+        mean_of_other_points = [np.mean(r) for r in other_axes]
+        g = np.abs(mean_of_other_points) / np.max(mean_of_other_points)
+        proximity_score = np.clip(1.0 - g, a_min = 0.1, a_max = None)
+        proximity_score = exponential_alpha_scaling_factor**proximity_score / np.max(exponential_alpha_scaling_factor**proximity_score)
         p.set_color("red")
-        p.set_alpha(dist_from_0)
+        p.set_alpha(proximity_score)
         # Display
         plt.show()
-        plt.close("all")
 
 def demo_plot_2outputs(m, Xt1, Yt1, Xt2, Yt2, xlim):
     fig = pb.figure(figsize=(12,8))
@@ -261,7 +242,7 @@ def demo():
     m.optimize()
     demo_plot_2outputs(m, Xt1, Yt1, Xt2, Yt2, xlim=(0,100),ylim=(-20,60))
 
-def get_model(kernels, X_in, Y_out, W_rank = 3, bound_length = True) -> GPy.Model:
+def get_model(kernels, X_in, Y_out, results : ml_utils.GPResults, W_rank = 3, bound_length = True):
     
     # Dimensions
     input_dim = X_in.shape[1]
@@ -287,36 +268,56 @@ def get_model(kernels, X_in, Y_out, W_rank = 3, bound_length = True) -> GPy.Mode
     kerns = GPy.util.multioutput.LCM(input_dim=input_dim, num_outputs=output_dim, kernels_list=k_list, W_rank=W_rank)
     model = GPy.models.GPCoregionalizedRegression([X_in for _ in Y_out],Y_out,kernel=kerns)
     if bound_length:
-        model['.*lengthscale'].constrain_bounded(lower=0.0, upper=0.2)
+        param = '.*lengthscale'
+        lower = 0.0
+        upper = 0.2
+        model[param].constrain_bounded(lower=lower, upper=upper)
+        results.fixedParams = {param: [lower, upper]}
     # print(f"Default gradients: {m.gradient}")
 
-    return model
+    return model, results
 
 def regress(
         directory : Path, 
         inputFieldNames : list, 
         outputField : str, 
         spectralFeatures : list = None, 
+        kernels : list = None,
+        wRank : int = 3,
         normalise : bool = True, 
         peaksOnly : bool = True,
+        plotModels : bool = True,
+        sobol : bool = True,
+        evaluate : bool = True,
+        cvFolds : int = 5,
+        cvRepeats : int = 2,
+        printLatex : bool = False,
+        writeToFile : bool = True,
         spec_xLabel : str = None,
         spec_yLabel : str = None,
         spec_xUnit : str = None,
         spec_yUnit : str = None):
     
+    # Initialise results object
+    results = ml_utils.GPResults()
+    results.gpPackage = "GPy"
+
     if directory.name != "data":
         data_dir = directory / "data"
     else:
         data_dir = directory
     data_files = glob.glob(str(data_dir / "*.nc")) 
+    results.directory = str(directory.resolve())
 
     # Input data
     inputs = {inp : [] for inp in inputFieldNames}
     inputs = ml_utils.read_data(data_files, inputs, with_names = False, with_coords = False)
+    results.inputNames = inputFieldNames
 
     # Output data
     outputs = {outputField : []}
     outputs = ml_utils.read_data(data_files, outputs, with_names = True, with_coords=True)
+    results.outputSpectrumName = outputField
 
     # Transformation of B0angle
     if "B0angle" in inputs:
@@ -356,10 +357,18 @@ def regress(
     output_feature_values = np.array(list(features.values()))
     output_features_array = np.array(output_feature_values)
 
+    results.logFields = np.intersect1d(np.union1d(input_names, output_feature_names), logFields)
+    results.outputNames = output_feature_names
+
     # Normalise
     if normalise:
-        input_array = np.array([(p - np.nanmean(p)) / np.nanstd(p) for p in input_array])
-        output_features_array = np.array([(f - np.nanmean(f)) / np.nanstd(f) for f in output_features_array])
+        results.normalised = True
+        input_array, orig_in_mean, orig_in_sd = ml_utils.normalise_dataset(input_array)
+        results.original_input_means = {n : m for n, m in zip(input_names, orig_in_mean)}
+        results.original_input_stdevs = {n : s for n, s in zip(input_names, orig_in_sd)}
+        output_features_array, orig_out_mean, orig_out_sd = ml_utils.normalise_dataset(output_features_array)
+        results.original_output_means = {n : m for n, m in zip(input_names, orig_out_mean)}
+        results.original_output_stdevs = {n : s for n, s in zip(input_names, orig_out_sd)}
     input_columns = input_array.T
     output_features_columns = output_features_array.T
 
@@ -384,6 +393,9 @@ def regress(
     # Set up kernels
     input_dim = input_columns.shape[1]
     output_dim = output_features_columns.shape[1]
+    results.numFeatures = input_dim
+    results.numObservations = input_columns.shape[0]
+    results.numOutputs = output_dim
     print("----------------------------------------------------------------------------------------------")
     print(f"Regressing {input_dim} inputs ({input_names}) against {output_dim} outputs ({output_feature_names})")
     print("----------------------------------------------------------------------------------------------")
@@ -393,32 +405,46 @@ def regress(
     for i in range(output_dim):
         all_Y.append(Y_out[:,i].reshape(-1,1))
 
-    # kernel_names = ["white", "linear", "ratQuad"]
-    kernel_names = ["linear", "ratQuad"]
-    m = get_model(kernels=kernel_names, X_in=X_in, Y_out=all_Y, W_rank=3, bound_length=True)
+    if wRank > output_dim:
+        print("wRank is > output dimensions, fixing to the number of outputs")
+        wRank = output_dim
+    kernel_names = kernels if kernels is not None else ["white", "linear", "ratQuad"]
+    results.kernelNames = kernel_names
+    results.wRank = wRank
+    m, results = get_model(kernels=kernel_names, X_in=X_in, Y_out=all_Y, results=results, W_rank=wRank, bound_length=True)
     m.optimize(messages=True)
     print(m)
+    results.model = m.to_dict(save_data=True)
+    results.fitSuccess = True
     # for part in m.kern.parts:
     #     sigs = part.get_most_significant_input_dimensions()
     #     if None not in sigs:
     #         print(f'{part.name}: 3 most significant input dims (descending): {feature_names[sigs[0]-1]}, {feature_names[sigs[1]-1]}, {feature_names[sigs[2]-1]}')
 
     # Visualise model
-    # plot_outputs(m, input_names, output_feature_names, (-3,3))
+    if plotModels:
+        plot_outputs(m, input_names, output_feature_names, (-3,3))
 
     # Analyse model (sobol)
-    # sobol_analysis(m, input_columns, input_names, output_features_columns, output_feature_names)
+    if sobol:
+        results = sobol_analysis(m, input_columns, input_names, output_features_columns, output_feature_names, results, printLatex=printLatex)
 
     # Evaluate model (CV)
-    evaluate_model_k_folds(m, kernel_names, output_feature_names)
-    # good_test_idx, bad_test_idx = evaluate_model_loo(m, kernel_names, output_names)
-    # print(f"Simulations predicted better than baseline by GP: {good_test_idx}")
-    # print(f"Simulations predicted worse than baseline by GP: {bad_test_idx}")
-    # good_test_idx = np.array(good_test_idx)
-    # bad_test_idx = np.array(bad_test_idx)
-    # good_points = [np.array(arr)[good_test_idx] for arr in output_array]
-    # bad_points = [np.array(arr)[bad_test_idx] for arr in output_array]
-    # epoch_utils.my_matrix_plot(data_series=[good_points, bad_points], series_labels=["Simulations perdicted better by GP", "Simulations predicted worse by GP"], parameter_labels=output_names, plot_style="hdi", equalise_pdf_heights=False, filename="/home/era536/Documents/for_discussion/2025.08.07/R2_matrix.png")
+    if evaluate:
+        results = evaluate_model_k_folds(m, kernel_names, results, output_feature_names, orig_out_mean, orig_out_sd, logFields, k_folds=cvFolds, n_repeats=cvRepeats, printLatex=printLatex)
+        # good_test_idx, bad_test_idx = evaluate_model_loo(m, kernel_names, output_names)
+        # print(f"Simulations predicted better than baseline by GP: {good_test_idx}")
+        # print(f"Simulations predicted worse than baseline by GP: {bad_test_idx}")
+        # good_test_idx = np.array(good_test_idx)
+        # bad_test_idx = np.array(bad_test_idx)
+        # good_points = [np.array(arr)[good_test_idx] for arr in output_array]
+        # bad_points = [np.array(arr)[bad_test_idx] for arr in output_array]
+        # epoch_utils.my_matrix_plot(data_series=[good_points, bad_points], series_labels=["Simulations perdicted better by GP", "Simulations predicted worse by GP"], parameter_labels=output_names, plot_style="hdi", equalise_pdf_heights=False, filename="/home/era536/Documents/for_discussion/2025.08.07/R2_matrix.png")
+
+    if writeToFile:
+        savepath = directory / f"gp_results__package_GPy__outputs_{'-'.join(output_feature_names)}__kernels_{'-'.join(kernel_names)}__Wrank_{wRank}.json"
+        ml_utils.write_GP_result_to_file(results, savepath)
+        
 
 def evaluate_model_loo(model : GPy.Model, kernel_names, output_names):
     num_features = model.X.shape[1]-1
@@ -490,7 +516,7 @@ def evaluate_model_loo(model : GPy.Model, kernel_names, output_names):
             field_y_preds = y_preds[int(i*num_test_samples):int((i+1)*num_test_samples)]
             field_RMSE = root_mean_squared_error(field_y_test, field_y_preds)
             fold_individualField_RMSEs[-1].append(field_RMSE)
-            print(f'Fold {fold} -- {field} RMSE: {field_RMSE}')
+            print(f'Fold {fold} -- {field} RMSE: {field_RMSE} ()')
 
         if overallR2 > 0.0:
             test_indices_yielding_positive_R2.append(test[0])
@@ -518,17 +544,32 @@ def evaluate_model_loo(model : GPy.Model, kernel_names, output_names):
         fold_R2s.append(overallR2)
         fold_RMSEs.append(overallRMSE)
 
-    print(f"Mean overall R^2 across leave-one-out CV ({len(fold_R2s)} tests): {np.mean(fold_R2s)}+-{np.std(fold_R2s)/np.sqrt(len(fold_R2s))}")
-    print(f"Mean overall RMSE across leave-one-out CV ({len(fold_R2s)} tests): {np.mean(fold_RMSEs)}+-{np.std(fold_RMSEs)/np.sqrt(len(fold_RMSEs))}")
+    print(f"Mean overall R^2 across leave-one-out CV ({len(fold_R2s)} tests): {np.mean(fold_R2s):.5f}+-{np.std(fold_R2s)/np.sqrt(len(fold_R2s)):.5f}")
+    print(f"Mean overall RMSE across leave-one-out CV ({len(fold_R2s)} tests): {np.mean(fold_RMSEs):.5f}+-{np.std(fold_RMSEs)/np.sqrt(len(fold_RMSEs)):.5f}")
     fold_individualField_RMSEs = np.array(fold_individualField_RMSEs).T
     for i in range(num_outputs):
         field = output_names[i]
         rmse = fold_individualField_RMSEs[i]
-        print(f"Mean {field} RMSE across leave-one-out CV ({len(fold_R2s)} tests): {np.mean(rmse)}+-{np.std(rmse)/np.sqrt(len(rmse))}")
+        print(f"Mean {field} RMSE across leave-one-out CV ({len(fold_R2s)} tests): {np.mean(rmse):.5f}+-{np.std(rmse)/np.sqrt(len(rmse)):.5f}")
 
     return test_indices_yielding_positive_R2, test_indices_yielding_negative_R2
 
-def evaluate_model_k_folds(model : GPy.Model, kernel_names, output_names, k_folds = 7, n_repeats = 3):
+def evaluate_model_k_folds(
+        model : GPy.Model, 
+        kernel_names, 
+        results : ml_utils.GPResults,
+        output_names, 
+        orig_out_means, 
+        orig_out_sds, 
+        log_fields, 
+        k_folds = 5, 
+        n_repeats = 2, 
+        printLatex = False) -> ml_utils.GPResults:
+    
+    results.cvStrategy = "k_folds"
+    results.cvFolds = k_folds
+    results.cvRepeats = n_repeats
+
     num_features = model.X.shape[1]-1
     num_outputs = len(output_names)
     num_samples = int(model.Y.shape[0]/num_outputs)
@@ -540,22 +581,29 @@ def evaluate_model_k_folds(model : GPy.Model, kernel_names, output_names, k_fold
 
     # Repeated K Folds
     rkf = RepeatedKFold(n_splits=k_folds, n_repeats=n_repeats)
-    fold_R2s = []
-    fold_individualField_R2s = []
-    fold_RMSEs = []
-    fold_individualField_RMSEs = []
+    fold_wise_R2s = []
+    fold_and_field_wise_R2s = []
+    fold_wise_RMSEs = []
+    fold_and_field_wise_SEs = []
+    fold_and_field_wise_SLLs = []
+    all_test_data_and_predictions = {"true_vals" : [], "predictions" : [], "prediction_vars" : []} # Dict of all test data and predictions
     for fold, (train, test) in enumerate(rkf.split(x_dummy)):
         print(f'FOLD {fold}:')
         # print(f'     TRAIN IDX: {train},\n     TEST IDX: {test}')
 
         print(f"Fold {fold} -- Preparing data....")
+
+        fold_and_field_wise_R2s.append([])
+        fold_and_field_wise_SEs.append([])
+        fold_and_field_wise_SLLs.append([])
+
         x_train = x_data[train,:num_features]
         y_train = y_data[train,:]
 
         x_test = x_data[test,:num_features]
         y_test = y_data[test,:]
 
-        y_test_formatted = y_test.flatten('F')
+        y_test_flat = y_test.flatten('F')
 
         num_test_samples = len(test)
 
@@ -565,7 +613,7 @@ def evaluate_model_k_folds(model : GPy.Model, kernel_names, output_names, k_fold
 
         # Rebuild model
         print(f"Fold {fold} -- Training data....")
-        m = get_model(kernels=kernel_names, X_in=x_train, Y_out=fold_Y, W_rank=3, bound_length=True)
+        m, results = get_model(kernels=kernel_names, X_in=x_train, Y_out=fold_Y, results=results, W_rank=results.wRank, bound_length=True)
         m.optimize(messages=True)
         # Having to rebuild model above is not ideal. It seems set_XY is not properly implemented for coregionalized models where X and Y are lists.
 
@@ -583,37 +631,104 @@ def evaluate_model_k_folds(model : GPy.Model, kernel_names, output_names, k_fold
 
         y_preds, y_var_diag = m.predict(x_test_formatted, Y_metadata = noise_dict)
 
-        overallR2 = r2_score(y_test_formatted, y_preds)
-        overallRMSE = root_mean_squared_error(y_test_formatted, y_preds)
-        fold_individualField_R2s.append([])
-        fold_individualField_RMSEs.append([])
-        print(f'Fold {fold} -- Overall R^2: {overallR2}, Overall RMSE: {overallRMSE}')
+        # R2, RMSE, MSLL
+        assert y_preds.shape[1] == 1
+        y_preds_flat = y_preds.flatten()
+        assert y_var_diag.shape[1] == 1
+        y_vars_flat = y_var_diag.flatten()
+        all_test_data_and_predictions["true_vals"].extend(y_test_flat)
+        all_test_data_and_predictions["predictions"].extend(y_preds_flat)
+        all_test_data_and_predictions["prediction_vars"].extend(y_vars_flat)
+        foldR2 = r2_score(y_test_flat, y_preds_flat)
+        fold_wise_R2s.append(foldR2)
+        foldRMSE = root_mean_squared_error(y_test_flat, y_preds_flat)
+        # foldSLL = ml_utils.standardized_log_loss(y_preds_flat, y_vars_flat, y_test_flat, np.mean(y_train), np.var(y_train))
+        print(f'Fold {fold} -- Overall R^2: {foldR2}, Overall RMSE: {foldRMSE}')
+        
         assert len(y_preds)//num_test_samples == num_outputs
         for i in range(num_outputs):
+            
             field = output_names[i]
+            
             field_y_test = y_test[:,i]
-            field_y_preds = y_preds[int(i*num_test_samples):int((i+1)*num_test_samples)]
+            field_y_preds = y_preds_flat[int(i*num_test_samples):int((i+1)*num_test_samples)]
+            field_y_vars = y_vars_flat[int(i*num_test_samples):int((i+1)*num_test_samples)]
+            
             field_R2 = r2_score(field_y_test, field_y_preds)
             field_RMSE = root_mean_squared_error(field_y_test, field_y_preds)
-            fold_individualField_R2s[-1].append(field_R2)
-            fold_individualField_RMSEs[-1].append(field_RMSE)
-            print(f'Fold {fold} -- {field} R^2: {field_R2}, RMSE: {field_RMSE}')
+            field_SE = ml_utils.squared_error(field_y_preds, field_y_test)
+            field_SLL = ml_utils.standardized_log_loss(field_y_preds, field_y_vars, field_y_test, np.mean(y_train[:,i]), np.var(y_train[:,i]))
+            fold_and_field_wise_R2s[-1].append(field_R2)
+            fold_and_field_wise_SEs[-1].append(field_SE)
+            fold_and_field_wise_SLLs[-1].append(field_SLL)
+            
+            print(f'Fold {fold} -- {field} R^2: {field_R2:.5f}, RMSE: {field_RMSE:.5f} ({ml_utils.denormalise_datapoint(field_RMSE, orig_out_means[i], orig_out_sds[i], field in log_fields):.5f}), MSLL: {np.mean(field_SLL):.5f}')
 
-        fold_R2s.append(overallR2)
-        fold_RMSEs.append(overallRMSE)
-
-    print(f"Mean overall R^2 across {k_folds} folds and {n_repeats} repeats: {np.mean(fold_R2s)}+-{np.std(fold_R2s)/np.sqrt(len(fold_R2s))}")
-    print(f"Mean overall RMSE across {k_folds} folds and {n_repeats} repeats: {np.mean(fold_RMSEs)}+-{np.std(fold_RMSEs)/np.sqrt(len(fold_RMSEs))}")
-    fold_individualField_R2s = np.array(fold_individualField_R2s).T
-    fold_individualField_RMSEs = np.array(fold_individualField_RMSEs).T
+    # Write results
+    results.cvR2_mean = np.mean(fold_wise_R2s)
+    results.cvR2_var = np.var(fold_wise_R2s)
+    results.cvR2_stderr = np.std(fold_wise_R2s)/np.sqrt(len(fold_wise_R2s))
+    rmses, rmses_var, rmses_stdErr = ml_utils.root_mean_squared_error(all_test_data_and_predictions["predictions"], all_test_data_and_predictions["true_vals"])
+    results.cvRMSE_mean = rmses
+    results.cvRMSE_var = rmses_var
+    results.cvRMSE_stderr = rmses_stdErr
+    all_SLLs = []
+    for fold_data in fold_and_field_wise_SLLs:
+        for field_data in fold_data:
+            all_SLLs.extend(field_data)
+    results.cvMSLL_mean = np.mean(all_SLLs)
+    results.cvMSLL_var = np.var(all_SLLs)
+    results.cvMSLL_stderr = np.std(all_SLLs)/np.sqrt(len(all_SLLs))
+    
+    # Debug prints
+    print(f"Mean overall R^2 across {k_folds} folds and {n_repeats} repeats: {results.cvR2_mean:.5f}+-{results.cvR2_stderr:.5f}  (want >0.0 and close to 1.0)")
+    print(f"Mean overall RMSE across {k_folds} folds and {n_repeats} repeats: {results.cvRMSE_mean:.5f}+-{results.cvRMSE_stderr:.5f}  (want <S.D. and close to 0.0)")
+    denorms = []
+    for i in range(len(output_names)):
+        denorms.append(f"{ml_utils.denormalise_datapoint(results.cvRMSE_mean, orig_out_means[i], orig_out_sds[i], output_names[i] in log_fields):.5f} {output_names[i]}")
+    print(f"This RMSE is equivalent to {', '.join(denorms)}.")
+    print(f"Mean overall SLL across {k_folds} folds and {n_repeats} repeats: {results.cvMSLL_mean:.5f}+-{results.cvMSLL_stderr:.5f}  (want <0.0)")
+    if printLatex:
+        print("---------------------------------------------- LaTeX ----------------------------------------------------")
+        print(f"overall & ${results.cvR2_mean:.5f}\pm{results.cvR2_stderr:.5f}$ & ${results.cvRMSE_mean:.5f}\pm{results.cvRMSE_stderr:.5f}$ & ${results.cvMSLL_mean:.5f}\pm{results.cvMSLL_stderr:.5f}$\\\\")
+    
+    
+    field_wise_R2s = np.array(fold_and_field_wise_R2s).T
+    field_wise_SEs = [[] for _ in range(num_outputs)]
+    field_wise_SLLs = [[] for _ in range(num_outputs)]
+    for fold_data in fold_and_field_wise_SLLs:
+        for f in range(num_outputs):
+            field_wise_SLLs[f].extend(fold_data[f])
+    for fold_data in fold_and_field_wise_SEs:
+        for f in range(num_outputs):
+            field_wise_SEs[f].extend(fold_data[f])
+    
     for i in range(num_outputs):
         field = output_names[i]
-        r2s = fold_individualField_R2s[i]
-        rmses = fold_individualField_RMSEs[i]
-        print(f"Mean {field} R^2 across {k_folds} folds and {n_repeats} repeats: {np.mean(r2s)}+-{np.std(r2s)/np.sqrt(len(r2s))}")
-        print(f"Mean {field} RMSE across {k_folds} folds and {n_repeats} repeats: {np.mean(rmses)}+-{np.std(rmses)/np.sqrt(len(rmses))}")
+        r2s = field_wise_R2s[i]
+        rmse_mean = np.sqrt(np.mean(field_wise_SEs[i]))
+        rmse_se = np.std(field_wise_SEs[i])/np.sqrt(len(field_wise_SEs[i]))
+        slls = field_wise_SLLs[i]
+        if printLatex:
+            print(f"{field} & ${np.mean(r2s):.5f}\pm{np.std(r2s)/np.sqrt(len(r2s)):.5f}$ & ${rmse_mean:.5f}\pm{rmse_se:.5f} & ${np.mean(slls):.5f}\pm{np.std(slls)/np.sqrt(len(slls)):.5f}$\\\\")
+        else:
+            print(f"Mean {field} R^2 across {k_folds} folds and {n_repeats} repeats: {np.mean(r2s):.5f}+-{np.std(r2s)/np.sqrt(len(r2s)):.5f}")
+            print(f"Mean {field} RMSE across {k_folds} folds and {n_repeats} repeats: {rmse_mean:.5f}+-{rmse_se:.5f}")
+            print(f"Mean {field} SLL across {k_folds} folds and {n_repeats} repeats: {np.mean(slls):.5f}+-{np.std(slls)/np.sqrt(len(slls)):.5f}")
+    if printLatex:
+        print("---------------------------------------------------------------------------------------------------------")
 
-def sobol_analysis(model : GPy.Model, features : np.ndarray, features_names : list, outputs : np.ndarray, output_names : list, noTitle : bool = False):
+    return results
+
+def sobol_analysis(
+        model : GPy.Model, 
+        features : np.ndarray, 
+        features_names : list, 
+        outputs : np.ndarray, 
+        output_names : list, 
+        results : ml_utils.GPResults,
+        printLatex : bool = True,
+        noTitle : bool = False) -> ml_utils.GPResults:
 
     num_inputs = len(features_names)
     num_outputs = len(output_names)
@@ -624,7 +739,9 @@ def sobol_analysis(model : GPy.Model, features : np.ndarray, features_names : li
         'names': list(features_names),
         'bounds': [[np.min(column), np.max(column)] for column in features.T]
     })
-    test_values = salsamp.sobol.sample(sp, int(2**12), calc_second_order = (num_inputs > 1))
+    num_samples = int(2**12)
+    results.sobolSamples = num_samples
+    test_values = salsamp.sobol.sample(sp, num_samples, calc_second_order = (num_inputs > 1))
 
     # Format test values for each output
     num_sample_points = test_values.shape[0]
@@ -642,12 +759,23 @@ def sobol_analysis(model : GPy.Model, features : np.ndarray, features_names : li
     # Sample predictions here
     y_prediction, y_var_diag = model.predict(test_values_formatted, Y_metadata = noise_dict) # y_prediction is 1-D for all of output 0, then all of output 1 etc.
     print(f"{model.name} predictions for {output_names} -- y_std: {np.sqrt(y_var_diag)}")
+    results.sobolIndicesO1 = dict.fromkeys(output_names)
+    results.sobolIndicesO2 = dict.fromkeys(output_names)
+    results.sobolIndicesTotal = dict.fromkeys(output_names)
     
     for n in range(num_outputs):
-        print(f"SOBOL analysing {model.name} model of {features_names} against {output_names[n]}....")
+        output_name = output_names[n]
+        print(f"SOBOL analysing {model.name} model of {features_names} against {output_name}....")
+
+        names_and_confs = features_names + [f"{name}_conf" for name in features_names]
+        results.sobolIndicesO1[output_name] = dict.fromkeys(names_and_confs)
+        results.sobolIndicesO2[output_name] = dict.fromkeys(names_and_confs)
+        results.sobolIndicesTotal[output_name] = dict.fromkeys(names_and_confs)
+
         predictions = y_prediction[n*num_sample_points:(n+1)*num_sample_points][:,0]
         sobol_indices = sobol.analyze(sp, predictions, print_to_console=True, calc_second_order = (num_inputs > 1))
-        print(f"Sobol indices for output {output_names[n]}:")
+
+        print(f"Sobol indices for output {output_name}:")
         print(sobol_indices)
         # print(f"Sum of SOBOL indices: ST = {np.sum(sobol_indices['ST'])}, S1 = {np.sum(sobol_indices['S1'])}, abs(S1) = {np.sum(abs(sobol_indices['S1']))} S2 = {np.nansum(sobol_indices['S2'])}, abs(S2) = {np.nansum(abs(sobol_indices['S2']))}")
         plt.rcParams["figure.figsize"] = (14,10)
@@ -655,7 +783,38 @@ def sobol_analysis(model : GPy.Model, features : np.ndarray, features_names : li
         Si_df = sobol_indices.to_df()
         _, ax = plt.subplots(1, len(Si_df), sharey=True)
         CONF_COLUMN = "_conf"
+        st_df = Si_df[0].get("ST")
+        s1_df = Si_df[1].get("S1")
+        s2_df = Si_df[2].get("S2")
+
+        # Print and record Sobol
+        if printLatex:
+            print("---------------------------------------------- LaTeX ----------------------------------------------------")
+            print(output_name)
+        for idx, st in enumerate(st_df):
+            print(st_df.axes)
+            print(st_df.index)
+            feature_name = str(st_df.index[idx])
+            results.sobolIndicesTotal[output_name][feature_name] = st
+            results.sobolIndicesTotal[output_name][f"{feature_name}_conf"] = Si_df[0].get('ST_conf')[idx]
+            if printLatex:
+                print(f"& {feature_name} & ${st:.3f}\pm{Si_df[0].get('ST_conf')[idx]:.3f}$\\\\")
+            else:
+                print(f"Input: {feature_name} Sobol: {st} Conf: {Si_df[0].get('ST_conf')[idx]}")
+        if printLatex:
+            print("---------------------------------------------------------------------------------------------------------")
+        for idx, s1 in enumerate(s1_df):
+            feature_name = str(s1_df.index[idx])
+            results.sobolIndicesO1[output_name][feature_name] = s1
+            results.sobolIndicesO1[output_name][f"{feature_name}_conf"] = Si_df[1].get('S1_conf')[idx]
+        for idx, s2 in enumerate(s2_df):
+            feature_name = str(s2_df.index[idx])
+            results.sobolIndicesO2[output_name][feature_name] = s2
+            results.sobolIndicesO2[output_name][f"{feature_name}_conf"] = Si_df[2].get('S2_conf')[idx]
+
+        # Plot Sobol
         for idx, f in enumerate(Si_df):
+            
             conf_cols = f.columns.str.contains(CONF_COLUMN)
 
             confs = f.loc[:, conf_cols]
@@ -671,6 +830,8 @@ def sobol_analysis(model : GPy.Model, features : np.ndarray, features_names : li
         plt.tight_layout()
         plt.show()
         plt.close()
+    
+    return results
 
 # Single-valued features only for now
 def create_spectral_features(
@@ -787,12 +948,27 @@ if __name__ == "__main__":
         nargs="*"
     )
     parser.add_argument(
-        "--spectralFeatures",
+        "--spectralOutputs",
         action="store",
         help="Spectral features to extract from the input spectrum.",
         required = False,
         type=str,
         nargs="*"
+    )
+    parser.add_argument(
+        "--kernels",
+        action="store",
+        help="Kernels to use for GP.",
+        required = True,
+        type=str,
+        nargs="*"
+    )
+    parser.add_argument(
+        "--wRank",
+        action="store",
+        help="W rank for coregionalization matrix.",
+        required = False,
+        type=int
     )
     parser.add_argument(
         "--spectrumXLabel",
@@ -853,9 +1029,29 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
+        "--cvFolds",
+        action="store",
+        help="Folds (k) for cross-validation.",
+        required = False,
+        type=int
+    )
+    parser.add_argument(
+        "--cvRepeats",
+        action="store",
+        help="Resampling repeats for cross-validation.",
+        required = False,
+        type=int
+    )
+    parser.add_argument(
         "--plotModels",
         action="store_true",
         help="Plot regression models.",
+        required = False
+    )
+    parser.add_argument(
+        "--printLatex",
+        action="store_true",
+        help="Print results formatted for LaTeX tables.",
         required = False
     )
     parser.add_argument(
@@ -876,8 +1072,14 @@ if __name__ == "__main__":
         help="No title on plots for posters, papers etc. which will include captions instead.",
         required = False
     )
+    parser.add_argument(
+        "--writeToFile",
+        action="store_true",
+        help="Write results to file.",
+        required = False
+    )
 
     args = parser.parse_args()
 
-    regress(args.dir, args.inputFields, args.outputField, args.spectralFeatures, args.normalise, args.peaksOnly, args.spectrumXLabel, args.spectrumYLabel, args.spectrumXUnits, args.spectrumYUnits)
+    regress(args.dir, args.inputFields, args.outputField, args.spectralOutputs, args.kernels, args.wRank, args.normalise, args.peaksOnly, args.plotModels, args.sobol, args.evaluate, args.cvFolds, args.cvRepeats, args.printLatex, args.writeToFile, args.spectrumXLabel, args.spectrumYLabel, args.spectrumXUnits, args.spectrumYUnits)
     # demo()
