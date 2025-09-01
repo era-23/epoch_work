@@ -583,7 +583,6 @@ def evaluate_model_k_folds(
     rkf = RepeatedKFold(n_splits=k_folds, n_repeats=n_repeats)
     fold_wise_R2s = []
     fold_and_field_wise_R2s = []
-    fold_wise_RMSEs = []
     fold_and_field_wise_SEs = []
     fold_and_field_wise_SLLs = []
     all_test_data_and_predictions = {"true_vals" : [], "predictions" : [], "prediction_vars" : []} # Dict of all test data and predictions

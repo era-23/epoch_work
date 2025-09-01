@@ -13,6 +13,28 @@
             "args": ["--dir", "/home/era536/Documents/Epoch/Data/run_23"]
         },
         {
+            "name": "Python Debugger: TSC -- Aeon Development",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "tsc_aeon_regression_development.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "--dir", "/home/era536/Documents/Epoch/Data/irb_ml_dataset/",
+                "--inputSpectrum",
+                    "Magnetic_Field_Bz/power/powerByFrequency",
+                    ///// Simulation parameters
+                "--outputFields",
+                    // "B0strength", 
+                    // "B0angle", 
+                    "backgroundDensity", 
+                    "beamFraction",
+                "--logFields",
+                    "backgroundDensity", 
+                    "beamFraction",
+            ]
+        },
+        {
             "name": "Python Debugger: Growth Rate Development",
             "type": "debugpy",
             "request": "launch",

@@ -7,30 +7,36 @@ import GPy
 from scipy.stats import norm
 from scipy.interpolate import griddata
 from scipy.signal import find_peaks
-from sklearn.pipeline import Pipeline
 import xarray as xr
-from functools import partial
-from matplotlib import animation
 from inference.plotting import matrix_plot
-from SALib import ProblemSpec
 from sklearn.gaussian_process import GaussianProcessRegressor, GaussianProcessClassifier
-from sktime.clustering.dbscan import TimeSeriesDBSCAN
-from sktime.clustering.k_means import TimeSeriesKMeans, TimeSeriesKMeansTslearn
-from sktime.clustering.k_medoids import TimeSeriesKMedoids
-from sktime.clustering.k_shapes import TimeSeriesKShapes
-from sktime.clustering.kernel_k_means import TimeSeriesKernelKMeans
-from sktime.regression.deep_learning import CNNRegressor, CNTCRegressor, FCNRegressor, InceptionTimeRegressor, LSTMFCNRegressor, MACNNRegressor, MCDCNNRegressor, MLPRegressor, ResNetRegressor, SimpleRNNRegressor, TapNetRegressor
-from sktime.regression.distance_based import KNeighborsTimeSeriesRegressor
-from sktime.regression.interval_based import TimeSeriesForestRegressor
-from sktime.regression.kernel_based import TimeSeriesSVRTslearn, RocketRegressor
-from sktime.regression.compose import ComposableTimeSeriesForestRegressor
-from sklearn.preprocessing import StandardScaler
 import json
 import dataclasses as dc
 from dataclasses import dataclass
 from dataclasses_json import dataclass_json
 from numpy.typing import ArrayLike
+from SALib import ProblemSpec
 import SALib.sample as salsamp
+
+# Sktime algorithms
+import sktime.clustering.dbscan as skt_dbscan
+import sktime.clustering.k_means  as skt_kmeans
+import sktime.clustering.k_medoids  as skt_kmedoids
+import sktime.clustering.k_shapes  as skt_kshapes
+import sktime.clustering.kernel_k_means as skt_kernelmeans
+import sktime.regression.deep_learning as skt_deep
+import sktime.regression.distance_based as skt_dist
+import sktime.regression.interval_based as skt_int
+import sktime.regression.kernel_based as skt_kernel
+import sktime.regression.compose as skt_compose
+
+# Aeon algorithms
+import aeon.regression.interval_based as aeon_int
+import aeon.regression.distance_based as aeon_dist
+import aeon.regression.feature_based as aeon_feature
+import aeon.regression.shapelet_based as aeon_shapelet
+import aeon.regression.convolution_based as aeon_conv
+import aeon.regression.hybrid as aeon_hybrid
 
 @dataclass
 class GPModel:
@@ -213,50 +219,88 @@ fieldNameToText_dict = {
 
 def get_algorithm(name, **kwargs):
     match name:
-        case "TimeSeriesDBSCAN":
-            return TimeSeriesDBSCAN(kwargs["distance"])
-        case "TimeSeriesKMeans":
-            return TimeSeriesKMeans(kwargs["n_clusters"])
-        case "TimeSeriesKMeansTslearn":
-            return TimeSeriesKMeansTslearn(kwargs["n_clusters"])
-        case "TimeSeriesKMedoids": 
-            return TimeSeriesKMedoids(kwargs["n_clusters"])
-        case "TimeSeriesKShapes":
-            return TimeSeriesKShapes(kwargs["n_clusters"])
-        case "TimeSeriesKernelKMeans":
-            return TimeSeriesKernelKMeans(kwargs["n_clusters"])
-        case "CNNRegressor":
-            return CNNRegressor(kwargs)
-        case "CNTCRegressor": 
-            return CNTCRegressor(kwargs)
-        case "FCNRegressor":
-            return FCNRegressor(kwargs)
-        case "InceptionTimeRegressor":
-            return InceptionTimeRegressor(kwargs)
-        case "KNeighborsTimeSeriesRegressor":
-            return KNeighborsTimeSeriesRegressor(n_neighbors=kwargs["n_neighbours"], distance=kwargs["distance"])
-        case "LSTMFCNRegressor":
-            return LSTMFCNRegressor(kwargs)
-        case "MACNNRegressor":
-            return MACNNRegressor(kwargs)
-        case "MCDCNNRegressor": 
-            return MCDCNNRegressor(kwargs)
-        case "MLPRegressor":
-            return MLPRegressor(kwargs)
-        case "ResNetRegressor": 
-            return ResNetRegressor(kwargs)
-        case "RocketRegressor":
-            return RocketRegressor(kwargs)
-        case "SimpleRNNRegressor":
-            return SimpleRNNRegressor(kwargs)
-        case "TapNetRegressor":
-            return TapNetRegressor(kwargs)
-        case "TimeSeriesSVRTslearn":
-            return TimeSeriesSVRTslearn(kwargs)
-        case "TimeSeriesForestRegressor":
-            return TimeSeriesForestRegressor(kwargs)
-        case "ComposableTimeSeriesForestRegressor":
-            return ComposableTimeSeriesForestRegressor(kwargs)
+        case "sktime.TimeSeriesDBSCAN":
+            return skt_dbscan.TimeSeriesDBSCAN(kwargs["distance"])
+        case "sktime.TimeSeriesKMeans":
+            return skt_kmeans.TimeSeriesKMeans(kwargs["n_clusters"])
+        case "sktime.TimeSeriesKMeansTslearn":
+            return skt_kmeans.TimeSeriesKMeansTslearn(kwargs["n_clusters"])
+        case "sktime.TimeSeriesKMedoids": 
+            return skt_kmedoids.TimeSeriesKMedoids(kwargs["n_clusters"])
+        case "sktime.TimeSeriesKShapes":
+            return skt_kshapes.TimeSeriesKShapes(kwargs["n_clusters"])
+        case "sktime.TimeSeriesKernelKMeans":
+            return skt_kernelmeans.TimeSeriesKernelKMeans(kwargs["n_clusters"])
+        case "sktime.CNNRegressor":
+            return skt_deep.CNNRegressor(kwargs)
+        case "sktime.CNTCRegressor": 
+            return skt_deep.CNTCRegressor(kwargs)
+        case "sktime.FCNRegressor":
+            return skt_deep.FCNRegressor(kwargs)
+        case "sktime.InceptionTimeRegressor":
+            return skt_deep.InceptionTimeRegressor(kwargs)
+        case "sktime.KNeighborsTimeSeriesRegressor":
+            return skt_dist.KNeighborsTimeSeriesRegressor(n_neighbors=kwargs["n_neighbours"], distance=kwargs["distance"])
+        case "sktime.LSTMFCNRegressor":
+            return skt_deep.LSTMFCNRegressor(kwargs)
+        case "sktime.MACNNRegressor":
+            return skt_deep.MACNNRegressor(kwargs)
+        case "sktime.MCDCNNRegressor": 
+            return skt_deep.MCDCNNRegressor(kwargs)
+        case "sktime.MLPRegressor":
+            return skt_deep.MLPRegressor(kwargs)
+        case "sktime.ResNetRegressor": 
+            return skt_deep.ResNetRegressor(kwargs)
+        case "sktime.RocketRegressor":
+            return skt_kernel.RocketRegressor(kwargs)
+        case "sktime.SimpleRNNRegressor":
+            return skt_deep.SimpleRNNRegressor(kwargs)
+        case "sktime.TapNetRegressor":
+            return skt_deep.TapNetRegressor(kwargs)
+        case "sktime.TimeSeriesSVRTslearn":
+            return skt_kernel.TimeSeriesSVRTslearn(kwargs)
+        case "sktime.TimeSeriesForestRegressor":
+            return skt_int.TimeSeriesForestRegressor(kwargs)
+        case "sktime.ComposableTimeSeriesForestRegressor":
+            return skt_compose.ComposableTimeSeriesForestRegressor(kwargs)
+        case "aeon.CanonicalIntervalForestRegressor":
+            return aeon_int.CanonicalIntervalForestRegressor()
+        case "aeon.DrCIFRegressor":
+            return aeon_int.DrCIFRegressor()
+        case "aeon.IntervalForestRegressor":
+            return aeon_int.IntervalForestRegressor()
+        case "aeon.RandomIntervalRegressor":
+            return aeon_int.RandomIntervalRegressor()
+        case "aeon.RandomIntervalSpectralEnsembleRegressor":
+            return aeon_int.RandomIntervalSpectralEnsembleRegressor()
+        case "aeon.TimeSeriesForestRegressor":
+            return aeon_int.TimeSeriesForestRegressor()
+        case "aeon.QUANTRegressor":
+            return aeon_int.QUANTRegressor()
+        case "aeon.KNeighborsTimeSeriesRegressor":
+            return aeon_dist.KNeighborsTimeSeriesRegressor()
+        case "aeon.Catch22Regressor":
+            return aeon_feature.Catch22Regressor()
+        case "aeon.SummaryRegressor":
+            return aeon_feature.SummaryRegressor()
+        case "aeon.TSFreshRegressor":
+            return aeon_feature.TSFreshRegressor()
+        case "aeon.FreshPRINCERegressor":
+            return aeon_feature.FreshPRINCERegressor()
+        case "aeon.RDSTRegressor":
+            return aeon_shapelet.RDSTRegressor()
+        case "aeon.HydraRegressor":
+            return aeon_conv.HydraRegressor()
+        case "aeon.RocketRegressor":
+            return aeon_conv.RocketRegressor()
+        case "aeon.MiniRocketRegressor":
+            return aeon_conv.MiniRocketRegressor()
+        case "aeon.MultiRocketRegressor":
+            return aeon_conv.MultiRocketRegressor()
+        case "aeon.MultiRocketHydraRegressor":
+            return aeon_conv.MultiRocketHydraRegressor()
+        case "aeon.RISTRegressor":
+            return aeon_hybrid.RISTRegressor()
 
 def read_data(dataFiles, data_dict : dict, with_names : bool = False, with_coords : bool = False) -> dict:
     
@@ -307,6 +351,14 @@ def read_data(dataFiles, data_dict : dict, with_names : bool = False, with_coord
         data_dict["sim_ids"] = [sim_ids[i] for i in sorted_idx]
 
     return data_dict
+
+# Normalise a 1D signal
+def normalise_1D(data: ArrayLike):
+    if isinstance(data, list):
+        data = np.array(data)
+    mean = np.mean(data)
+    sd = np.std(data)
+    return (data - mean) / sd
 
 # Normalises data row-wise (mean and sd taken row-wise)
 def normalise_dataset(data: ArrayLike):
