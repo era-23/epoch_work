@@ -5,16 +5,18 @@ import warnings
 import ml_utils
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.stats import sem
 from sklearn.model_selection import RepeatedKFold
 
 from aeon.datasets import load_cardano_sentiment, load_covid_3month
 from aeon.transformations.collection import Normalizer
 
-from sklearn.metrics import r2_score, root_mean_squared_error
+from sklearn.metrics import root_mean_squared_error
+
+import logging
 
 warnings.filterwarnings("ignore")
-
-unequal_length_estimators = ["catch22", "knn", "rdst"]
+logger = logging.getLogger(__name__)
 
 def demo():
     covid_train, covid_train_y = load_covid_3month(split="train")
@@ -28,11 +30,15 @@ def demo():
 
 def regress(
         directory : Path,
-        inputSpectrum : str,
+        inputSpectrumName : str,
         outputFields : list,
         logFields : list,
+        algorithms : list,
+        cvFolds : int,
+        cvRepeats : int,
         normalise : bool = True
 ):
+    logging.basicConfig(filename='aeon_tsc.log', level=logging.INFO)
 
     # Initialise results object
     results = ml_utils.GPResults()
@@ -46,26 +52,49 @@ def regress(
     results.directory = str(directory.resolve())
 
     # Input data
-    inputs = {inputSpectrum : []}
-    inputs = ml_utils.read_data(data_files, inputs, with_names = False, with_coords = False)
-    results.inputNames = [inputSpectrum]
+    inputs = {inputSpectrumName : []}
+    inputs = ml_utils.read_data(data_files, inputs, with_names = True, with_coords = True)
+    results.inputNames = [inputSpectrumName]
 
     # Output data
     outputs = {outputField : [] for outputField in outputFields}
     outputs = ml_utils.read_data(data_files, outputs, with_names = False, with_coords = False)
     results.outputNames = outputFields
 
+    if "B0angle" in outputs:
+        transf = np.array(outputs["B0angle"])
+        outputs["B0angle"] = np.abs(transf - 90.0) 
+
     specs = list(inputs.values())[0]
+    spec_lengths = [len(s) for s in specs]
+    min_l = np.min(spec_lengths)
+    print(f"Max spec length: {np.max(spec_lengths)} min spec length: {min_l}")
+    max_coords = [c[-1] for c in inputs[f"{inputSpectrumName}_coords"]]
+    max_common_coord = np.min(max_coords)
+    for i in range(len(specs)):
+        if len(specs[i]) > min_l:
+            truncd_series, truncd_coords = ml_utils.truncate_series(specs[i], inputs[f"{inputSpectrumName}_coords"][i], max_common_coord)
+            resamp_series, _ = ml_utils.downsample_series(truncd_series, truncd_coords, min_l, f"run_{inputs['sim_ids'][i]}")
+            specs[i] = resamp_series
+
+    # Reshape into column vectors
     inputSpectra = [np.reshape(a, (1,-1)) for a in specs]
     # outputs = np.array(list(outputs.values()))
 
     logFields = np.intersect1d(outputFields, logFields)
+    denormalisation_parameters = dict.fromkeys(outputFields)
     if normalise:
         for field, vals in outputs.items():
+            # print(f"orig mean: {np.mean(vals)}")
+            # print(f"orig SD: {np.std(vals)}")
             if field in logFields:
-                outputs[field] = ml_utils.normalise_1D(np.log10(vals))
+                # print(f"orig log mean: {np.mean(np.log10(vals))}")
+                # print(f"orig log SD: {np.std(np.log10(vals))}")
+                outputs[field], mean, sd = ml_utils.normalise_1D(vals, doLog = True)
             else:
-                outputs[field] = ml_utils.normalise_1D(vals)
+                outputs[field], mean, sd = ml_utils.normalise_1D(vals)
+            denormalisation_parameters[field] = (mean, sd)
+            print(f"1.0 in normalised RMSE units is {ml_utils.denormalise_rmse(1.0, sd)} in original {field} units.")
         
         print(f"out mean: {np.mean(list(outputs.values()))}, out std: {np.std(list(outputs.values()))}")
 
@@ -81,34 +110,51 @@ def regress(
             outputs[field] = np.log10(outputs[field])
 
     for output_field, output_values in outputs.items():
-        print(f"Building model for {output_field} from {inputSpectrum}....")
+        
         assert len(output_values) == len(inputSpectra)
         case_indices = np.arange(len(output_values))
         output_values = np.array(output_values)
+        rkf = RepeatedKFold(n_splits=cvFolds, n_repeats=cvRepeats)
+        tt_split = list(enumerate(rkf.split(case_indices)))
+        
+        for algorithm in algorithms:
+            print(f"Building {algorithm} model for {output_field} from {inputSpectrumName}....")
+            tsr = ml_utils.get_algorithm(algorithm)
 
-        knn = ml_utils.get_algorithm("aeon.KNeighborsTimeSeriesRegressor")
+            # Repeated K Folds
+            all_R2s = []
+            all_test_points = []
+            all_predictions = []
+            
+            for fold, (train, test) in tt_split:
+                print(f"Fold: {fold}....")
+                # print(f"    Train indices: {train}")
+                # print(f"    Test indices:  {test}")
 
-        # Repeated K Folds
-        rkf = RepeatedKFold(n_splits=5, n_repeats=1)
-        for fold, (train, test) in enumerate(rkf.split(case_indices)):
-            print(f"Fold: {fold}....")
-            print(f"    Train indices: {train}")
-            print(f"    Test indices:  {test}")
+                train_x = [inputSpectra[t] for t in train]
+                train_y = output_values[train]
+                test_x = [inputSpectra[t] for t in test]
+                test_y = output_values[test]
 
-            train_x = [inputSpectra[t] for t in train]
-            train_y = output_values[train]
-            test_x = [inputSpectra[t] for t in test]
-            test_y = output_values[test]
+                print("    Training model....")
+                tsr.fit(train_x, train_y)
+                predictions = tsr.predict(test_x)
+                print(f"    Predictions:  {predictions}")
+                print(f"    Ground truth: {test_y}")
+                score = tsr.score(test_x, test_y, metric='r2')
+                all_R2s.append(score)
+                skl_rmse = root_mean_squared_error(test_y, predictions)
+                print(f"    knn r2:       {score}")
+                print(f"    sklearn rmse: {skl_rmse} (actuals S.D.: {np.std(test_y)})")
 
-            print("    Training model....")
-            knn.fit(train_x, train_y)
-            predictions = knn.predict(test_x)
-            print(f"    Predictions:  {predictions}")
-            print(f"    Ground truth: {test_y}")
-            score = knn.score(test_x, test_y)
-            skl_rmse = root_mean_squared_error(test_y, predictions)
-            print(f"    knn r2:       {score}")
-            print(f"    sklearn rmse: {skl_rmse} (actuals S.D.: {np.std(test_y)})")
+                all_test_points.extend(test_y.tolist())
+                all_predictions.extend(list(predictions))
+            rmse, _, rmse_se = ml_utils.root_mean_squared_error(all_predictions, all_test_points)
+            summary_str = f"{output_field} -- {algorithm}: Mean r2 = {np.mean(all_R2s):.5f}+-{sem(all_R2s):.5f}, mean RMSE: {rmse:.5f}+-{rmse_se:.5f}"
+            print("--------------------------------------------------------------------------------------------------------------------------")
+            print(summary_str)
+            logger.info(summary_str)
+            print("--------------------------------------------------------------------------------------------------------------------------")
 
 if __name__ == "__main__":
     
@@ -143,8 +189,30 @@ if __name__ == "__main__":
         type=str,
         nargs="*"
     )
+    parser.add_argument(
+        "--algorithms",
+        action="store",
+        help="Algorithms to test.",
+        required = True,
+        type=str,
+        nargs="*"
+    )
+    parser.add_argument(
+        "--cvFolds",
+        action="store",
+        help="Number of folds to use in k-folds cross-validation.",
+        required = True,
+        type=int
+    )
+    parser.add_argument(
+        "--cvRepeats",
+        action="store",
+        help="Number of repeats to use in k-folds cross-validation.",
+        required = True,
+        type=int
+    )
 
     args = parser.parse_args()
 
-    regress(args.dir, args.inputSpectrum, args.outputFields, args.logFields)
+    regress(args.dir, args.inputSpectrum, args.outputFields, args.logFields, args.algorithms, args.cvFolds, args.cvRepeats)
     # demo()

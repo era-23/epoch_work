@@ -1,3 +1,5 @@
 .venv/
 /Data/*
 .vscode/launch.json
+.virtualenvs/
+Epoch_analysis/aeon_tsc.log

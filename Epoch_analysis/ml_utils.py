@@ -3,10 +3,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import itertools
 import csv
-import GPy
+
 from scipy.stats import norm
 from scipy.interpolate import griddata
-from scipy.signal import find_peaks
+from scipy.signal import find_peaks, decimate, resample, resample_poly
 import xarray as xr
 from inference.plotting import matrix_plot
 from sklearn.gaussian_process import GaussianProcessRegressor, GaussianProcessClassifier
@@ -37,6 +37,8 @@ import aeon.regression.feature_based as aeon_feature
 import aeon.regression.shapelet_based as aeon_shapelet
 import aeon.regression.convolution_based as aeon_conv
 import aeon.regression.hybrid as aeon_hybrid
+import aeon.regression.deep_learning as aeon_deep
+import aeon.regression as aeon_reg
 
 @dataclass
 class GPModel:
@@ -45,7 +47,7 @@ class GPModel:
     normalisedInputs : np.ndarray
     outputName : str
     output : np.ndarray
-    regressionModel : GaussianProcessRegressor | GPy.models.GPCoregionalizedRegression | GPy.models.GPMultioutRegression = None
+    regressionModel : GaussianProcessRegressor = None
     classificationModel : GaussianProcessClassifier = None
     modelParams : dict = None
     fitSuccess : bool = None
@@ -263,44 +265,68 @@ def get_algorithm(name, **kwargs):
             return skt_int.TimeSeriesForestRegressor(kwargs)
         case "sktime.ComposableTimeSeriesForestRegressor":
             return skt_compose.ComposableTimeSeriesForestRegressor(kwargs)
+    # AEON
+    # Unequal length data series
+        case "aeon.Catch22Regressor":
+            return aeon_feature.Catch22Regressor()
+        case "aeon.DummyRegressor":
+            return aeon_reg.DummyRegressor()
+        case "aeon.KNeighborsTimeSeriesRegressor":
+            return aeon_dist.KNeighborsTimeSeriesRegressor()
+        case "aeon.RDSTRegressor":
+            return aeon_shapelet.RDSTRegressor()
+    # Multivariate
         case "aeon.CanonicalIntervalForestRegressor":
             return aeon_int.CanonicalIntervalForestRegressor()
         case "aeon.DrCIFRegressor":
             return aeon_int.DrCIFRegressor()
+        case "aeon.FCNRegressor":
+            return aeon_deep.FCNRegressor()
+        case "aeon.FreshPRINCERegressor":
+            return aeon_feature.FreshPRINCERegressor()
+        case "aeon.HydraRegressor":
+            return aeon_conv.HydraRegressor()
+        case "aeon.InceptionTimeRegressor":
+            return aeon_deep.InceptionTimeRegressor()
+        case "aeon.IndividualInceptionRegressor":
+            return aeon_deep.IndividualInceptionRegressor()
+        case "aeon.IndividualLITERegressor":
+            return aeon_deep.IndividualLITERegressor()
         case "aeon.IntervalForestRegressor":
             return aeon_int.IntervalForestRegressor()
+        case "aeon.LITETimeRegressor":
+            return aeon_deep.LITETimeRegressor()
+        case "aeon.MLPRegressor":
+            return aeon_deep.MLPRegressor()
+        case "aeon.MiniRocketRegressor":
+            return aeon_conv.MiniRocketRegressor()
+        case "aeon.MultiRocketHydraRegressor":
+            return aeon_conv.MultiRocketHydraRegressor()
+        case "aeon.MultiRocketRegressor":
+            return aeon_conv.MultiRocketRegressor()
+        case "aeon.QUANTRegressor":
+            return aeon_int.QUANTRegressor()
+        case "aeon.RISTRegressor":
+            return aeon_hybrid.RISTRegressor()
         case "aeon.RandomIntervalRegressor":
             return aeon_int.RandomIntervalRegressor()
         case "aeon.RandomIntervalSpectralEnsembleRegressor":
             return aeon_int.RandomIntervalSpectralEnsembleRegressor()
-        case "aeon.TimeSeriesForestRegressor":
-            return aeon_int.TimeSeriesForestRegressor()
-        case "aeon.QUANTRegressor":
-            return aeon_int.QUANTRegressor()
-        case "aeon.KNeighborsTimeSeriesRegressor":
-            return aeon_dist.KNeighborsTimeSeriesRegressor()
-        case "aeon.Catch22Regressor":
-            return aeon_feature.Catch22Regressor()
+        case "aeon.ResNetRegressor":
+            return aeon_deep.ResNetRegressor()
+        case "aeon.RocketRegressor":
+            return aeon_conv.RocketRegressor()
         case "aeon.SummaryRegressor":
             return aeon_feature.SummaryRegressor()
         case "aeon.TSFreshRegressor":
             return aeon_feature.TSFreshRegressor()
-        case "aeon.FreshPRINCERegressor":
-            return aeon_feature.FreshPRINCERegressor()
-        case "aeon.RDSTRegressor":
-            return aeon_shapelet.RDSTRegressor()
-        case "aeon.HydraRegressor":
-            return aeon_conv.HydraRegressor()
-        case "aeon.RocketRegressor":
-            return aeon_conv.RocketRegressor()
-        case "aeon.MiniRocketRegressor":
-            return aeon_conv.MiniRocketRegressor()
-        case "aeon.MultiRocketRegressor":
-            return aeon_conv.MultiRocketRegressor()
-        case "aeon.MultiRocketHydraRegressor":
-            return aeon_conv.MultiRocketHydraRegressor()
-        case "aeon.RISTRegressor":
-            return aeon_hybrid.RISTRegressor()
+        case "aeon.TimeCNNRegressor":
+            return aeon_deep.TimeCNNRegressor()
+        case "aeon.TimeSeriesForestRegressor":
+            return aeon_int.TimeSeriesForestRegressor()
+    # Univariate
+        case "aeon.DisjointCNNRegressor":
+            return aeon_deep.DisjointCNNRegressor()
 
 def read_data(dataFiles, data_dict : dict, with_names : bool = False, with_coords : bool = False) -> dict:
     
@@ -326,7 +352,7 @@ def read_data(dataFiles, data_dict : dict, with_names : bool = False, with_coord
             if fieldName in data[group].attrs.keys():
                 data_dict[fieldPath].append(data[group].attrs[fieldName])
             else:
-                data_dict[fieldPath].append(data[group].variables[fieldName].values)
+                data_dict[fieldPath].append(data[group].variables[fieldName].values.astype('float64'))
                 # Get coordinates if requested
                 if with_coords:
                     dimCoordsKey = fieldPath + "_coords"
@@ -352,13 +378,48 @@ def read_data(dataFiles, data_dict : dict, with_names : bool = False, with_coord
 
     return data_dict
 
+def downsample_series(series : ArrayLike, coords : ArrayLike, numSamples : int, signalName : str = None):
+
+    print(f"Resampling signal from {len(series)} to {numSamples}....")
+
+    resampled_signal = resample(series, numSamples)
+    res_coords = np.linspace(coords[0], coords[-1], len(resampled_signal))
+    print(f"Resampled signal length: {len(resampled_signal)}")
+
+    plt.plot(coords, series, label = "original")
+    plt.plot(res_coords, resampled_signal, label = "resampled")
+    plt.legend()
+    plt.title(signalName)
+    plt.savefig(f"/home/era536/Documents/Epoch/Data/irb_ml_dataset/spectra_homogenisation/{signalName}.png")
+    plt.clf()
+
+    return resampled_signal, res_coords
+
+
+def truncate_series(series : ArrayLike, seriesCoordinates : ArrayLike, maxCoordinate : float):
+
+    print(f"Truncting signal from maximum coordinate of {seriesCoordinates[-1]} to first {maxCoordinate}....")
+
+    cutoffIndex = np.searchsorted(seriesCoordinates, maxCoordinate)
+    truncatedSeries = series[:cutoffIndex]
+    truncatedCoords = seriesCoordinates[:cutoffIndex]
+
+    return truncatedSeries, truncatedCoords
+
 # Normalise a 1D signal
-def normalise_1D(data: ArrayLike):
+def normalise_1D(data: ArrayLike, doLog : bool = False):
     if isinstance(data, list):
         data = np.array(data)
-    mean = np.mean(data)
-    sd = np.std(data)
-    return (data - mean) / sd
+    orig_mean = np.mean(data)
+    orig_sd = np.std(data)
+    if doLog:
+        data = np.log10(data)
+        mean = np.mean(data)
+        sd = np.std(data)
+    else:
+        mean = orig_mean
+        sd = orig_sd
+    return (data - mean) / sd, orig_mean, orig_sd
 
 # Normalises data row-wise (mean and sd taken row-wise)
 def normalise_dataset(data: ArrayLike):
@@ -385,6 +446,11 @@ def denormalise_datapoint(datapoint : float, orig_mean : float, orig_sd : float,
     denormed = (datapoint * orig_sd) + orig_mean
     if unlog:
         denormed = 10**denormed
+    return  denormed
+
+# Denormalises an RMSE value
+def denormalise_rmse(rmseValue : float, orig_sd : float):
+    denormed = rmseValue * orig_sd
     return  denormed
 
 def read_spectral_features_from_csv(csvFile : Path) -> list:
@@ -505,7 +571,7 @@ def plot_three_dimensions(input_1_index : int, input_2_index : int, gpModel : GP
             gp_test_values[:,column] = mean
 
     # Training data
-    fig = plt.figure(figsize=(10, 8))
+    _ = plt.figure(figsize=(10, 8))
     #ax = fig.add_subplot(projection='3d')
     #ax.set_xlabel('\n' + fieldNameToText(gpModel.inputNames[input_1_index]))
     #ax.set_ylabel('\n' + fieldNameToText(gpModel.inputNames[input_2_index]))
