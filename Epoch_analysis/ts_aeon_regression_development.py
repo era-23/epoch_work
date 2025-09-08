@@ -5,6 +5,7 @@ import warnings
 import ml_utils
 import matplotlib.pyplot as plt
 import numpy as np
+import csv
 from scipy.stats import sem
 from sklearn.model_selection import RepeatedKFold
 
@@ -15,8 +16,8 @@ from sklearn.metrics import root_mean_squared_error
 
 import logging
 
-warnings.filterwarnings("ignore")
 logger = logging.getLogger(__name__)
+warnings.filterwarnings("ignore")
 
 def demo():
     covid_train, covid_train_y = load_covid_3month(split="train")
@@ -36,30 +37,34 @@ def regress(
         algorithms : list,
         cvFolds : int,
         cvRepeats : int,
-        normalise : bool = True
+        normalise : bool = True,
+        resultsFilepath = None
 ):
     logging.basicConfig(filename='aeon_tsc.log', level=logging.INFO)
 
     # Initialise results object
-    results = ml_utils.GPResults()
-    results.gpPackage = "Aeon"
+    battery = ml_utils.TSRBattery()
+    battery.package = "Aeon"
 
     if directory.name != "data":
         data_dir = directory / "data"
     else:
         data_dir = directory
     data_files = glob.glob(str(data_dir / "*.nc")) 
-    results.directory = str(directory.resolve())
+    battery.directory = str(directory.resolve())
+    battery.algorithms = algorithms
+    battery.normalised = normalise
 
     # Input data
     inputs = {inputSpectrumName : []}
     inputs = ml_utils.read_data(data_files, inputs, with_names = True, with_coords = True)
-    results.inputNames = [inputSpectrumName]
+    battery.inputSpectra = np.array([inputSpectrumName])
 
     # Output data
     outputs = {outputField : [] for outputField in outputFields}
     outputs = ml_utils.read_data(data_files, outputs, with_names = False, with_coords = False)
-    results.outputNames = outputFields
+    battery.outputFields = np.array(outputFields)
+    battery.numOutputs = len(outputs.keys())
 
     if "B0angle" in outputs:
         transf = np.array(outputs["B0angle"])
@@ -77,12 +82,15 @@ def regress(
             resamp_series, _ = ml_utils.downsample_series(truncd_series, truncd_coords, min_l, f"run_{inputs['sim_ids'][i]}")
             specs[i] = resamp_series
 
-    # Reshape into column vectors
-    inputSpectra = [np.reshape(a, (1,-1)) for a in specs]
+    # Reshape into 3D numpy array of shape (n_cases, n_channels, n_timepoints)
+    inputSpectra = np.array([np.reshape(a, (1,-1)) for a in specs])
     # outputs = np.array(list(outputs.values()))
 
     logFields = np.intersect1d(outputFields, logFields)
+    battery.logFields = np.array(logFields)
     denormalisation_parameters = dict.fromkeys(outputFields)
+    battery.original_output_means = dict.fromkeys(outputFields)
+    battery.original_output_stdevs = dict.fromkeys(outputFields)
     if normalise:
         for field, vals in outputs.items():
             # print(f"orig mean: {np.mean(vals)}")
@@ -93,6 +101,8 @@ def regress(
                 outputs[field], mean, sd = ml_utils.normalise_1D(vals, doLog = True)
             else:
                 outputs[field], mean, sd = ml_utils.normalise_1D(vals)
+            battery.original_output_means[field] = mean
+            battery.original_output_stdevs[field] = sd
             denormalisation_parameters[field] = (mean, sd)
             print(f"1.0 in normalised RMSE units is {ml_utils.denormalise_rmse(1.0, sd)} in original {field} units.")
         
@@ -109,9 +119,20 @@ def regress(
         for field in logFields:
             outputs[field] = np.log10(outputs[field])
 
+    battery.equalLengthTimeseries = True
+    battery.numObservations = inputSpectra.shape[0]
+    battery.numInputDimensions = inputSpectra.shape[1]
+    battery.numTimepointsIfEqual = inputSpectra.shape[2]
+    battery.multivariate = battery.numInputDimensions > 1
+
+    battery.cvStrategy = "RepeatedKFolds"
+    battery.cvFolds = cvFolds
+    battery.cvRepeats = cvRepeats
+    battery.results = []
+
     for output_field, output_values in outputs.items():
         
-        assert len(output_values) == len(inputSpectra)
+        assert len(output_values) == inputSpectra.shape[0]
         case_indices = np.arange(len(output_values))
         output_values = np.array(output_values)
         rkf = RepeatedKFold(n_splits=cvFolds, n_repeats=cvRepeats)
@@ -119,6 +140,12 @@ def regress(
         
         for algorithm in algorithms:
             print(f"Building {algorithm} model for {output_field} from {inputSpectrumName}....")
+            
+            # Results
+            result = ml_utils.TSRResult()
+            result.output = output_field
+            result.algorithm = algorithm
+            
             tsr = ml_utils.get_algorithm(algorithm)
 
             # Repeated K Folds
@@ -149,12 +176,22 @@ def regress(
 
                 all_test_points.extend(test_y.tolist())
                 all_predictions.extend(list(predictions))
-            rmse, _, rmse_se = ml_utils.root_mean_squared_error(all_predictions, all_test_points)
+            rmse, rmse_var, rmse_se = ml_utils.root_mean_squared_error(all_predictions, all_test_points)
             summary_str = f"{output_field} -- {algorithm}: Mean r2 = {np.mean(all_R2s):.5f}+-{sem(all_R2s):.5f}, mean RMSE: {rmse:.5f}+-{rmse_se:.5f}"
             print("--------------------------------------------------------------------------------------------------------------------------")
             print(summary_str)
             logger.info(summary_str)
             print("--------------------------------------------------------------------------------------------------------------------------")
+            result.cvR2_mean = np.mean(all_R2s)
+            result.cvR2_var = np.var(all_R2s)
+            result.cvR2_stderr = sem(all_R2s)
+            result.cvRMSE_mean = rmse
+            result.cvRMSE_var = rmse_var
+            result.cvRMSE_stderr = rmse_se
+
+            battery.results.append(result)
+    
+    ml_utils.write_ML_result_to_file(battery, resultsFilepath)
 
 if __name__ == "__main__":
     
@@ -211,8 +248,15 @@ if __name__ == "__main__":
         required = True,
         type=int
     )
+    parser.add_argument(
+        "--resultsFilepath",
+        action="store",
+        help="Filepath of csv to which to write results.",
+        required = False,
+        type=Path
+    )
 
     args = parser.parse_args()
 
-    regress(args.dir, args.inputSpectrum, args.outputFields, args.logFields, args.algorithms, args.cvFolds, args.cvRepeats)
+    regress(args.dir, args.inputSpectrum, args.outputFields, args.logFields, args.algorithms, args.cvFolds, args.cvRepeats, resultsFilepath=args.resultsFilepath)
     # demo()

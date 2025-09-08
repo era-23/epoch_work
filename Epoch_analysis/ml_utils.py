@@ -6,7 +6,7 @@ import csv
 
 from scipy.stats import norm
 from scipy.interpolate import griddata
-from scipy.signal import find_peaks, decimate, resample, resample_poly
+from scipy.signal import find_peaks, resample
 import xarray as xr
 from inference.plotting import matrix_plot
 from sklearn.gaussian_process import GaussianProcessRegressor, GaussianProcessClassifier
@@ -90,6 +90,39 @@ class GPResults:
     gpPackage : str = None
     model : dict = None
     fitSuccess : bool = False
+
+@dataclass
+class TSRBattery:
+    directory : str = None
+    package : str = None
+    inputSpectra : ArrayLike = None
+    outputFields : ArrayLike = None
+    logFields : ArrayLike = None
+    algorithms : ArrayLike = None
+    normalised : bool = False
+    numObservations : int = 0
+    numOutputs : int = 0
+    numInputDimensions : int = 0
+    numTimepointsIfEqual : int = 0
+    equalLengthTimeseries = True
+    multivariate : bool = False
+    original_output_means : dict = None
+    original_output_stdevs : dict = None
+    cvStrategy : str = None
+    cvFolds : int = 0
+    cvRepeats : int = 0
+    results : ArrayLike = None
+    
+@dataclass
+class TSRResult:
+    algorithm : str = None
+    output : str = None
+    cvR2_mean : float = 0.0
+    cvR2_var : float = 0.0
+    cvR2_stderr : float = 0.0
+    cvRMSE_mean : float = 0.0
+    cvRMSE_var : float = 0.0
+    cvRMSE_stderr : float = 0.0
 
 @dataclass
 class SimulationMetadata:
@@ -491,7 +524,7 @@ def write_spectral_features_to_csv(csvFile : Path, featureSet : list):
         for instance in featureSet:
             writer.writerow(instance.__dict__)
 
-def __encode_GP_result_to_JSON_dict(result : GPResults) -> str:
+def __encode_ML_result_to_JSON_dict(result : GPResults | TSRBattery) -> str:
     results_dict = dc.asdict(result)
     for name, val in results_dict.items():
         if isinstance(val, np.ndarray):
@@ -502,9 +535,9 @@ def __encode_GP_result_to_JSON_dict(result : GPResults) -> str:
                     val[name2] = val2.tolist()
     return results_dict
 
-def write_GP_result_to_file(result : GPResults, filepath : Path):
+def write_ML_result_to_file(result : GPResults | TSRBattery, filepath : Path):
     with open(filepath, "w", encoding='utf-8') as f:
-        result_json = __encode_GP_result_to_JSON_dict(result)
+        result_json = __encode_ML_result_to_JSON_dict(result)
         json.dump(result_json, f, ensure_ascii=False, indent=4)
 
 def anim_init(fig, ax, xx, yy, zz):

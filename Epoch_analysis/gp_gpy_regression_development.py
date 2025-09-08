@@ -442,8 +442,8 @@ def regress(
         # epoch_utils.my_matrix_plot(data_series=[good_points, bad_points], series_labels=["Simulations perdicted better by GP", "Simulations predicted worse by GP"], parameter_labels=output_names, plot_style="hdi", equalise_pdf_heights=False, filename="/home/era536/Documents/for_discussion/2025.08.07/R2_matrix.png")
 
     if writeToFile:
-        savepath = directory / f"gp_results__package_GPy__outputs_{'-'.join(output_feature_names)}__kernels_{'-'.join(kernel_names)}__Wrank_{wRank}.json"
-        ml_utils.write_GP_result_to_file(results, savepath)
+        savepath = directory / "GPy" / f"gp_results__package_GPy__outputs_{'-'.join(output_feature_names)}__kernels_{'-'.join(kernel_names)}__Wrank_{wRank}.json"
+        ml_utils.write_ML_result_to_file(results, savepath)
         
 
 def evaluate_model_loo(model : GPy.Model, kernel_names, output_names):
