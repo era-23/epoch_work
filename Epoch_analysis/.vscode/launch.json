@@ -13,10 +13,10 @@
             "args": ["--dir", "/home/era536/Documents/Epoch/Data/run_23"]
         },
         {
-            "name": "Python Debugger: TSC -- Aeon Development",
+            "name": "Python Debugger: TSR -- Aeon Development",
             "type": "debugpy",
             "request": "launch",
-            "program": "tsc_aeon_regression_development.py",
+            "program": "ts_aeon_regression_development.py",
             "console": "integratedTerminal",
             "justMyCode": false,
             "args": [
@@ -25,9 +25,9 @@
                     "Magnetic_Field_Bz/power/powerByFrequency",
                     ///// Simulation parameters
                 "--outputFields",
-                    "B0strength", 
-                    "B0angle", 
-                    "backgroundDensity", 
+                    // "B0strength", 
+                    // "B0angle", 
+                    // "backgroundDensity", 
                     "beamFraction",
                 "--logFields",
                     "backgroundDensity", 
@@ -39,16 +39,16 @@
                     // "aeon.Catch22Regressor",
                     // "aeon.RISTRegressor",
                     // "aeon.TSFreshRegressor",
-                    "aeon.HydraRegressor",
+                    // "aeon.HydraRegressor",
                     // "aeon.DrCIFRegressor",
                     // "aeon.TimeSeriesForestRegressor",
-                    // "aeon.FreshPRINCERegressor",
+                    "aeon.FreshPRINCERegressor",
                     // "aeon.RocketRegressor",
-                    "aeon.MultiRocketHydraRegressor",
+                    // "aeon.MultiRocketHydraRegressor",
                 "--cvFolds",
                     "3",
                 "--cvRepeats",
-                    "2",
+                    "1",
                 "--resultsFilepath",
                     "/home/era536/Documents/Epoch/Data/irb_ml_dataset/tsr/battery.json"
             ]

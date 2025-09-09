@@ -411,7 +411,7 @@ def read_data(dataFiles, data_dict : dict, with_names : bool = False, with_coord
 
     return data_dict
 
-def downsample_series(series : ArrayLike, coords : ArrayLike, numSamples : int, signalName : str = None):
+def downsample_series(series : ArrayLike, coords : ArrayLike, numSamples : int, signalName : str = None, savedir : Path = None):
 
     print(f"Resampling signal from {len(series)} to {numSamples}....")
 
@@ -419,12 +419,13 @@ def downsample_series(series : ArrayLike, coords : ArrayLike, numSamples : int, 
     res_coords = np.linspace(coords[0], coords[-1], len(resampled_signal))
     print(f"Resampled signal length: {len(resampled_signal)}")
 
-    plt.plot(coords, series, label = "original")
-    plt.plot(res_coords, resampled_signal, label = "resampled")
-    plt.legend()
-    plt.title(signalName)
-    plt.savefig(f"/home/era536/Documents/Epoch/Data/irb_ml_dataset/spectra_homogenisation/{signalName}.png")
-    plt.clf()
+    if savedir is not None:
+        plt.plot(coords, series, label = "original")
+        plt.plot(res_coords, resampled_signal, label = "resampled")
+        plt.legend()
+        plt.title(signalName)
+        plt.savefig(savedir / f"{signalName}.png")
+        plt.clf()
 
     return resampled_signal, res_coords
 

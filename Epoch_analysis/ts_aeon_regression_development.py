@@ -1,5 +1,6 @@
 import argparse
 import glob
+import os
 from pathlib import Path
 import warnings
 import ml_utils
@@ -76,10 +77,12 @@ def regress(
     print(f"Max spec length: {np.max(spec_lengths)} min spec length: {min_l}")
     max_coords = [c[-1] for c in inputs[f"{inputSpectrumName}_coords"]]
     max_common_coord = np.min(max_coords)
+    if not os.path.exists(directory / "spectra_homogenisation/"):
+        os.mkdir(directory / "spectra_homogenisation/")
     for i in range(len(specs)):
         if len(specs[i]) > min_l:
             truncd_series, truncd_coords = ml_utils.truncate_series(specs[i], inputs[f"{inputSpectrumName}_coords"][i], max_common_coord)
-            resamp_series, _ = ml_utils.downsample_series(truncd_series, truncd_coords, min_l, f"run_{inputs['sim_ids'][i]}")
+            resamp_series, _ = ml_utils.downsample_series(truncd_series, truncd_coords, min_l, f"run_{inputs['sim_ids'][i]}", directory / "spectra_homogenisation/")
             specs[i] = resamp_series
 
     # Reshape into 3D numpy array of shape (n_cases, n_channels, n_timepoints)
