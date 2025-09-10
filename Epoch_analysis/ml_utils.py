@@ -19,16 +19,16 @@ from SALib import ProblemSpec
 import SALib.sample as salsamp
 
 # Sktime algorithms
-import sktime.clustering.dbscan as skt_dbscan
-import sktime.clustering.k_means  as skt_kmeans
-import sktime.clustering.k_medoids  as skt_kmedoids
-import sktime.clustering.k_shapes  as skt_kshapes
-import sktime.clustering.kernel_k_means as skt_kernelmeans
-import sktime.regression.deep_learning as skt_deep
-import sktime.regression.distance_based as skt_dist
-import sktime.regression.interval_based as skt_int
-import sktime.regression.kernel_based as skt_kernel
-import sktime.regression.compose as skt_compose
+# import sktime.clustering.dbscan as skt_dbscan
+# import sktime.clustering.k_means  as skt_kmeans
+# import sktime.clustering.k_medoids  as skt_kmedoids
+# import sktime.clustering.k_shapes  as skt_kshapes
+# import sktime.clustering.kernel_k_means as skt_kernelmeans
+# import sktime.regression.deep_learning as skt_deep
+# import sktime.regression.distance_based as skt_dist
+# import sktime.regression.interval_based as skt_int
+# import sktime.regression.kernel_based as skt_kernel
+# import sktime.regression.compose as skt_compose
 
 # Aeon algorithms
 import aeon.regression.interval_based as aeon_int
@@ -254,50 +254,50 @@ fieldNameToText_dict = {
 
 def get_algorithm(name, **kwargs):
     match name:
-        case "sktime.TimeSeriesDBSCAN":
-            return skt_dbscan.TimeSeriesDBSCAN(kwargs["distance"])
-        case "sktime.TimeSeriesKMeans":
-            return skt_kmeans.TimeSeriesKMeans(kwargs["n_clusters"])
-        case "sktime.TimeSeriesKMeansTslearn":
-            return skt_kmeans.TimeSeriesKMeansTslearn(kwargs["n_clusters"])
-        case "sktime.TimeSeriesKMedoids": 
-            return skt_kmedoids.TimeSeriesKMedoids(kwargs["n_clusters"])
-        case "sktime.TimeSeriesKShapes":
-            return skt_kshapes.TimeSeriesKShapes(kwargs["n_clusters"])
-        case "sktime.TimeSeriesKernelKMeans":
-            return skt_kernelmeans.TimeSeriesKernelKMeans(kwargs["n_clusters"])
-        case "sktime.CNNRegressor":
-            return skt_deep.CNNRegressor(kwargs)
-        case "sktime.CNTCRegressor": 
-            return skt_deep.CNTCRegressor(kwargs)
-        case "sktime.FCNRegressor":
-            return skt_deep.FCNRegressor(kwargs)
-        case "sktime.InceptionTimeRegressor":
-            return skt_deep.InceptionTimeRegressor(kwargs)
-        case "sktime.KNeighborsTimeSeriesRegressor":
-            return skt_dist.KNeighborsTimeSeriesRegressor(n_neighbors=kwargs["n_neighbours"], distance=kwargs["distance"])
-        case "sktime.LSTMFCNRegressor":
-            return skt_deep.LSTMFCNRegressor(kwargs)
-        case "sktime.MACNNRegressor":
-            return skt_deep.MACNNRegressor(kwargs)
-        case "sktime.MCDCNNRegressor": 
-            return skt_deep.MCDCNNRegressor(kwargs)
-        case "sktime.MLPRegressor":
-            return skt_deep.MLPRegressor(kwargs)
-        case "sktime.ResNetRegressor": 
-            return skt_deep.ResNetRegressor(kwargs)
-        case "sktime.RocketRegressor":
-            return skt_kernel.RocketRegressor(kwargs)
-        case "sktime.SimpleRNNRegressor":
-            return skt_deep.SimpleRNNRegressor(kwargs)
-        case "sktime.TapNetRegressor":
-            return skt_deep.TapNetRegressor(kwargs)
-        case "sktime.TimeSeriesSVRTslearn":
-            return skt_kernel.TimeSeriesSVRTslearn(kwargs)
-        case "sktime.TimeSeriesForestRegressor":
-            return skt_int.TimeSeriesForestRegressor(kwargs)
-        case "sktime.ComposableTimeSeriesForestRegressor":
-            return skt_compose.ComposableTimeSeriesForestRegressor(kwargs)
+        # case "sktime.TimeSeriesDBSCAN":
+        #     return skt_dbscan.TimeSeriesDBSCAN(kwargs["distance"])
+        # case "sktime.TimeSeriesKMeans":
+        #     return skt_kmeans.TimeSeriesKMeans(kwargs["n_clusters"])
+        # case "sktime.TimeSeriesKMeansTslearn":
+        #     return skt_kmeans.TimeSeriesKMeansTslearn(kwargs["n_clusters"])
+        # case "sktime.TimeSeriesKMedoids": 
+        #     return skt_kmedoids.TimeSeriesKMedoids(kwargs["n_clusters"])
+        # case "sktime.TimeSeriesKShapes":
+        #     return skt_kshapes.TimeSeriesKShapes(kwargs["n_clusters"])
+        # case "sktime.TimeSeriesKernelKMeans":
+        #     return skt_kernelmeans.TimeSeriesKernelKMeans(kwargs["n_clusters"])
+        # case "sktime.CNNRegressor":
+        #     return skt_deep.CNNRegressor(kwargs)
+        # case "sktime.CNTCRegressor": 
+        #     return skt_deep.CNTCRegressor(kwargs)
+        # case "sktime.FCNRegressor":
+        #     return skt_deep.FCNRegressor(kwargs)
+        # case "sktime.InceptionTimeRegressor":
+        #     return skt_deep.InceptionTimeRegressor(kwargs)
+        # case "sktime.KNeighborsTimeSeriesRegressor":
+        #     return skt_dist.KNeighborsTimeSeriesRegressor(n_neighbors=kwargs["n_neighbours"], distance=kwargs["distance"])
+        # case "sktime.LSTMFCNRegressor":
+        #     return skt_deep.LSTMFCNRegressor(kwargs)
+        # case "sktime.MACNNRegressor":
+        #     return skt_deep.MACNNRegressor(kwargs)
+        # case "sktime.MCDCNNRegressor": 
+        #     return skt_deep.MCDCNNRegressor(kwargs)
+        # case "sktime.MLPRegressor":
+        #     return skt_deep.MLPRegressor(kwargs)
+        # case "sktime.ResNetRegressor": 
+        #     return skt_deep.ResNetRegressor(kwargs)
+        # case "sktime.RocketRegressor":
+        #     return skt_kernel.RocketRegressor(kwargs)
+        # case "sktime.SimpleRNNRegressor":
+        #     return skt_deep.SimpleRNNRegressor(kwargs)
+        # case "sktime.TapNetRegressor":
+        #     return skt_deep.TapNetRegressor(kwargs)
+        # case "sktime.TimeSeriesSVRTslearn":
+        #     return skt_kernel.TimeSeriesSVRTslearn(kwargs)
+        # case "sktime.TimeSeriesForestRegressor":
+        #     return skt_int.TimeSeriesForestRegressor(kwargs)
+        # case "sktime.ComposableTimeSeriesForestRegressor":
+        #     return skt_compose.ComposableTimeSeriesForestRegressor(kwargs)
     # AEON
     # Unequal length data series
         case "aeon.Catch22Regressor":
