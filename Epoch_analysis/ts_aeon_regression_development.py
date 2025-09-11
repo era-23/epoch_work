@@ -32,7 +32,7 @@ def demo():
 
 def regress(
         directory : Path,
-        inputSpectrumName : str,
+        inputSpectraNames : list,
         outputFields : list,
         logFields : list,
         algorithms : list,
@@ -57,9 +57,9 @@ def regress(
     battery.normalised = normalise
 
     # Input data
-    inputs = {inputSpectrumName : []}
+    inputs = {name : [] for name in inputSpectraNames}
     inputs = ml_utils.read_data(data_files, inputs, with_names = True, with_coords = True)
-    battery.inputSpectra = np.array([inputSpectrumName])
+    battery.inputSpectra = np.array(inputSpectraNames)
 
     # Output data
     outputs = {outputField : [] for outputField in outputFields}
@@ -71,19 +71,22 @@ def regress(
         transf = np.array(outputs["B0angle"])
         outputs["B0angle"] = np.abs(transf - 90.0) 
 
-    specs = list(inputs.values())[0]
-    spec_lengths = [len(s) for s in specs]
+    spec_lengths = []
+    for field in inputSpectraNames:
+        spec_lengths.extend([len(s) for s in inputs[field]])
     min_l = np.min(spec_lengths)
     print(f"Max spec length: {np.max(spec_lengths)} min spec length: {min_l}")
-    max_coords = [c[-1] for c in inputs[f"{inputSpectrumName}_coords"]]
-    max_common_coord = np.min(max_coords)
+    max_common_coord = np.max([c[-1] for c in [inputs[f"{inputSpectrumName}_coords"] for inputSpectrumName in inputSpectraNames]])
     if not os.path.exists(directory / "spectra_homogenisation/"):
         os.mkdir(directory / "spectra_homogenisation/")
-    for i in range(len(specs)):
-        if len(specs[i]) > min_l:
-            truncd_series, truncd_coords = ml_utils.truncate_series(specs[i], inputs[f"{inputSpectrumName}_coords"][i], max_common_coord)
-            resamp_series, _ = ml_utils.downsample_series(truncd_series, truncd_coords, min_l, f"run_{inputs['sim_ids'][i]}", directory / "spectra_homogenisation/")
-            specs[i] = resamp_series
+    
+    for field in inputSpectraNames:
+        specs = inputs[field]
+        for i in range(len(specs)):
+            if len(specs[i]) > min_l:
+                truncd_series, truncd_coords = ml_utils.truncate_series(specs[i], inputs[f"{field}_coords"][i], max_common_coord)
+                resamp_series, _ = ml_utils.downsample_series(truncd_series, truncd_coords, min_l, f"{field.split('/')[0]}_run_{inputs['sim_ids'][i]}", directory / "spectra_homogenisation/")
+                specs[i] = resamp_series
 
     # Reshape into 3D numpy array of shape (n_cases, n_channels, n_timepoints)
     inputSpectra = np.array([np.reshape(a, (1,-1)) for a in specs])
@@ -142,7 +145,7 @@ def regress(
         tt_split = list(enumerate(rkf.split(case_indices)))
         
         for algorithm in algorithms:
-            print(f"Building {algorithm} model for {output_field} from {inputSpectrumName}....")
+            print(f"Building {algorithm} model for {output_field} from {inputSpectraNames}....")
             
             # Results
             result = ml_utils.TSRResult()
@@ -207,11 +210,12 @@ if __name__ == "__main__":
         type=Path
     )
     parser.add_argument(
-        "--inputSpectrum",
+        "--inputSpectra",
         action="store",
-        help="Spectrum to use for TSC input.",
+        help="Spectra to use for TSC input.",
         required = True,
-        type=str
+        type=str,
+        nargs="*"
     )
     parser.add_argument(
         "--outputFields",
@@ -261,5 +265,5 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    regress(args.dir, args.inputSpectrum, args.outputFields, args.logFields, args.algorithms, args.cvFolds, args.cvRepeats, resultsFilepath=args.resultsFilepath)
+    regress(args.dir, args.inputSpectra, args.outputFields, args.logFields, args.algorithms, args.cvFolds, args.cvRepeats, resultsFilepath=args.resultsFilepath)
     # demo()
