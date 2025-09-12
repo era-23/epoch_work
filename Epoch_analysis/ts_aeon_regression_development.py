@@ -80,6 +80,7 @@ def regress(
     if not os.path.exists(directory / "spectra_homogenisation/"):
         os.mkdir(directory / "spectra_homogenisation/")
     
+    inputData = []
     for field in inputSpectraNames:
         specs = inputs[field]
         for i in range(len(specs)):
@@ -87,9 +88,10 @@ def regress(
                 truncd_series, truncd_coords = ml_utils.truncate_series(specs[i], inputs[f"{field}_coords"][i], max_common_coord)
                 resamp_series, _ = ml_utils.downsample_series(truncd_series, truncd_coords, min_l, f"{field.split('/')[0]}_run_{inputs['sim_ids'][i]}", directory / "spectra_homogenisation/")
                 specs[i] = resamp_series
+        inputData.append(specs) 
 
     # Reshape into 3D numpy array of shape (n_cases, n_channels, n_timepoints)
-    inputSpectra = np.array([np.reshape(a, (1,-1)) for a in specs])
+    inputSpectra = np.swapaxes(np.array(inputData), 0, 1)
     # outputs = np.array(list(outputs.values()))
 
     logFields = np.intersect1d(outputFields, logFields)
