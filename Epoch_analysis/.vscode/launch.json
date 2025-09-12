@@ -21,7 +21,7 @@
             "program": "ml_json_results_visualiser.py",
             "console": "integratedTerminal",
             "args": [
-                "--file", "/home/era536/Documents/Epoch/Data/irb_ml_dataset/tsr/battery.json",
+                "--file", "/home/era536/Documents/Epoch/Data/irb_ml_dataset/tsr/mv_battery.json",
                 "--plot",
             ]
         },
