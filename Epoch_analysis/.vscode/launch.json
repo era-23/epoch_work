@@ -15,6 +15,21 @@
             ]
         },
         {
+            "name": "Python Debugger: FE -- tsfresh",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "tsfresh_feature_extraction.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--dir", "/home/era536/Documents/Epoch/Data/irb_ml_dataset_2/",
+                "--inputSpectra", 
+                    "Magnetic_Field_Bz/power/powerByFrequency", 
+                    "Electric_Field_Ex/power/powerByFrequency",
+                    "Electric_Field_Ey/power/powerByFrequency",
+                "--saveFeatures",
+            ]
+        },
+        {
             "name": "Python Debugger: TSR -- Plot Results",
             "type": "debugpy",
             "request": "launch",
@@ -23,6 +38,7 @@
             "args": [
                 "--file", "/home/era536/Documents/Epoch/Data/irb_ml_dataset/tsr/mv_battery.json",
                 "--plot",
+                "--metric", "cvR2",
             ]
         },
         {

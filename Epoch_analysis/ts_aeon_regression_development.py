@@ -214,7 +214,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--inputSpectra",
         action="store",
-        help="Spectra to use for TSC input.",
+        help="Spectra to use for TSR input.",
         required = True,
         type=str,
         nargs="*"
@@ -222,7 +222,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--outputFields",
         action="store",
-        help="Fields to use for TSC output.",
+        help="Fields to use for TSR output.",
         required = True,
         type=str,
         nargs="*"
