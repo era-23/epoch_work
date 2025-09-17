@@ -15,6 +15,21 @@
             ]
         },
         {
+            "name": "Python Debugger: GP -- AutoEmulate",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "autoEmulate_development.py",
+            "console": "integratedTerminal",
+            "args": [
+                // "--dir", "/home/era536/Documents/Epoch/Data/irb_ml_dataset_2/",
+                // "--inputSpectra", 
+                //     "Magnetic_Field_Bz/power/powerByFrequency", 
+                //     "Electric_Field_Ex/power/powerByFrequency",
+                //     "Electric_Field_Ey/power/powerByFrequency",
+                // "--saveFeatures",
+            ]
+        },
+        {
             "name": "Python Debugger: FE -- tsfresh",
             "type": "debugpy",
             "request": "launch",

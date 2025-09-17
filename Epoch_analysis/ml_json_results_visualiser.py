@@ -5,6 +5,8 @@ import json
 from matplotlib import pyplot as plt
 import numpy as np
 
+import ml_utils
+
 SMALL_SIZE = 10
 MEDIUM_SIZE = 18
 BIGGER_SIZE = 24
@@ -48,6 +50,7 @@ def plotScatter(resultsDict : dict, metric : str = "cvR2"):
     if resultsDict["cvStrategy"] == "RepeatedKFolds":
         ax.set_title(f'{resultsDict["cvFolds"]}-fold CV results ({resultsDict["cvRepeats"]} repeats)')
     ax.set_xlabel('Output')
+    xLabels = [ml_utils.fieldNameToText(lab) for lab in xLabels]
     ax.set_xticks(x, xLabels)
     ax.legend(loc='upper left', ncols= 2 if len(resultsDict["algorithms"]) > 5 else 1)
     ax.set_ylim(top= 1.0 if metric == "cvR2" else np.round(np.max([v for v in barVals.values()]) + 0.2, 1))
@@ -97,6 +100,7 @@ def plotBar(resultsDict : dict, metric : str = "cvR2"):
     if resultsDict["cvStrategy"] == "RepeatedKFolds":
         ax.set_title(f'{resultsDict["cvFolds"]}-fold CV results ({resultsDict["cvRepeats"]} repeats)')
     ax.set_xlabel('Output')
+    xLabels = [ml_utils.fieldNameToText(lab) for lab in xLabels]
     ax.set_xticks(x + (0.5 * len(xLabels) * width), xLabels)
     ax.legend(loc='upper left' if metric == "cvR2" else 'lower left', ncols= 2 if len(resultsDict["algorithms"]) > 5 else 1)
     ax.set_ylim(top= 1.0 if metric == "cvR2" else np.round(np.max([v for v in barVals.values()]) + 0.2, 1))

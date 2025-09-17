@@ -251,8 +251,8 @@ fieldNameToText_dict = {
     "Electric_Field_Ex/growthRates/maxInHighTotalPowerK/wavenumber" : "Ex_totalKmaxGammaK",
     "B0strength" : "B0", 
     "B0angle" : "B0 angle", 
-    "backgroundDensity" : "density", 
-    "beamFraction" : "beam frac",
+    "backgroundDensity" : "density (log)", 
+    "beamFraction" : "beam fraction (log)",
 }
 
 def get_algorithm(name, **kwargs):
