@@ -68,7 +68,7 @@ def extract_all(directory : Path, inputSpectraNames : list, save : bool = True):
         save_feature_dir = directory / "feature_extraction"
         if not os.path.exists(save_feature_dir):
             os.mkdir(save_feature_dir)
-        xr.Dataset.from_dataframe(extracted_features).to_netcdf(save_feature_dir / "features.nc")
+        xr.Dataset.from_dataframe(extracted_features).to_netcdf(save_feature_dir / "tsfresh_features.nc")
 
 if __name__ == "__main__":
     

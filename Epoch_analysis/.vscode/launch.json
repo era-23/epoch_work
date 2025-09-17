@@ -21,12 +21,29 @@
             "program": "autoEmulate_development.py",
             "console": "integratedTerminal",
             "args": [
-                // "--dir", "/home/era536/Documents/Epoch/Data/irb_ml_dataset_2/",
-                // "--inputSpectra", 
-                //     "Magnetic_Field_Bz/power/powerByFrequency", 
-                //     "Electric_Field_Ex/power/powerByFrequency",
-                //     "Electric_Field_Ey/power/powerByFrequency",
-                // "--saveFeatures",
+                "--inputDir", "/home/era536/Documents/Epoch/Data/irb_ml_dataset_2/data",
+                "--inputFields", 
+                    "B0strength",
+                    "B0angle",
+                    "backgroundDensity",
+                    "beamFraction",
+                "--outputFile", "/home/era536/Documents/Epoch/Data/irb_ml_dataset_2/feature_extraction/catch24_features.nc",
+
+            ]
+        },
+        {
+            "name": "Python Debugger: FE -- catch22",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "catch22_feature_extraction.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--dir", "/home/era536/Documents/Epoch/Data/irb_ml_dataset_2/",
+                "--inputSpectra", 
+                    "Magnetic_Field_Bz/power/powerByFrequency", 
+                    "Electric_Field_Ex/power/powerByFrequency",
+                    "Electric_Field_Ey/power/powerByFrequency",
+                "--saveFeatures",
             ]
         },
         {
