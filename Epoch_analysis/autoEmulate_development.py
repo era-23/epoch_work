@@ -1,11 +1,14 @@
 # General imports for the notebook
 import argparse
 import glob
+import os
 from pathlib import Path
 import warnings
 import numpy as np
+import pandas as pd
 import xarray as xr
 import torch
+import json
 from matplotlib import pyplot as plt
 import ml_utils
 warnings.filterwarnings("ignore")
@@ -38,7 +41,7 @@ def demo():
 
     print(best.model.predict(x[:10]))
 
-def autoEmulate(inputDir : Path, inputFields : list, outputFile : Path):
+def autoEmulate(inputDir : Path, inputFields : list, outputFile : Path, saveFolder : Path, modelFile : Path = None, name : str = None):
 
     ##### Get input data
     data_files = glob.glob(str(inputDir / "*.nc"))
@@ -47,6 +50,17 @@ def autoEmulate(inputDir : Path, inputFields : list, outputFile : Path):
     inputs = {name : [] for name in inputFields}
     inputs = ml_utils.read_data(data_files, inputs, with_names = True, with_coords = False)
 
+    # Proprocessing
+    if "B0angle" in inputs:
+        transf = np.array(inputs["B0angle"])
+        inputs["B0angle"] = np.abs(transf - 90.0) 
+    if "backgroundDensity" in inputs:
+        transf = np.array(inputs["backgroundDensity"])
+        inputs["backgroundDensity"] = np.log10(transf)
+    if "beamFraction" in inputs:
+        transf = np.array(inputs["beamFraction"])
+        inputs["beamFraction"] = np.log10(transf) 
+
     ##### Get output data
     output_ds = xr.open_dataset(outputFile, engine="netcdf4")
     sim_ids = [int(id) for id in output_ds.coords["index"]]
@@ -54,7 +68,7 @@ def autoEmulate(inputDir : Path, inputFields : list, outputFile : Path):
     outputData_list = []
     for feature in output_ds.variables:
         feature_values = output_ds.variables[feature].values.astype(float)
-        if len(set(feature_values)) > 1 and not np.isnan(feature_values).any():
+        if feature != "index" and len(set(feature_values)) > 1 and not np.isnan(feature_values).any():
             outputData_list.append(np.array([float(feature_values[i]) for i in sorted_idx]))
     
     ##### Format
@@ -67,9 +81,28 @@ def autoEmulate(inputDir : Path, inputFields : list, outputFile : Path):
     print(output_ptt.shape)
 
     # Run AutoEmulate with default settings
-    ae = AutoEmulate(input_ptt, output_ptt, models = ["GaussianProcess", "GaussianProcessCorrelated", "GaussianProcessMatern32", "GaussianProcessMatern52", "GaussianProcessRBF"], log_level="progress_bar")
+    # ae = AutoEmulate(input_ptt, output_ptt, models = ["GaussianProcess", "GaussianProcessCorrelated", "GaussianProcessMatern32", "GaussianProcessMatern52", "GaussianProcessRBF"], log_level="progress_bar")
+    if modelFile is not None:
+        print("Loading model from: ", modelFile)
+        ae = AutoEmulate.load_model(modelFile)
+        best = ae
+    else:
+        ae = AutoEmulate(input_ptt, output_ptt, models = ["GaussianProcess"], log_level="progress_bar")
+        best = ae.best_result()
+    print("Model with id: ", best.id, " performed best: ", best.model_name)
 
     print(ae.summarise())
+
+    # Save best model
+    if not os.path.exists(saveFolder):
+        os.makedirs(saveFolder)
+    best_result_filepath = ae.save(best, saveFolder, use_timestamp=True)
+    print("Model and metadata saved to: ", best_result_filepath)
+
+    # Save results
+    results_json_filename = saveFolder / (f"AE_{name}.json" if name is not None else "autoEmulate.json")
+    with open(results_json_filename, "w", encoding='utf-8') as f:
+        ae.summarise().to_json(f, default_handler=str)
 
 if __name__ == "__main__":
     
@@ -96,8 +129,33 @@ if __name__ == "__main__":
         required = True,
         type=Path
     )
+    parser.add_argument(
+        "--saveFolder",
+        action="store",
+        help="Filepath in which to save JSON output.",
+        required = True,
+        type=Path
+    )
+    parser.add_argument(
+        "--modelFile",
+        action="store",
+        help="Filepath of an existing model to load, if desired.",
+        required = False,
+        type=Path
+    )
+    parser.add_argument(
+        "--name",
+        action="store",
+        help="Name of the run.",
+        required = False,
+        type=str
+    )
 
     args = parser.parse_args()
 
-    autoEmulate(args.inputDir, args.inputFields, args.outputFile)
+    pd.set_option('display.max_rows', 1000)
+    pd.set_option('display.max_columns', 1000)
+    pd.set_option('display.max_colwidth', None)
+
+    autoEmulate(args.inputDir, args.inputFields, args.outputFile, args.saveFolder, args.modelFile, args.name)
     # demo()

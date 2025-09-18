@@ -28,7 +28,9 @@
                     "backgroundDensity",
                     "beamFraction",
                 "--outputFile", "/home/era536/Documents/Epoch/Data/irb_ml_dataset_2/feature_extraction/catch24_features.nc",
-
+                "--saveFolder", "/home/era536/Documents/Epoch/Data/irb_ml_dataset_2/autoEmulate/",
+                // "--modelFile", "/home/era536/Documents/Epoch/Data/irb_ml_dataset_2/autoEmulate/GaussianProcess_0_20250918_174456.joblib",
+                "--name", "catch24",
             ]
         },
         {
