@@ -87,7 +87,7 @@ def autoEmulate(inputDir : Path, inputFields : list, outputFile : Path, saveFold
         ae = AutoEmulate.load_model(modelFile)
         best = ae
     else:
-        ae = AutoEmulate(input_ptt, output_ptt, models = models, only_probabilistic = (models is None), log_level="progress_bar")
+        ae = AutoEmulate(input_ptt, output_ptt, models = models, only_probabilistic = (models is None), n_splits = 9, n_bootstraps = 3, log_level="progress_bar")
         best = ae.best_result()
         print("Model with id: ", best.id, " performed best: ", best.model_name)
         print(ae.summarise())
