@@ -41,7 +41,7 @@ def demo():
 
     print(best.model.predict(x[:10]))
 
-def autoEmulate(inputDir : Path, inputFields : list, outputFile : Path, saveFolder : Path, modelFile : Path = None, name : str = None):
+def autoEmulate(inputDir : Path, inputFields : list, outputFile : Path, saveFolder : Path, models : list = None, modelFile : Path = None, name : str = None):
 
     ##### Get input data
     data_files = glob.glob(str(inputDir / "*.nc"))
@@ -87,11 +87,10 @@ def autoEmulate(inputDir : Path, inputFields : list, outputFile : Path, saveFold
         ae = AutoEmulate.load_model(modelFile)
         best = ae
     else:
-        ae = AutoEmulate(input_ptt, output_ptt, models = ["GaussianProcess"], log_level="progress_bar")
+        ae = AutoEmulate(input_ptt, output_ptt, models = models, only_probabilistic = (models is None), log_level="progress_bar")
         best = ae.best_result()
-    print("Model with id: ", best.id, " performed best: ", best.model_name)
-
-    print(ae.summarise())
+        print("Model with id: ", best.id, " performed best: ", best.model_name)
+        print(ae.summarise())
 
     # Save best model
     if not os.path.exists(saveFolder):
@@ -137,6 +136,14 @@ if __name__ == "__main__":
         type=Path
     )
     parser.add_argument(
+        "--models",
+        action="store",
+        help="Models to use. Defaults to all probabilistic emulators.",
+        required = False,
+        type=str,
+        nargs="*"
+    )
+    parser.add_argument(
         "--modelFile",
         action="store",
         help="Filepath of an existing model to load, if desired.",
@@ -157,5 +164,5 @@ if __name__ == "__main__":
     pd.set_option('display.max_columns', 1000)
     pd.set_option('display.max_colwidth', None)
 
-    autoEmulate(args.inputDir, args.inputFields, args.outputFile, args.saveFolder, args.modelFile, args.name)
+    autoEmulate(args.inputDir, args.inputFields, args.outputFile, args.saveFolder, args.models, args.modelFile, args.name)
     # demo()
