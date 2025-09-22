@@ -132,12 +132,14 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    if os.path.exists(args.dir / "feature_extraction" / "catch24_features.nc"):
-        data = read_extracted_data(args.dir)
-        if args.plot:
-            plot_extracted_data_against_inputs(["B0strength", "B0angle", "backgroundDensity", "beamFraction",], args.dir / "data", data)
-    else:
-        extract_all(args.dir, args.inputSpectra, args.saveFeatures)
-        if args.plot:
-            plot_extracted_data_against_inputs(read_extracted_data(args.dir))
+    extract_all(args.dir, args.inputSpectra, args.saveFeatures)
+
+    # if os.path.exists(args.dir / "feature_extraction" / "catch24_features.nc"):
+    #     data = read_extracted_data(args.dir)
+    #     if args.plot:
+    #         plot_extracted_data_against_inputs(["B0strength", "B0angle", "backgroundDensity", "beamFraction"], args.dir / "data", data)
+    # else:
+    #     extract_all(args.dir, args.inputSpectra, args.saveFeatures)
+    #     if args.plot:
+    #         plot_extracted_data_against_inputs(read_extracted_data(args.dir))
     # demo()
