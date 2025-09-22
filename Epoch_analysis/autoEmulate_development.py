@@ -77,7 +77,7 @@ def autoEmulate(
     outputData_list = []
     for feature in output_ds.variables:
         feature_values = output_ds.variables[feature].values.astype(float)
-        if feature != "index" and len(set(feature_values)) > 1 and not np.isnan(feature_values).any():
+        if feature != "index" and len(set(feature_values)) > 3 and not np.isnan(feature_values).any():
             outputData_list.append(np.array([float(feature_values[i]) for i in sorted_idx]))
     
     ##### Format

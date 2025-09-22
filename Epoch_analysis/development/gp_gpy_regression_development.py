@@ -18,29 +18,6 @@ from matplotlib import pyplot as plt
 from matplotlib.collections import PathCollection
 from dataclasses import fields
 
-def plot_4inputs_training_data(train, yName, xIn_1, xIn_2, xIn_3, xIn_4, name_1, name_2, name_3, name_4):
-    fig = plt.figure(figsize=(12,12))
-    # fig.subplots_adjust(bottom=0.2)
-    plt.suptitle(f'Output: {yName}')
-    # Input 1
-    ax1 = fig.add_subplot(411)
-    ax1.set_xlabel(f'{name_1}')
-    ax1.plot(xIn_1,train,'kx',mew=1.5)
-    # Input 2
-    ax2 = fig.add_subplot(412)
-    ax2.set_xlabel(f'{name_2}')
-    ax2.plot(xIn_2,train,'kx',mew=1.5)
-    # Input 3
-    ax3 = fig.add_subplot(413)
-    ax3.set_xlabel(f'{name_3}')
-    ax3.plot(xIn_3,train,'kx',mew=1.5)
-    # Input 4
-    ax4 = fig.add_subplot(414)
-    ax4.set_xlabel(f'{name_4}')
-    ax4.plot(xIn_4,train,'kx',mew=1.5)
-    plt.tight_layout()
-    plt.show()
-
 def plot_outputs(m, input_names, output_feature_names, xlim):
     
     num_datapoints = m.Y.shape[0]//len(output_feature_names)

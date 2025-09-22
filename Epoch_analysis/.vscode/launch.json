@@ -27,12 +27,12 @@
                     "B0angle",
                     "backgroundDensity",
                     "beamFraction",
-                "--outputFile", "/home/era536/Documents/Epoch/Data/irb_ml_dataset_2/feature_extraction/catch24_features.nc",
+                "--outputFile", "/home/era536/Documents/Epoch/Data/irb_ml_dataset_2/feature_extraction/tsfresh_features.nc",
                 "--saveFolder", "/home/era536/Documents/Epoch/Data/irb_ml_dataset_2/autoEmulate/",
                 "--models", 
                     "GaussianProcess",
                 // "--modelFile", "/home/era536/Documents/Epoch/Data/irb_ml_dataset_2/autoEmulate/GaussianProcess_0_20250918_174456.joblib",
-                "--name", "catch24",
+                "--name", "tsf",
                 "--pca",
             ]
         },
@@ -48,7 +48,8 @@
                     "Magnetic_Field_Bz/power/powerByFrequency", 
                     "Electric_Field_Ex/power/powerByFrequency",
                     "Electric_Field_Ey/power/powerByFrequency",
-                "--saveFeatures",
+                // "--saveFeatures",
+                "--plot",
             ]
         },
         {

@@ -414,6 +414,19 @@ def read_data(dataFiles, data_dict : dict, with_names : bool = False, with_coord
 
     return data_dict
 
+def preprocess_plasma_features(data : dict) -> dict:
+    if "B0angle" in data:
+        transf = np.array(data["B0angle"])
+        data["B0angle"] = np.abs(transf - 90.0) 
+    if "backgroundDensity" in data:
+        transf = np.array(data["backgroundDensity"])
+        data["backgroundDensity"] = np.log10(transf)
+    if "beamFraction" in data:
+        transf = np.array(data["beamFraction"])
+        data["beamFraction"] = np.log10(transf)
+
+    return data
+
 def downsample_series(series : ArrayLike, coords : ArrayLike, numSamples : int, signalName : str = None, savedir : Path = None):
 
     print(f"Resampling signal from {len(series)} to {numSamples}....")
@@ -579,6 +592,29 @@ def parse_commandLine_netCDFpaths(paths : list) -> dict:
         formattedPaths[group].append(field)
 
     return formattedPaths
+
+def plot_4inputs_training_data(train, yName, xIn_1, xIn_2, xIn_3, xIn_4, name_1, name_2, name_3, name_4):
+    fig = plt.figure(figsize=(12,12))
+    # fig.subplots_adjust(bottom=0.2)
+    plt.suptitle(f'Output: {yName}')
+    # Input 1
+    ax1 = fig.add_subplot(411)
+    ax1.set_xlabel(f'{name_1}')
+    ax1.plot(xIn_1,train,'kx',mew=1.5)
+    # Input 2
+    ax2 = fig.add_subplot(412)
+    ax2.set_xlabel(f'{name_2}')
+    ax2.plot(xIn_2,train,'kx',mew=1.5)
+    # Input 3
+    ax3 = fig.add_subplot(413)
+    ax3.set_xlabel(f'{name_3}')
+    ax3.plot(xIn_3,train,'kx',mew=1.5)
+    # Input 4
+    ax4 = fig.add_subplot(414)
+    ax4.set_xlabel(f'{name_4}')
+    ax4.plot(xIn_4,train,'kx',mew=1.5)
+    plt.tight_layout()
+    plt.show()
 
 def plot_three_dimensions(input_1_index : int, input_2_index : int, gpModel : GPModel, rawInputData : list = None, rawOutputData : list = None, showModels = True, saveAnimation = False, noTitle = False):
     
