@@ -8,7 +8,7 @@ import numpy as np
 import ml_utils
 
 SMALL_SIZE = 10
-MEDIUM_SIZE = 18
+MEDIUM_SIZE = 20
 BIGGER_SIZE = 24
 
 plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
@@ -16,7 +16,7 @@ plt.rc('axes', titlesize=BIGGER_SIZE)     # fontsize of the axes title
 plt.rc('axes', labelsize=BIGGER_SIZE)    # fontsize of the x and y labels
 plt.rc('xtick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
 plt.rc('ytick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
-plt.rc('legend', fontsize=MEDIUM_SIZE)    # legend fontsize
+plt.rc('legend', fontsize=BIGGER_SIZE)    # legend fontsize
 plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
 
 def plotScatter(resultsDict : dict, metric : str = "cvR2"):
@@ -62,16 +62,19 @@ def plotScatter(resultsDict : dict, metric : str = "cvR2"):
 def plotBar(resultsDict : dict, metric : str = "cvR2"): 
 
     patterns = [ "/" , ".", "\\" , "|" , "-" , "+" , "x",  "o", "O", "*" ]
+    drop_algorithms = ["aeon.KNeighborsTimeSeriesRegressor", "aeon.RDSTRegressor", "aeon.DrCIFRegressor", "aeon.Catch22Regressor"]
     
     # results
     results = resultsDict["results"]
+    results = [r for r in results if r["algorithm"] not in drop_algorithms]
     
     # x-labels: outputs
     xLabels = resultsDict["outputFields"]
 
     # bar values in output order, grouped by algorithm
-    barVals = {algorithm : [] for algorithm in resultsDict["algorithms"]}
-    barErrs = {algorithm : [] for algorithm in resultsDict["algorithms"]}
+    algorithms = [a for a in resultsDict["algorithms"] if a not in drop_algorithms]
+    barVals = {algorithm : [] for algorithm in algorithms}
+    barErrs = {algorithm : [] for algorithm in algorithms}
     for field in xLabels:
         fieldResults = [r for r in results if r["output"] == field]
         for res in fieldResults:
@@ -80,7 +83,7 @@ def plotBar(resultsDict : dict, metric : str = "cvR2"):
     
     x = np.arange(len(xLabels))
     
-    width = 1.0/(len(resultsDict["algorithms"]) + 1)  # the width of the bars
+    width = 1.0/(len(algorithms) + 1)  # the width of the bars
     multiplier = 0
 
     fig, ax = plt.subplots(figsize=(15, 15))
@@ -89,7 +92,7 @@ def plotBar(resultsDict : dict, metric : str = "cvR2"):
         offset = width * multiplier
         rects = ax.bar(x + offset, value, width, label=algorithm, yerr=barErrs[algorithm], edgecolor='black')
         #ax.errorbar(x + offset, value, yerr=barErrs[algorithm], fmt=",", color = "k")
-        ax.bar_label(rects, padding=3)
+        # ax.bar_label(rects, padding=3)
         multiplier += 1
 
     # Add some text for labels, title and custom x-axis tick labels, etc.
@@ -101,10 +104,15 @@ def plotBar(resultsDict : dict, metric : str = "cvR2"):
         ax.set_title(f'{resultsDict["cvFolds"]}-fold CV results ({resultsDict["cvRepeats"]} repeats)')
     ax.set_xlabel('Output')
     xLabels = [ml_utils.fieldNameToText(lab) for lab in xLabels]
-    ax.set_xticks(x + (0.5 * len(xLabels) * width), xLabels)
-    ax.legend(loc='upper left' if metric == "cvR2" else 'lower left', ncols= 2 if len(resultsDict["algorithms"]) > 5 else 1)
+    ax.set_xticks(x + (0.5 * (len(algorithms) -1) * width), xLabels)
+    if len(resultsDict["algorithms"]) > 5:
+        ax.legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, -0.3))
+    else:
+        ax.legend(loc='upper left' if metric == "cvR2" else 'lower left', ncols = 1)
     ax.set_ylim(top= 1.0 if metric == "cvR2" else np.round(np.max([v for v in barVals.values()]) + 0.2, 1))
     ax.axhline(0.0, color="black", lw=0.5)
+    ax.grid(axis="y")
+    fig.tight_layout()
 
     plt.show()
 
@@ -112,7 +120,7 @@ def plotResults(resultsFile : Path, metric : str = "cvR2"):
     with open(resultsFile, "r") as f:
         parser = json.load(f)
         plotBar(parser, metric)
-        plotScatter(parser, metric)
+        # plotScatter(parser, metric)
 
 if __name__ == "__main__":
     

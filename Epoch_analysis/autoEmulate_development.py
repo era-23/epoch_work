@@ -14,6 +14,7 @@ import ml_utils
 warnings.filterwarnings("ignore")
 from autoemulate.simulations.projectile import Projectile
 from autoemulate import AutoEmulate
+from autoemulate.transforms import StandardizeTransform, PCATransform
 
 def demo():
     projectile = Projectile(log_level="error")
@@ -41,7 +42,15 @@ def demo():
 
     print(best.model.predict(x[:10]))
 
-def autoEmulate(inputDir : Path, inputFields : list, outputFile : Path, saveFolder : Path, models : list = None, modelFile : Path = None, name : str = None):
+def autoEmulate(
+        inputDir : Path, 
+        inputFields : list, 
+        outputFile : Path, 
+        saveFolder : Path, 
+        models : list = None, 
+        modelFile : Path = None, 
+        name : str = None,
+        doPCA : bool = False):
 
     ##### Get input data
     data_files = glob.glob(str(inputDir / "*.nc"))
@@ -87,7 +96,16 @@ def autoEmulate(inputDir : Path, inputFields : list, outputFile : Path, saveFold
         ae = AutoEmulate.load_model(modelFile)
         best = ae
     else:
-        ae = AutoEmulate(input_ptt, output_ptt, models = models, only_probabilistic = (models is None), n_splits = 9, n_bootstraps = 3, log_level="progress_bar")
+        ae = AutoEmulate(
+            input_ptt, 
+            output_ptt, 
+            models = models, 
+            y_transforms_list = None if not doPCA else [[StandardizeTransform(), PCATransform(n_components = 8), StandardizeTransform()]],
+            only_probabilistic = (models is None), 
+            n_splits = 9, 
+            n_bootstraps = 3, 
+            log_level="progress_bar"
+        )
         best = ae.best_result()
         print("Model with id: ", best.id, " performed best: ", best.model_name)
         print(ae.summarise())
@@ -157,6 +175,12 @@ if __name__ == "__main__":
         required = False,
         type=str
     )
+    parser.add_argument(
+        "--pca",
+        action="store_true",
+        help="Perform PCA for dimensionality reduction.",
+        required = False
+    )
 
     args = parser.parse_args()
 
@@ -164,5 +188,5 @@ if __name__ == "__main__":
     pd.set_option('display.max_columns', 1000)
     pd.set_option('display.max_colwidth', None)
 
-    autoEmulate(args.inputDir, args.inputFields, args.outputFile, args.saveFolder, args.models, args.modelFile, args.name)
+    autoEmulate(args.inputDir, args.inputFields, args.outputFile, args.saveFolder, args.models, args.modelFile, args.name, args.pca)
     # demo()
