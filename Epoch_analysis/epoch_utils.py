@@ -162,7 +162,9 @@ def create_omega_k_plots(
             maxPowerFrequenciesByK[float(k.data)] = 0.0
     frequencyOfMaxPowerByK[:] = [v for v in maxPowerFrequenciesByK.values()]
 
-    # Power by omega over all k
+    B0 = inputDeck['constant']['b0_strength']
+
+    # Power in omega over all k
     fig, axs = plt.subplots(figsize=(15, 10))
     power_trace = spec.sum(dim = "wavenumber")
     powerByOmega[:] = power_trace.data
@@ -172,6 +174,62 @@ def create_omega_k_plots(
     axs.set_xlabel(r"Frequency [$\omega_{ci}$]")
     axs.set_ylabel(f"Sum of power in {field} over all k [{field_unit}]")
     filename = Path(f'{runName}_{field.replace("_", "")}_powerByOmega_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
+    fig.savefig(str(saveDirectory / filename))
+    if display:
+        plt.show()
+        plt.close("all")
+
+    # Power in omega over all k (log proportion)
+    fig, axs = plt.subplots(figsize=(15, 10))
+    log_power_trace = np.log10(power_trace.data / B0)
+    axs.plot(power_trace.coords['frequency'], log_power_trace)
+    axs.set_xticks(ticks=np.arange(np.floor(power_trace.coords['frequency'][0]), np.ceil(power_trace.coords['frequency'][-1])+1.0, 1.0), minor=True)
+    axs.grid(which='both', axis='x')
+    axs.set_xlabel(r"Frequency [$\omega_{ci}$]")
+    axs.set_ylabel(f"log10(power in {field} over all k / B0)")
+    filename = Path(f'{runName}_{field.replace("_", "")}_powerByOmegaLog_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
+    fig.savefig(str(saveDirectory / filename))
+    if display:
+        plt.show()
+        plt.close("all")
+
+    # Power in omega over all k (log squared proportion)
+    fig, axs = plt.subplots(figsize=(15, 10))
+    log_power_trace = np.log10(power_trace.data**2 / B0**2)
+    axs.plot(power_trace.coords['frequency'], log_power_trace)
+    axs.set_xticks(ticks=np.arange(np.floor(power_trace.coords['frequency'][0]), np.ceil(power_trace.coords['frequency'][-1])+1.0, 1.0), minor=True)
+    axs.grid(which='both', axis='x')
+    axs.set_xlabel(r"Frequency [$\omega_{ci}$]")
+    axs.set_ylabel(f"log10({r'$power^{2}$'} in {field} over all k / {r'$B0^2$'}")
+    filename = Path(f'{runName}_{field.replace("_", "")}_powerByOmegaLogSquare_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
+    fig.savefig(str(saveDirectory / filename))
+    if display:
+        plt.show()
+        plt.close("all")
+
+    # Power in omega over all k (log proportion)
+    fig, axs = plt.subplots(figsize=(15, 10))
+    log_power_trace = 10.0 * np.log10(power_trace.data / B0)
+    axs.plot(power_trace.coords['frequency'], log_power_trace)
+    axs.set_xticks(ticks=np.arange(np.floor(power_trace.coords['frequency'][0]), np.ceil(power_trace.coords['frequency'][-1])+1.0, 1.0), minor=True)
+    axs.grid(which='both', axis='x')
+    axs.set_xlabel(r"Frequency [$\omega_{ci}$]")
+    axs.set_ylabel(f"Normalised power in {field} over all k [dB]")
+    filename = Path(f'{runName}_{field.replace("_", "")}_powerByOmegaLog_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
+    fig.savefig(str(saveDirectory / filename))
+    if display:
+        plt.show()
+        plt.close("all")
+
+    # Power in omega over all k (decibles)
+    fig, axs = plt.subplots(figsize=(15, 10))
+    log_power_trace = 10.0 * np.log10(power_trace.data**2 / B0**2)
+    axs.plot(power_trace.coords['frequency'], log_power_trace)
+    axs.set_xticks(ticks=np.arange(np.floor(power_trace.coords['frequency'][0]), np.ceil(power_trace.coords['frequency'][-1])+1.0, 1.0), minor=True)
+    axs.grid(which='both', axis='x')
+    axs.set_xlabel(r"Frequency [$\omega_{ci}$]")
+    axs.set_ylabel(f"Normalised square power in {field} over all k [dB]")
+    filename = Path(f'{runName}_{field.replace("_", "")}_powerByOmegaDB_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
     fig.savefig(str(saveDirectory / filename))
     if display:
         plt.show()
@@ -222,7 +280,6 @@ def create_omega_k_plots(
     spec = spec.sel(wavenumber=spec.wavenumber>0.0)
     spec.plot(ax=axs, cbar_kwargs={'label': f'Spectral power in {field} [{field_unit}]'}, cmap='plasma')
     axs.plot(spec.coords['wavenumber'].data, spec.coords['wavenumber'].data, 'w--', label=r'$V_A$ branch')
-    B0 = inputDeck['constant']['b0_strength']
     bkgd_number_density = float(inputDeck['constant']['background_density'])
     wLH_cyclo = ppf.lower_hybrid_frequency(B0 * u.T, bkgd_number_density * u.m**-3, bkgdSpecies) / ppf.gyrofrequency(B0 * u.T, fastSpecies)
     axs.axhline(y = wLH_cyclo, color='white', linestyle=':', label=r'Lower hybrid frequency')

@@ -210,6 +210,7 @@ def calculate_simulation_metadata(
 
 def normalise_data(dataset : xr.Dataset, ion_gyroperiod : float, alfven_velocity : float) -> xr.Dataset:
     
+    print("Normalising and interpolating data....")
     evenly_spaced_time = np.linspace(dataset.coords["time"][0].data, dataset.coords["time"][-1].data, len(dataset.coords["time"].data))
     dataset = dataset.interp(time=evenly_spaced_time)
     Tci = evenly_spaced_time / ion_gyroperiod
@@ -217,6 +218,7 @@ def normalise_data(dataset : xr.Dataset, ion_gyroperiod : float, alfven_velocity
     dataset = dataset.drop_vars("X_Grid")
     dataset = dataset.assign_coords({"time" : Tci, "X_Grid_mid" : vA_Tci})
     dataset = dataset.rename(X_Grid_mid="x_space")
+    print("Dataset normalised")
 
     return dataset
 
@@ -705,6 +707,7 @@ def process_simulation_batch(
             # For field-specific stats
             fieldStats = statsRoot.createGroup(field)
             field_unit = ds[field].units
+            ##### UNCOMMENT THIS
             fieldStats.baseUnit = field_unit
             field_mag = float(np.abs(ds[field].sum()))
             fieldStats.totalMagnitude = field_mag
