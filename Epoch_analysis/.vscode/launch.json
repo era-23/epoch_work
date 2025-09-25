@@ -123,6 +123,17 @@
             ]
         },
         {
+            "name": "Python Debugger: Flexible Plotter",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "flexible_plotter.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--dataFile", "/home/era536/Documents/Epoch/Data/irb_aug25_analysis/data/run_7_stats.nc",
+                "--field", "/Magnetic_Field_Bz/power/powerByFrequency"
+            ]
+        },
+        {
             "name": "Python Debugger: Growth Rate Development",
             "type": "debugpy",
             "request": "launch",

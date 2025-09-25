@@ -102,6 +102,7 @@ def autoEmulate(
             models = models, 
             y_transforms_list = None if not doPCA else [[StandardizeTransform(), PCATransform(n_components = 8), StandardizeTransform()]],
             only_probabilistic = (models is None), 
+            shuffle=False,
             n_splits = 9, 
             n_bootstraps = 3, 
             log_level="progress_bar"

@@ -568,8 +568,9 @@ def anim_animate(i, fig, ax):
 def fieldNameToText(name : str) -> str:
     if name in fieldNameToText_dict:
         return fieldNameToText_dict[name]
-    else:
-        return name
+    if name.strip('/') in fieldNameToText_dict:
+        return fieldNameToText_dict[name.strip('/')]
+    return name
 
 def parse_commandLine_netCDFpaths(paths : list) -> dict:
     
