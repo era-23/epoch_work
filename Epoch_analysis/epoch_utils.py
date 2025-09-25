@@ -72,6 +72,97 @@ SPECIES_NAME_MAP = {
     "fastIonMeanEnergyDensity" : "Fast ion"
 }
 
+fieldNameToText_dict = {
+    "Energy/electricFieldEnergyDensity_delta" : "E_deltaE",
+    "Energy/magneticFieldEnergyDensity_delta" : "B_deltaE", 
+    "Energy/backgroundIonEnergyDensity_delta" : "background\ndelta KE", 
+    "Energy/electronEnergyDensity_delta" : "e_deltaKE",
+    "Energy/fastIonEnergyDensity_max" : "fast ion\nmax KE", 
+    "Energy/fastIonEnergyDensity_timeMax" : "FI_timeMaxKE", 
+    "Energy/fastIonEnergyDensity_min" : "fast ion\nmin KE", 
+    "Energy/fastIonEnergyDensity_timeMin" : "fast ion\nmin time", 
+    "Energy/fastIonEnergyDensity_delta" : "fast ion\ndelta KE",
+    "Energy/backgroundIonEnergyDensity_max" : "background\nmax KE",
+    "Energy/backgroundIonEnergyDensity_timeMax" : "background\npeak time",
+    "Energy/electronEnergyDensity_timeMax" : "electron_timeMaxKE",
+    "Energy/electricFieldEnergyDensity_timeMax" : "Ex_timeMaxE",
+    "Energy/magneticFieldEnergyDensity_timeMax" : "Bz_timeMaxE",
+    "Energy/backgroundIonEnergyDensity_timeMin" : "bkgdIon_timeMinKE",
+    "Energy/electronEnergyDensity_timeMin" : "electron_timeMinKE",
+    "Energy/electricFieldEnergyDensity_timeMin" : "Ex_timeMinE",
+    "Energy/magneticFieldEnergyDensity_timeMin" : "Bz_timeMinE",
+    "Magnetic_Field_Bz/totalMagnitude" : "Bz_totalPower", 
+    "Magnetic_Field_Bz/meanMagnitude" : "Bz_meanPower", 
+    "Magnetic_Field_Bz/totalDelta" : "Bz_deltaTotalPower", 
+    "Magnetic_Field_Bz/meanDelta" : "Bz_deltaMeanPower", 
+    "Magnetic_Field_Bz/peakTkSpectralPower" : "Bz (peak) [T]", 
+    "Magnetic_Field_Bz/meanTkSpectralPower" : "Bz (mean)", 
+    "Magnetic_Field_Bz/peakTkSpectralPowerRatio" : "Bz_tkPowerRatio", 
+    "Magnetic_Field_Bz/power/powerByFrequency" : "Bz", 
+    "Electric_Field_Ex/power/powerByFrequency" : "Ex",
+    "Electric_Field_Ey/power/powerByFrequency" : "Ey",
+    "Magnetic_Field_Bz/growthRates/max/growthRate" : "Bz_maxGamma",
+    "Magnetic_Field_Bz/growthRates/max/peakPower" : "Bz_maxGammaPeakPower",
+    "Magnetic_Field_Bz/growthRates/max/residual" : "Bz_maxGammaFitResidual",
+    "Magnetic_Field_Bz/growthRates/max/time" : "Bz_maxGammaTime",
+    "Magnetic_Field_Bz/growthRates/max/totalPower" : "Bz_maxGammaTotalPower",
+    "Magnetic_Field_Bz/growthRates/max/wavenumber" : "Bz_maxGammaK",
+    "Magnetic_Field_Bz/growthRates/maxInHighPeakPowerK/growthRate" : "Bz_peakKmaxGamma",
+    "Magnetic_Field_Bz/growthRates/maxInHighPeakPowerK/peakPower" : "Bz_peakKmaxGammaPeakPower",
+    "Magnetic_Field_Bz/growthRates/maxInHighPeakPowerK/residual" : "Bz_peakKmaxGammaFitResidual",
+    "Magnetic_Field_Bz/growthRates/maxInHighPeakPowerK/time" : "Bz_peakKmaxGammaTime",
+    "Magnetic_Field_Bz/growthRates/maxInHighPeakPowerK/totalPower" : "Bz_peakKmaxGammaTotalPower",
+    "Magnetic_Field_Bz/growthRates/maxInHighPeakPowerK/wavenumber" : "Bz_peakKmaxGammaK",
+    "Magnetic_Field_Bz/growthRates/maxInHighTotalPowerK/growthRate" : "Bz_totalKmaxGamma",
+    "Magnetic_Field_Bz/growthRates/maxInHighTotalPowerK/peakPower" : "Bz_totalKmaxGammaPeakPower",
+    "Magnetic_Field_Bz/growthRates/maxInHighTotalPowerK/residual" : "Bz_totalKmaxGammaFitResidual",
+    "Magnetic_Field_Bz/growthRates/maxInHighTotalPowerK/time" : "Bz_totalKmaxGammaTime",
+    "Magnetic_Field_Bz/growthRates/maxInHighTotalPowerK/totalPower" : "Bz_totalKmaxGammaTotalPower",
+    "Magnetic_Field_Bz/growthRates/maxInHighTotalPowerK/wavenumber" : "Bz_totalKmaxGammaK",
+    "Magnetic_Field_Bz/growthRates/positive/bestInHighestPeakPowerK/growthRate" : "Growth rate (peak power k)",
+    "Magnetic_Field_Bz/growthRates/positive/bestInHighestPeakPowerK/time" : "Time max growth (peak power k)",
+    "Magnetic_Field_Bz/growthRates/positive/bestInHighestPeakPowerK/wavenumber" : "Peak k",
+    "Magnetic_Field_Bz/growthRates/positive/bestInHighestTotalPowerK/growthRate" : "Growth rate (total power k)",
+    "Magnetic_Field_Bz/growthRates/positive/bestInHighestTotalPowerK/time" : "Time max growth (total power k)",
+    "Magnetic_Field_Bz/growthRates/positive/bestInHighestTotalPowerK/wavenumber" : "Total power k",
+    "Electric_Field_Ex/totalMagnitude" : "Ex_totalPower", 
+    "Electric_Field_Ex/meanMagnitude" : "Ex_meanPower", 
+    "Electric_Field_Ex/totalDelta" : "Ex_deltaTotalPower", 
+    "Electric_Field_Ex/meanDelta" : "Ex_deltaMeanPower", 
+    "Electric_Field_Ex/peakTkSpectralPower" : "Ex (peak)", 
+    "Electric_Field_Ex/meanTkSpectralPower" : "Ex (mean)", 
+    "Electric_Field_Ex/peakTkSpectralPowerRatio" : "Ex_tkPowerRatio",
+    "Electric_Field_Ex/growthRates/max/growthRate" : "Ex_maxGamma",
+    "Electric_Field_Ex/growthRates/max/peakPower" : "Ex_maxGammaPeakPower",
+    "Electric_Field_Ex/growthRates/max/residual" : "Ex_maxGammaFitResidual",
+    "Electric_Field_Ex/growthRates/max/time" : "Ex_maxGammaTime",
+    "Electric_Field_Ex/growthRates/max/totalPower" : "Ex_maxGammaTotalPower",
+    "Electric_Field_Ex/growthRates/max/wavenumber" : "Ex_maxGammaK",
+    "Electric_Field_Ex/growthRates/maxInHighPeakPowerK/growthRate" : "Ex_peakKmaxGamma",
+    "Electric_Field_Ex/growthRates/maxInHighPeakPowerK/peakPower" : "Ex_peakKmaxGammaPeakPower",
+    "Electric_Field_Ex/growthRates/maxInHighPeakPowerK/residual" : "Ex_peakKmaxGammaFitResidual",
+    "Electric_Field_Ex/growthRates/maxInHighPeakPowerK/time" : "Ex_peakKmaxGammaTime",
+    "Electric_Field_Ex/growthRates/maxInHighPeakPowerK/totalPower" : "Ex_peakKmaxGammaTotalPower",
+    "Electric_Field_Ex/growthRates/maxInHighPeakPowerK/wavenumber" : "Ex_peakKmaxGammaK",
+    "Electric_Field_Ex/growthRates/maxInHighTotalPowerK/growthRate" : "Ex_totalKmaxGamma",
+    "Electric_Field_Ex/growthRates/maxInHighTotalPowerK/peakPower" : "Ex_totalKmaxGammaPeakPower",
+    "Electric_Field_Ex/growthRates/maxInHighTotalPowerK/residual" : "Ex_totalKmaxGammaFitResidual",
+    "Electric_Field_Ex/growthRates/maxInHighTotalPowerK/time" : "Ex_totalKmaxGammaTime",
+    "Electric_Field_Ex/growthRates/maxInHighTotalPowerK/totalPower" : "Ex_totalKmaxGammaTotalPower",
+    "Electric_Field_Ex/growthRates/maxInHighTotalPowerK/wavenumber" : "Ex_totalKmaxGammaK",
+    "B0strength" : "B0", 
+    "B0angle" : "B0 angle", 
+    "backgroundDensity" : "density (log)", 
+    "beamFraction" : "beam fraction (log)",
+}
+
+def fieldNameToText(name : str) -> str:
+    if name in fieldNameToText_dict:
+        return fieldNameToText_dict[name]
+    if name.strip('/') in fieldNameToText_dict:
+        return fieldNameToText_dict[name.strip('/')]
+    return name
+
 # Formerly everything below maxRes percentile, i.e. maxRes == 0.2 --> all values within bottom (best) 20th percentile
 # Now everything at maxRes proportion and below, i.e. maxRes == 0.2 --> bottom (best) 20% of values
 def filter_by_residuals(x, residuals, maxRes):
@@ -262,7 +353,7 @@ def create_omega_k_plots(
         plt.show()
         plt.close("all")
 
-    log_spec = np.log(spec)
+    log_spec = np.log10(spec)
 
     # Full dispersion relation for positive omega (log)
     fig, axs = plt.subplots(figsize=(15, 10))
@@ -376,7 +467,7 @@ def create_t_k_plot(
         tkSpec_plot = tkSpectrum.sel(wavenumber=tkSpectrum.wavenumber<=maxK)
         tkSpec_plot = tkSpec_plot.sel(wavenumber=tkSpec_plot.wavenumber>=-maxK)
     tkSpec_plot = np.abs(tkSpec_plot)
-    tkSpec_plot_log = np.log(tkSpec_plot)
+    tkSpec_plot_log = np.log10(tkSpec_plot)
     
     # Time-wavenumber
     fig, axs = plt.subplots(figsize=(15, 10))
@@ -514,7 +605,7 @@ def bispectral_analysis(
         mask : bool = True
 ):
     print("Doing bispectral analysis....")
-
+    fieldName = fieldNameToText(field)
     times = np.array(tkSpectrum.coords["time"])
 
     timeCentre = timePoint_tci
@@ -546,7 +637,7 @@ def bispectral_analysis(
     minis_waxis = waxis[0]
     fig, axs = plt.subplots(figsize=(12, 12))
     img = axs.imshow(np.abs(bispec), extent=[minis_waxis, maxis_waxis, minis_waxis, maxis_waxis], origin="lower", cmap="plasma")
-    axs.set_title(f"{field} autobispectrum t = {timeCentre}" if timePoint_tci is not None else f"{field} autobispectrum (full time window)", pad=20.0)
+    axs.set_title(f"{fieldName} autobispectrum t = {timeCentre}" if timePoint_tci is not None else f"{fieldName} autobispectrum (full time window)", pad=20.0)
     axs.set_xlabel('Wavenumber $k_1$')
     axs.set_ylabel('Wavenumber $k_2$')
     axs.grid(True)
@@ -561,8 +652,8 @@ def bispectral_analysis(
 
     # Log autobispectrum
     fig, axs = plt.subplots(figsize=(12, 12))
-    img = axs.imshow(np.log(np.abs(bispec)), extent=[minis_waxis, maxis_waxis, minis_waxis, maxis_waxis], origin="lower", cmap="plasma")
-    axs.set_title(f"Log {field} autobispectrum t = {timeCentre}" if timePoint_tci is not None else f"Log {field} autobispectrum (full time window)", pad=20.0)
+    img = axs.imshow(np.log10(np.abs(bispec)), extent=[minis_waxis, maxis_waxis, minis_waxis, maxis_waxis], origin="lower", cmap="plasma")
+    axs.set_title(f"Log10 {fieldName} autobispectrum t = {timeCentre}" if timePoint_tci is not None else f"Log10 {fieldName} autobispectrum (full time window)", pad=20.0)
     axs.set_xlabel('Wavenumber $k_1$')
     axs.set_ylabel('Wavenumber $k_2$')
     axs.grid(True)
@@ -581,7 +672,7 @@ def bispectral_analysis(
     minis_waxis = waxis[0]
     fig, axs = plt.subplots(figsize=(12, 12))
     img = axs.imshow(np.abs(bicoh), extent=[minis_waxis, maxis_waxis, minis_waxis, maxis_waxis], origin="lower", cmap="plasma")
-    axs.set_title(f"{field} auto-bicoherence{r'$^2$'} t = {timeCentre}" if timePoint_tci is not None else f"{field} auto-bicoherence{r'$^2$'} (full time window)", pad=20.0)
+    axs.set_title(f"{fieldName} auto-bicoherence{r'$^2$'} t = {timeCentre}" if timePoint_tci is not None else f"{fieldName} auto-bicoherence{r'$^2$'} (full time window)", pad=20.0)
     axs.set_xlabel('Wavenumber $k_1$')
     axs.set_ylabel('Wavenumber $k_2$')
     axs.grid(True)
@@ -669,13 +760,13 @@ def plot_growth_rates(
         timeVals = signal.coords['time'][g.timeStartIndex:g.timeEndIndex]
         plt.close("all")
         fig, ax = plt.subplots(figsize=(12, 8))
-        logSignal = np.log(signal)
+        logSignal = np.log10(signal)
         logSignal.plot(ax=ax, alpha = 0.5, color = "blue")
         if g.smoothingFunction is not None:
             ax.plot(logSignal.coords['time'], np.log(g.smoothingFunction(logSignal.coords['time'])), linestyle = "dashed", color="purple", label = "Smoothed signal")
         ax.plot(timeVals, g.gamma * timeVals + g.yIntercept, color = "orange", label = r"$\gamma = $" + f"{g.gamma:.3f}" + r"$\pm$" + f"{g.stdErr:.3f}" + r"$\omega_{ci}$")
         ax.set_xlabel(r"Time [$\tau_{ci}$]")
-        ax.set_ylabel(f"Log of {field} signal power")
+        ax.set_ylabel(f"Log10 of {field} signal power")
         ax.grid()
         ax.legend()
         if not noTitle:
@@ -753,7 +844,7 @@ def find_best_growth_rates(
 
                 t_k_window = signal[window:(width + window)]
 
-                result = stats.linregress(rawSignal.coords["time"][window:(width + window)], np.log(t_k_window))
+                result = stats.linregress(rawSignal.coords["time"][window:(width + window)], np.log10(t_k_window))
                 r_squared = result.rvalue ** 2
                 
                 if not np.isnan(result.slope):
@@ -771,7 +862,7 @@ def find_best_growth_rates(
             gamma, y_int, window_width, window_start, r_sqrd, std_err, p_value = best_pos_params
 
             # Re-fit to raw data to get stats
-            rawDataFit = stats.linregress(rawSignal.coords["time"][window:(width + window)], np.log(rawSignal[window:(width + window)]))
+            rawDataFit = stats.linregress(rawSignal.coords["time"][window:(width + window)], np.log10(rawSignal[window:(width + window)]))
 
             best_pos_growth_rates.append(
                 LinearGrowthRate(timeStartIndex=window_start,
@@ -796,7 +887,7 @@ def find_best_growth_rates(
             gamma, y_int, window_width, window_start, r_sqrd, std_err, p_value = best_neg_params
 
             # Re-fit to raw data to get stats
-            rawDataFit = stats.linregress(rawSignal.coords["time"][window:(width + window)], np.log(rawSignal[window:(width + window)]))
+            rawDataFit = stats.linregress(rawSignal.coords["time"][window:(width + window)], np.log10(rawSignal[window:(width + window)]))
 
             best_neg_growth_rates.append(
                 LinearGrowthRate(timeStartIndex=window_start,

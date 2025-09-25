@@ -3,7 +3,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
-import ml_utils
+import epoch_utils
 
 def power_spectrum(dataFile : Path, field : str):
     
@@ -19,7 +19,7 @@ def power_spectrum(dataFile : Path, field : str):
     power_trace = data[group].variables[fieldName]
     fieldData = power_trace.data.astype("float")
     coords = data[group].coords[power_trace.dims[0]]
-    fieldName = ml_utils.fieldNameToText(field)
+    fieldName = epoch_utils.fieldNameToText(field)
     
     fig, axs = plt.subplots(figsize=(15, 10))
     axs.plot(coords, fieldData)
