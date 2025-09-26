@@ -6,6 +6,7 @@ from scipy.stats import skew, skewtest, kurtosis, kurtosistest
 from decimal import Decimal
 from plasmapy.formulary import speeds as pps
 from plasmapy.formulary import frequencies as ppf
+from scipy.stats import linregress
 import astropy.units as u
 import xarray as xr
 import numpy as np
@@ -15,10 +16,10 @@ import argparse
 def gaussian(x, a, mean, sigma):
     return a * np.exp(-((x - mean)**2 / (2 * sigma**2)))
 
-def plot_velo_dist(directory : Path, files : list, vPerp : bool = False, saveFolder : Path = None, doLog : bool = True):
+def plot_velo_dists(directory : Path, files : list, vPerp : bool = False, saveFolder : Path = None, doLog : bool = True):
 
     startTime_s = 0.0
-    speciess = ["electron", "proton", "ion_ring_beam"]
+    speciess = ["electron", "deuteron", "alpha"]
     dims = ["Vx", "Vy", "Vz"]
     colors = ["red", "orange", "green", "blue", "black"]
 
@@ -127,41 +128,92 @@ def plot_velo_dist(directory : Path, files : list, vPerp : bool = False, saveFol
                     plt.show()
                 plt.close()
 
-    # if vPerp:
-    #     v_perp = np.sqrt(vx**2 + vy**2)
+def plot_velo_3d(directory : Path, files : list, saveFolder : Path = None):
+    
+    startTime_s = 0.0
+    speciess = ["electron", "deuteron", "alpha"]
+    dims = ["Vx", "Vy", "Vz"]
 
-    #     yhist, xhist, _ = plt.hist(v_perp.data, bins = round(np.sqrt(len(v_perp))))
-    #     bin_centres = []
-    #     for b in range(len(xhist) - 1):
-    #         bin_centres.append(np.mean([xhist[b], xhist[b + 1]]))
+    # Read input deck
+    inputDeck = {}
+    with open(str(directory / "input.deck")) as id:
+        inputDeck = epydeck.loads(id.read())
+    temp = inputDeck['constant']['background_temp'] * u.K
+
+    for species in speciess:
+        vTh = pps.thermal_speed(temp, "e-" if species == "electron" else "p+")
+        velocities = {dim : {} for dim in dims}
+        for file in files:
+            # Read dataset
+            ds = xr.open_dataset(
+                str(directory / f"{file}.sdf"),
+                keep_particles = True
+            )
+            
+            if file == "0000":
+                startTime_s = float(ds.time)       
+            
+            time_s = float(ds.time) - startTime_s
+
+            # Read input deck
+            input = {}
+            with open(str(directory / "input.deck")) as id:
+                input = epydeck.loads(id.read())
+            
+            B0 = input['constant']['b0_strength']
+            # alfven_velo = pps.Alfven_speed(B = B0 * u.T, density = input['constant']['background_density'] / u.m**3, ion = "p")
+            fi_gyroperiod = (2.0 * np.pi * u.rad) / ppf.gyrofrequency(B = B0 * u.T, particle = "p")
+
+            for dim in velocities.keys(): # Runs out of memory here with many particles on my laptop
+                data = ds[f"Particles_{dim}_{species}"].load().data
+                #print(f"Max  velo: {data.max()}")
+                #print(f"Min  velo: {data.min()}")
+                #print(f"Mean velo: {np.mean(data)}")
+                #print(f"S.D. velo: {np.std(data)}")
+                velocities[dim] = data
+                del(data)
         
-    #     guesses = [np.max(yhist), np.mean(v_perp.data), np.std(v_perp.data)]
-    #     popt, pcov = curve_fit(gaussian, bin_centres, yhist, guesses)
-    #     #plt.hist(v_perp.data, bins=round(np.sqrt(len(v_perp))))
-    #     print(*popt)
-    #     plt.plot(bin_centres, gaussian(bin_centres, *popt),'r--')
-    #     plt.title("V_perp")
-    #     plt.show()
+        fig = plt.figure(figsize=(10,8))
+        ax = fig.add_subplot(projection="3d")
+        if saveFolder is not None:
+            ax.scatter(velocities["Vx"][0::5000], velocities["Vy"][0::5000], velocities["Vz"][0::5000], marker='o')
+        else:
+            ax.scatter(velocities["Vx"][0::10000], velocities["Vy"][0::10000], velocities["Vz"][0::10000], marker='o')
+        ax.set_title(f"{species}: t = 0.0")
+        ax.set_xlabel('Vx')
+        ax.set_ylabel('Vy')
+        ax.set_zlabel('Vz')
+        # Fit line to Vx-Vz
+        if species == "alpha":
+            x = np.linspace(np.min(velocities["Vx"]), np.max(velocities["Vx"]), 10000)
+            ax.plot(x, [np.mean(velocities["Vy"])] * len(x), [np.mean(velocities["Vz"])] * len(x), color = "g", label="mean Vz")
+            
+            vx_vz_line = linregress(velocities["Vx"][0::1000], velocities["Vz"][0::1000])
+            vx_vz = np.array([(x[-1] - x[0]), (((vx_vz_line.slope * x[-1]) + vx_vz_line.intercept) - ((vx_vz_line.slope * x[0]) + vx_vz_line.intercept))])
+            normal = np.array([(x[-1] - x[0]), 0.0])
+            dot = np.dot(vx_vz, normal)
+            magnitude_vxvz = np.linalg.norm(vx_vz)
+            magnitude_normal = np.linalg.norm(normal)
+            angle_deg = np.degrees(np.arccos(dot / (magnitude_vxvz * magnitude_normal)))
+            print(f"angle: {angle_deg}")
+            ax.plot(x, [np.mean(velocities["Vy"])] * len(x), (vx_vz_line.slope * x) + vx_vz_line.intercept, color = "r", label = f"fit to Vx-Vz plane, angle to normal = {angle_deg:.5f}")
+            fig.legend()
+        if saveFolder is not None:
+            filepath = saveFolder / f"{species}_3D.png"  
+            fig.savefig(filepath, bbox_inches = "tight")
+        else:
+            plt.show()
+        plt.close()
 
-    #     mean_vperp = np.mean(v_perp.data)
-    #     ring_beam_energy = float(str(input['constant']['ring_beam_energy']))
-    #     fast_ion_mass = constants.proton_mass
-    #     p_ring_beam = np.sqrt(2.0 * ring_beam_energy)
-    #     p_beam = p_ring_beam * np.sin(-np.pi/3.0)
-    #     p_ring = p_ring_beam * np.cos(-np.pi/3.0)
-    #     v_beam = p_beam / fast_ion_mass
-    #     v_ring = p_ring / fast_ion_mass
-    #     effective_E_rb = fast_ion_mass * (v_beam**2 + v_ring**2) / (2.0 * constants.e)
-
-    #     print(f"Alfven velo: {'%.2e' % Decimal(alfven_velo)}m/s")
-    #     print(f"Set Ring beam E  = {'%.2e' % Decimal(ring_beam_energy)}")
-    #     print(f"Calc Ring beam E = {'%.2e' % Decimal(effective_E_rb)}")
-    #     print(f"Mean v_perp: {'%.2e' % Decimal(mean_vperp)}m/s")
-    #     print(f"v_ring (v_perp): {'%.2e' % Decimal(v_ring)}")
-    #     print(f"v_beam (v_para): {'%.2e' % Decimal(v_beam)}")
         
-    #     velo_ratio = mean_vperp / alfven_velo
-    #     print(f"Velocity ratio, v_perp/v_alfven: {'%.2e' % Decimal(velo_ratio)}")
+
+        # for dimension in velocities.keys():
+        #     print(f"Processing {species}: {dimension}....")
+        #     # For bin widths/range:
+        #     dimData = velocities[dimension]
+        #     upper_lim = max(vels.max() for vels in dimData.values())
+        #     lower_lim = min(vels.min() for vels in dimData.values())
+        
 
 if __name__ == "__main__":
     
@@ -200,6 +252,15 @@ if __name__ == "__main__":
         help="Use log scale for histogram.",
         required = False
     )
+    parser.add_argument(
+        "--ddd",
+        action="store_true",
+        help="Plot particle velocities in 3D.",
+        required = False
+    )
     args = parser.parse_args()
 
-    plot_velo_dist(args.dir, args.files, args.vperp, args.saveFolder, args.log)
+    if args.ddd:
+        plot_velo_3d(args.dir, args.files, args.saveFolder)
+    else:
+        plot_velo_dists(args.dir, args.files, args.vperp, args.saveFolder, args.log)

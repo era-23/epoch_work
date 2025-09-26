@@ -19,6 +19,10 @@ from inference.pdf.kde import GaussianKDE, KDE2D
 
 from matplotlib import colormaps
 
+from scipy import constants
+import astropy.units as u
+import plasmapy.formulary as ppf
+
 @dataclass
 class LinearGrowthRate:
     gamma : float
@@ -1347,3 +1351,19 @@ def my_matrix_plot(
         plt.show()
 
     return fig
+
+def keV_to_Kelvin(value_in_keV : float) -> float :
+    value_in_keV = value_in_keV * u.keV
+    value_in_J = value_in_keV.to(u.J)
+    kb = constants.k * u.J / u.K
+    value_in_Kelvin = value_in_J / kb
+    assert value_in_Kelvin.unit == u.K
+    return value_in_Kelvin
+
+def MeV_to_Kelvin(value_in_MeV : float) -> float :
+    value_in_MeV = value_in_MeV * u.MeV
+    value_in_J = value_in_MeV.to(u.J)
+    kb = constants.k * u.J / u.K
+    value_in_Kelvin = value_in_J / kb
+    assert value_in_Kelvin.unit == u.K
+    return value_in_Kelvin
