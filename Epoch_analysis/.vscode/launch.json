@@ -622,16 +622,11 @@
             "program": "development/velocity_distribution.py",
             "console": "integratedTerminal",
             "args": [
-                "--dir", "/home/era536/Documents/Epoch/Data/sept_25/0p9pitch/",
-                "--files",
-                    "0000",
-                    // "0250",
-                    // "0500",
-                    // "0750",
-                    // "1000",
-                "--saveFolder", "/home/era536/Documents/Epoch/Data/sept_25/0p9pitch/",
+                "--dir", "/home/era536/Documents/Epoch/Data/sept_25/",
+                "--file", "0000",
+                // "--saveFolder", "/home/era536/Documents/Epoch/Data/sept_25/",
                 //"--log",
-                "--ddd",
+                // "--ddd",
             ]
         },
         {
