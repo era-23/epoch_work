@@ -151,11 +151,7 @@ def plot_velo_dists(directory : Path, file : str, vPerp : bool = False, saveFold
             box = ax.get_position()
             if species == "alpha":
                 # skip_n = 100
-                # Vx = velocities["Vperp"][0::skip_n]
-                # Vz = np.array(velocities["Vz"][0::skip_n])
-                # dist_fn = dist_func_orig((Vx, Vz), px_peak, p_ring, p_fast_spread, p_beam)
-                # dist_fn_2 = dist_func_forFitting((Vx, Vz), px_peak, p_ring, p_fast_spread, p_beam)
-                # assert (np.allclose(dist_fn,dist_fn_2))
+                
 
                 # if dimension == "Vperp":
                 #     ax2 = ax.twinx()
@@ -175,9 +171,24 @@ def plot_velo_dists(directory : Path, file : str, vPerp : bool = False, saveFold
                     ax2 = ax.twinx()
                     # Fit dist_func
                     # parameters, pcov = curve_fit(dist_func_zOnly, bins[:-1], particle_count, p0=(2e6, 9e2, 1e6, 9e2))
+
                     Vx_bins = dimHists["Vperp"][1][:-1]
                     Vz_bins = dimHists["Vz"][1][:-1]
                     Vz_vals = dimHists["Vz"][0]
+                    
+                    # Px = dimHists['Vx'][0] * 7294.3 * constants.electron_mass
+                    # Py = dimHists['Vy'][0] * 7294.3 * constants.electron_mass
+                    # Pz = Vz_vals * 7294.3 * constants.electron_mass
+                    # Pperp = dimHists['Vperp'][0] * 7294.3 * constants.electron_mass
+
+                    # Vx = velocities["Vperp"]
+                    # Vz = np.array(velocities["Vz"])
+                    # dist_fn = dist_func_orig((Vx, Vz), px_peak, p_ring, p_fast_spread, p_beam)
+                    # print(f"Sum of dist_fn:  {np.sum(dist_fn)}")
+                    # print(f"Sum of Vx PDF: {np.sum(Px)}")
+                    # print(f"Sum of Vy PDF: {np.sum(Py)}")
+                    # print(f"Sum of Vz PDF: {np.sum(Pz)}")
+                    # print(f"Sum of Vperp PDF: {np.sum(Pperp)}")
 
                     parameters, pcov = curve_fit(dist_func_orig, (Vx_bins, Vz_bins), Vz_vals, p0=(px_peak, p_ring, p_fast_spread, p_beam))
                     print(f"Original px_peak:       {px_peak}, Fit px_peak:       {parameters[0]} ({(parameters[0]*100.0/px_peak):.4f}%)")
