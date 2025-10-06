@@ -14,8 +14,10 @@ import ml_utils
 warnings.filterwarnings("ignore")
 from autoemulate.simulations.projectile import Projectile
 from autoemulate import AutoEmulate
+# from autoemulate.emulators.base import SklearnBackend
 from autoemulate.transforms import StandardizeTransform, PCATransform
 from autoemulate.core.sensitivity_analysis import SensitivityAnalysis
+# from sklearn.decomposition import FactorAnalysis
 
 def demo():
     projectile = Projectile(log_level="error")
@@ -53,7 +55,9 @@ def autoEmulate(
         name : str = None,
         doPCA : bool = False,
         pcaComponents : int = 8,
-        doSobol : bool = False):
+        doSobol : bool = False,
+        numFolds : int = 9,
+        numRepeats : int = 3):
 
     ##### Get input data
     data_files = glob.glob(str(inputDir / "*.nc"))
@@ -112,11 +116,12 @@ def autoEmulate(
             input_ptt, 
             output_ptt, 
             models = models, 
-            y_transforms_list = None if not doPCA else [[StandardizeTransform(), PCATransform(n_components = pcaComponents), StandardizeTransform()]],
+            y_transforms_list = None if not doPCA else [[StandardizeTransform(), PCATransform(n_components = pcaComponents, cache_size = 1), StandardizeTransform()]],
+            # y_transforms_list = None if not doPCA else [[StandardizeTransform(), FactorAnalysis(n_components = pcaComponents), StandardizeTransform()]],
             only_probabilistic = (models is None), 
             shuffle=False,
-            n_splits = 9, 
-            n_bootstraps = 3, 
+            n_splits = numFolds, 
+            n_bootstraps = numRepeats, 
             log_level="progress_bar"
         )
         best = ae.best_result()
@@ -231,6 +236,20 @@ if __name__ == "__main__":
         help="Perform Sobol analysis for sensitivity analysis.",
         required = False
     )
+    parser.add_argument(
+        "--numFolds",
+        action="store",
+        help="Number of CV folds.",
+        required = False,
+        type=int
+    )
+    parser.add_argument(
+        "--numRepeats",
+        action="store",
+        help="Number of CV repeats.",
+        required = False,
+        type=int
+    )
 
     args = parser.parse_args()
 
@@ -248,5 +267,7 @@ if __name__ == "__main__":
         args.name, 
         args.pca if args.pca is not None else False, 
         args.pcaComponents if args.pcaComponents is not None else 8,
-        args.sobol if args.sobol is not None else False)
+        args.sobol if args.sobol is not None else False,
+        args.numFolds if args.numFolds is not None else 9,
+        args.numRepeats if args.numRepeats is not None else 3)
     # demo()
