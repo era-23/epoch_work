@@ -27,13 +27,15 @@
                     "B0angle",
                     "backgroundDensity",
                     "beamFraction",
-                "--outputFile", "/home/era536/Documents/Epoch/Data/irb_ml_dataset_2/feature_extraction/tsfresh_features.nc",
+                "--outputFile", "/home/era536/Documents/Epoch/Data/irb_ml_dataset_2/feature_extraction/catch24_features.nc",
                 "--saveFolder", "/home/era536/Documents/Epoch/Data/irb_ml_dataset_2/autoEmulate/",
                 "--models", 
-                    "GaussianProcess",
+                    "GaussianProcess", "GaussianProcessRBF",
                 // "--modelFile", "/home/era536/Documents/Epoch/Data/irb_ml_dataset_2/autoEmulate/GaussianProcess_0_20250918_174456.joblib",
-                "--name", "tsf",
+                "--name", "catch24_sobol_test_unNormal",
                 "--pca",
+                "--pcaComponents", "8",
+                // "--sobol",
             ]
         },
         {
@@ -636,8 +638,9 @@
             "program": "debugging.py",
             "console": "integratedTerminal",
             "args": [
-                "--dir",
-                "/home/era536/Documents/Epoch/Data/irb_may25_analysis (copy)/input_decks/"
+                "--file",
+                // "/home/era536/Documents/Epoch/Data/sept_25/JET_test/"
+                "/home/era536/Documents/Epoch/Data/sept_25/JET_test/jet_input.deck"
             ]
         },
         {
