@@ -227,23 +227,23 @@ def plot_particle_push_scaling(file : Path):
     ppc_ppushes = [calculate_number_of_particle_pushes(temp_median, dens_median, b0_median, bf_median, nyquist_omega_factor=nyq_median, num_time_samples=time_samp_median, n_part_factor=ppc) for ppc in ppc_vals]
     plt.plot(ppc_vals, ppc_ppushes)
     plt.xlabel("Particles per cell")
-    plt.ylabel("Total particle pushes")
+    plt.ylabel("Total particle pushes (log)")
     plt.title("Particles per cell")
     plt.show()
 
     # B0 vs density heatmap
     b0s, denss = np.meshgrid(b0_vals, density_vals)
     push = calculate_number_of_particle_pushes(temp_median, denss, b0s, bf_median).astype(float)
-    plt.imshow(push, cmap="plasma", origin="lower", interpolation='none', extent=[b0_vals_dimless[0], b0_vals_dimless[-1], density_vals_dimless[0], density_vals_dimless[-1]], aspect="auto")
-    plt.colorbar().set_label("Total particle pushes")
+    plt.imshow(np.log10(push), cmap="plasma", origin="lower", interpolation='none', extent=[b0_vals_dimless[0], b0_vals_dimless[-1], density_vals_dimless[0], density_vals_dimless[-1]], aspect="auto")
+    plt.colorbar().set_label("Total particle pushes (log)")
     plt.xlabel(r"B0/$T$")
     plt.ylabel(r"Density/$m^{-3}$")
     plt.show()
     # B0 vs temperature
     b0s, temps = np.meshgrid(b0_vals, temp_vals_K)
     push = calculate_number_of_particle_pushes(temps, dens_median, b0s, bf_median).astype(float)
-    plt.imshow(push, cmap="plasma", origin="lower", interpolation='none', extent=[b0_vals_dimless[0], b0_vals_dimless[-1], temp_vals_keV_dimless[0], temp_vals_keV_dimless[-1]], aspect="auto")
-    plt.colorbar().set_label("Total particle pushes")
+    plt.imshow(np.log10(push), cmap="plasma", origin="lower", interpolation='none', extent=[b0_vals_dimless[0], b0_vals_dimless[-1], temp_vals_keV_dimless[0], temp_vals_keV_dimless[-1]], aspect="auto")
+    plt.colorbar().set_label("Total particle pushes (log)")
     plt.xlabel("B0/T")
     plt.ylabel(r"Temperature/$keV$")
     plt.show()
@@ -251,25 +251,25 @@ def plot_particle_push_scaling(file : Path):
     # Density vs temperature
     denss, temps = np.meshgrid(density_vals, temp_vals_K)
     push = calculate_number_of_particle_pushes(temps, denss, b0_median, bf_median).astype(float)
-    plt.imshow(push, cmap="plasma", origin="lower", interpolation='none', extent=[density_vals_dimless[0], density_vals_dimless[-1], temp_vals_keV_dimless[0], temp_vals_keV_dimless[-1]], aspect="auto")
+    plt.imshow(np.log10(push), cmap="plasma", origin="lower", interpolation='none', extent=[density_vals_dimless[0], density_vals_dimless[-1], temp_vals_keV_dimless[0], temp_vals_keV_dimless[-1]], aspect="auto")
     plt.colorbar().set_label("Total particle pushes")
     plt.xlabel(r"Density/$m^{-3}$")
     plt.ylabel(r"Temperature/$keV$")
     plt.show()
 
-    # Comparison
-    plt.plot(temp_ppushes, color = "r", label = "temperature")
-    plt.plot(dens_ppushes, color = "b", label = "density")
-    plt.plot(b0_ppushes, color = "purple", label = "B0")
-    plt.plot(bf_ppushes, color = "g", label = "beam fraction")
-    plt.plot(nyq_ppushes, color = "orange", label = "Nyquist factors")
-    plt.plot(n_ts_ppushes, color = "turquoise", label = "time samples")
-    plt.plot(ppc_ppushes, color = "black", label = "particles per cell")
-    plt.title("Comparison")
-    plt.legend()
-    plt.xlabel("Typical simulation range")
-    plt.ylabel("Total particle pushes")
-    plt.show()
+    # # Comparison
+    # plt.plot(temp_ppushes, color = "r", label = "temperature")
+    # plt.plot(dens_ppushes, color = "b", label = "density")
+    # plt.plot(b0_ppushes, color = "purple", label = "B0")
+    # plt.plot(bf_ppushes, color = "g", label = "beam fraction")
+    # plt.plot(nyq_ppushes, color = "orange", label = "Nyquist factors")
+    # plt.plot(n_ts_ppushes, color = "turquoise", label = "time samples")
+    # plt.plot(ppc_ppushes, color = "black", label = "particles per cell")
+    # plt.title("Comparison")
+    # plt.legend()
+    # plt.xlabel("Typical simulation range")
+    # plt.ylabel("Total particle pushes")
+    # plt.show()
 
 def calculate_number_of_particle_pushes(
         background_temp, 

@@ -135,7 +135,7 @@ def autoEmulate(
         best_result_filepath = ae.save(best, saveFolder, use_timestamp=True)
         print("Model and metadata saved to: ", best_result_filepath)
     except:
-        print(f"Unable to save model to {best_result_filepath}.")
+        print(f"Unable to save model to {saveFolder}.")
 
     # Save results
     results_json_filename = saveFolder / (f"AE_results_{name}.json" if name is not None else "autoEmulate.json")
