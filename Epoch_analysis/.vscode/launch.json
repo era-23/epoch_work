@@ -72,15 +72,17 @@
             ]
         },
         {
-            "name": "Python Debugger: TSR -- Plot Results",
+            "name": "Python Debugger: ML -- Plot Results",
             "type": "debugpy",
             "request": "launch",
             "program": "ml_json_results_visualiser.py",
             "console": "integratedTerminal",
             "args": [
-                "--file", "/home/era536/Documents/Epoch/Data/irb_ml_dataset_2/tsr_viking/aeon_standard_6-_combined.json",
-                "--plot",
-                "--metric", "cvR2",
+                // "--file", "/home/era536/Documents/Epoch/Data/irb_ml_dataset_2/tsr_viking/aeon_standard_6-_combined.json",
+                // "--plot",
+                // "--metric", "cvR2",
+                "--folder", "/home/era536/Documents/Epoch/Data/irb_ml_dataset_2/tsr_viking/auto_emulate/",
+                "--filePattern", "AE_results_catch24_gpu_pca_*.json",
             ]
         },
         {
@@ -626,11 +628,11 @@
             "program": "development/velocity_distribution.py",
             "console": "integratedTerminal",
             "args": [
-                "--dir", "/home/era536/Documents/Epoch/Data/sept_25/",
+                "--dir", "/home/era536/Documents/Epoch/Data/sept_25/110deg/",
                 "--file", "0000",
-                // "--saveFolder", "/home/era536/Documents/Epoch/Data/sept_25/",
+                "--saveFolder", "/home/era536/Documents/Epoch/Data/sept_25/110deg/",
                 //"--log",
-                // "--ddd",
+                //"--ddd",
             ]
         },
         {

@@ -142,6 +142,8 @@ def autoEmulate(
     results = ae.summarise()
     results["pca"] = doPCA
     results["pcaComponents"] = pcaComponents
+    results["cvFolds"] = numFolds
+    results["cvRepeats"] = numRepeats
     with open(results_json_filename, "w", encoding='utf-8') as f:
         results.to_json(f, default_handler=str)
 
@@ -252,6 +254,19 @@ if __name__ == "__main__":
         help="Number of CV repeats.",
         required = False,
         type=int
+    )
+    parser.add_argument(
+        "--collateResults",
+        action="store_true",
+        help="Collate results files.",
+        required = False
+    )
+    parser.add_argument(
+        "--resultsFilePattern",
+        action="store",
+        help="Pattern of results files to collate, e.g. ae_pca_*.json .",
+        required = False,
+        type=str
     )
 
     args = parser.parse_args()

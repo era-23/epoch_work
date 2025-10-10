@@ -221,7 +221,7 @@ def plot_velo_dists(directory : Path, file : str, vPerp : bool = False, saveFold
                 plt.show()
             plt.close()
 
-def plot_velo_3d(directory : Path, files : list, saveFolder : Path = None):
+def plot_velo_3d(directory : Path, file : Path, saveFolder : Path = None):
     
     startTime_s = 0.0
     speciess = ["electron", "deuteron", "alpha"]
@@ -236,35 +236,29 @@ def plot_velo_3d(directory : Path, files : list, saveFolder : Path = None):
     for species in speciess:
         vTh = pps.thermal_speed(temp, "e-" if species == "electron" else "p+")
         velocities = {dim : {} for dim in dims}
-        for file in files:
-            # Read dataset
-            ds = xr.open_dataset(
-                str(directory / f"{file}.sdf"),
-                keep_particles = True
-            )
-            
-            if file == "0000":
-                startTime_s = float(ds.time)       
-            
-            time_s = float(ds.time) - startTime_s
+        # Read dataset
+        ds = xr.open_dataset(
+            str(directory / f"{file}.sdf"),
+            keep_particles = True
+        )
 
-            # Read input deck
-            input = {}
-            with open(str(directory / "input.deck")) as id:
-                input = epydeck.loads(id.read())
-            
-            B0 = input['constant']['b0_strength']
-            # alfven_velo = pps.Alfven_speed(B = B0 * u.T, density = input['constant']['background_density'] / u.m**3, ion = "p")
-            fi_gyroperiod = (2.0 * np.pi * u.rad) / ppf.gyrofrequency(B = B0 * u.T, particle = "p")
+        # Read input deck
+        input = {}
+        with open(str(directory / "input.deck")) as id:
+            input = epydeck.loads(id.read())
+        
+        B0 = input['constant']['b0_strength']
+        # alfven_velo = pps.Alfven_speed(B = B0 * u.T, density = input['constant']['background_density'] / u.m**3, ion = "p")
+        fi_gyroperiod = (2.0 * np.pi * u.rad) / ppf.gyrofrequency(B = B0 * u.T, particle = "p")
 
-            for dim in velocities.keys(): # Runs out of memory here with many particles on my laptop
-                data = ds[f"Particles_{dim}_{species}"].load().data
-                #print(f"Max  velo: {data.max()}")
-                #print(f"Min  velo: {data.min()}")
-                #print(f"Mean velo: {np.mean(data)}")
-                #print(f"S.D. velo: {np.std(data)}")
-                velocities[dim] = data
-                del(data)
+        for dim in velocities.keys(): # Runs out of memory here with many particles on my laptop
+            data = ds[f"Particles_{dim}_{species}"].load().data
+            #print(f"Max  velo: {data.max()}")
+            #print(f"Min  velo: {data.min()}")
+            #print(f"Mean velo: {np.mean(data)}")
+            #print(f"S.D. velo: {np.std(data)}")
+            velocities[dim] = data
+            del(data)
         
         fig = plt.figure(figsize=(10,8))
         ax = fig.add_subplot(projection="3d")
@@ -352,6 +346,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.ddd:
-        plot_velo_3d(args.dir, args.files, args.saveFolder)
+        plot_velo_3d(args.dir, args.file, args.saveFolder)
     else:
         plot_velo_dists(args.dir, args.file, args.vperp, args.saveFolder, args.log)
