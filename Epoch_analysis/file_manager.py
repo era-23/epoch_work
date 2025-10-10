@@ -22,6 +22,7 @@ def modify_line_in_matching_files(src_dir, pattern, search_text, replace_text):
                 with open(file_path, 'w') as f:
                     for line in lines:
                         if search_text in line:
+                            print(f"Replacing {search_text} with {replace_text} in {f.name}....")
                             f.write(line.replace(search_text, replace_text))
                         else:
                             f.write(line)

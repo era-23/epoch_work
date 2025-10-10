@@ -666,13 +666,13 @@
             "args": [
                 "--modify",
                 "--source",
-                "/home/era536/Documents/Epoch/Data/batch_testing_2/test/",
+                    "/home/era536/Documents/Epoch/Data/sept_25/input_decks_96/",
                 "--file_pattern",
-                "input.deck",
+                    "input.deck",
                 "--search_text",
-                "num_time_samples = 1000.0",
+                    "b0_angle = 92",
                 "--replace_text",
-                "num_time_samples = 4000.0",
+                    "b0_angle = 96",
             ]
         },
         {
