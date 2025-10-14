@@ -53,6 +53,7 @@ def autoEmulate(
         models : list = None, 
         modelFile : Path = None, 
         name : str = None,
+        plot : bool = False,
         doPCA : bool = False,
         pcaComponents : int = 8,
         doSobol : bool = False,
@@ -127,6 +128,8 @@ def autoEmulate(
         best = ae.best_result()
         print("Model with id: ", best.id, " performed best: ", best.model_name)
         print(ae.summarise())
+        if plot:
+            ae.plot(best, fname=saveFolder / (f"AE_bestModel_{name}.png" if name is not None else "AE_bestModel.png"))
 
     # Save best model
     if not os.path.exists(saveFolder):
@@ -262,6 +265,12 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
+        "--plot",
+        action="store_true",
+        help="Plots the best fitting model and saves to saveFolder.",
+        required = False
+    )
+    parser.add_argument(
         "--resultsFilePattern",
         action="store",
         help="Pattern of results files to collate, e.g. ae_pca_*.json .",
@@ -283,6 +292,7 @@ if __name__ == "__main__":
         args.models, 
         args.modelFile, 
         args.name, 
+        args.plot if args.plot is not None else False,
         args.pca if args.pca is not None else False, 
         args.pcaComponents if args.pcaComponents is not None else 8,
         args.sobol if args.sobol is not None else False,

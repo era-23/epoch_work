@@ -34,9 +34,9 @@
                 // "--modelFile", "/home/era536/Documents/Epoch/Data/irb_ml_dataset_2/autoEmulate/GaussianProcess_0_20250918_174456.joblib",
                 "--name", "catch24_sobol_pcaTests",
                 "--pca",
-                "--pcaComponents", "32",
+                "--pcaComponents", "16",
                 "--numFolds", "5",
-                "--numRepeats", "1",
+                "--numRepeats", "2",
                 // "--sobol",
             ]
         },
