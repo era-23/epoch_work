@@ -65,8 +65,8 @@ def calculate_simulation_metadata(
         inputDeck : dict,
         dataset,
         outputNcRoot : nc.Dataset,
-        fastSpecies : str = 'p+',
-        bkgdSpecies : str = 'p+') -> tuple[float, float]:
+        fastSpecies : str = 'He-4 2+',
+        bkgdSpecies : str = 'D+') -> tuple[float, float]:
     
     beam = False
     if "frac_beam" in inputDeck["constant"].keys():
