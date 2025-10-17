@@ -61,7 +61,7 @@ class MaxGrowthRate:
     yIntercept: float
 
 E_TRACE_SPECIES_COLOUR_MAP = {
-    "proton" : "orange",
+    "backgroundIon" : "orange",
     "electron" : "blue",
     "magneticField" : "purple",
     "electricField" : "green",
@@ -69,7 +69,7 @@ E_TRACE_SPECIES_COLOUR_MAP = {
 }
 
 SPECIES_NAME_MAP = {
-    "protonMeanEnergyDensity" : "Bkgd proton",
+    "backgroundIonMeanEnergyDensity" : "Bkgd ion",
     "electronMeanEnergyDensity" : "Bkgd electron",
     "magneticFieldMeanEnergyDensity" : "B-field",
     "electricFieldMeanEnergyDensity" : "E-field",

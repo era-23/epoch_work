@@ -73,25 +73,25 @@ def calculate_simulation_metadata(
         beam =  inputDeck["constant"]["frac_beam"] > 0.0
 
     # Check parameters in SI
-    num_t = int(inputDeck['constant']['num_time_samples'])
-    outputNcRoot.numTimePoints = num_t
-
-    sim_time = float(dataset['Magnetic_Field_Bz'].coords["time"][-1]) * u.s
-    outputNcRoot.simTime_s = sim_time
-    outputNcRoot.timeSamplingFreq_Hz = num_t/sim_time
-    outputNcRoot.timeNyquistFreq_Hz = num_t/(2.0 *sim_time)
-
-    
     B0 = inputDeck['constant']['b0_strength']
     if beam:
         ion_gyrofrequency = ppf.gyrofrequency(B0 * u.T, fastSpecies)
     else:
         ion_gyrofrequency = ppf.gyrofrequency(B0 * u.T, bkgdSpecies)
     ion_gyroperiod = 1.0 / ion_gyrofrequency
-    
+    ion_gyroperiod_s = ion_gyroperiod * 2.0 * np.pi * u.rad
+    input_simtime = float(str(inputDeck['constant']['simtime']).split(" * ")[0]) * ion_gyroperiod_s.value
+    nyquist_gfs = inputDeck['constant']['nyquist_omega_gfs']
+    nyquist_s = nyquist_gfs * (ion_gyrofrequency / 2.0 * np.pi)
+    num_t = int(input_simtime * (2.0 * nyquist_s.value))
+    outputNcRoot.numTimePoints = num_t
+
+    sim_time = float(dataset['Magnetic_Field_Bz'].coords["time"][-1]) * u.s
+    outputNcRoot.simTime_s = sim_time
+    outputNcRoot.timeSamplingFreq_Hz = num_t/sim_time
+    outputNcRoot.timeNyquistFreq_Hz = num_t/(2.0 *sim_time)
     outputNcRoot.ionGyrofrequency_radPs = ion_gyrofrequency.value
     outputNcRoot.ionGyroperiod_sPrad = ion_gyroperiod.value
-    ion_gyroperiod_s = ion_gyroperiod * 2.0 * np.pi * u.rad
     outputNcRoot.ionGyroperiod_s = ion_gyroperiod_s.value
 
     # Work out num cells
@@ -140,15 +140,23 @@ def calculate_simulation_metadata(
     
     # Lengths
     if beam:
-        irb_v_perp = inputDeck['constant']['v_perp_ratio'] * alfven_velocity
-        irb_gyroradius = proton_gyroradius = ppl.gyroradius(B = B0 * u.T, particle = "p", Vperp=irb_v_perp)
+        irb_energy = (inputDeck['constant']['ring_beam_energy'] * u.eV).to(u.J)
+        irb_mass = inputDeck['constant']['fast_ion_mass_e'] * constants.electron_mass * u.kg
+        irb_momentum = np.sqrt(2.0 * irb_mass * irb_energy)
+        irb_momentum_perp = irb_momentum * np.sqrt(1.0 - inputDeck['constant']['pitch']**2)
+        irb_v_perp = (irb_momentum_perp / irb_mass).to(u.m/u.s)
+        mass_num = int(np.rint(inputDeck['constant']['fast_ion_mass_e']/1836.2))
+        particle = 'He-4 2+' if mass_num == 4 else 'D+' if mass_num == 2 else "p+"
+        irb_gyroradius = ppl.gyroradius(B = B0 * u.T, particle=particle, Vperp=irb_v_perp)
         outputNcRoot.fastIonGyroradius = irb_gyroradius.value
         outputNcRoot.simLength_rLfi = sim_L.value / irb_gyroradius.value
         outputNcRoot.cellWidth_rLfi = (sim_L.value / irb_gyroradius.value) / num_cells
-    proton_gyroradius = ppl.gyroradius(B = B0 * u.T, particle = "p", T = background_temp)
-    outputNcRoot.protonGyroradius = proton_gyroradius.value
-    outputNcRoot.simLength_rLp = sim_L.value / proton_gyroradius.value
-    outputNcRoot.cellWidth_rLp = (sim_L.value / proton_gyroradius.value) / num_cells
+    mass_num = int(np.rint(inputDeck['constant']['background_ion_mass_e']/1836.2))
+    particle = 'He-4 2+' if mass_num == 4 else 'D+' if mass_num == 2 else "p+"
+    background_gyroradius = ppl.gyroradius(B = B0 * u.T, particle=particle, T = background_temp)
+    outputNcRoot.backgroundGyroradius = background_gyroradius.value
+    outputNcRoot.simLength_rLp = sim_L.value / background_gyroradius.value
+    outputNcRoot.cellWidth_rLp = (sim_L.value / background_gyroradius.value) / num_cells
     outputNcRoot.electronGyroradius = electron_gyroradius.value
     outputNcRoot.simLength_rLe = sim_L.value / electron_gyroradius.value
     outputNcRoot.cellWidth_rLe = (sim_L.value / electron_gyroradius.value) / num_cells
@@ -181,7 +189,7 @@ def calculate_simulation_metadata(
         print(f"B0z = {B0 * np.sin(B0_angle * (np.pi / 180.0))}")
 
         print(f"Debye length: {debye_length}")
-        print(f"Background ion gyroradius: {proton_gyroradius}")
+        print(f"Background ion gyroradius: {background_gyroradius}")
         print(f"Background electron gyroradius: {electron_gyroradius}")
         if beam: 
             print(f"Fast ion gyroradius: {irb_gyroradius}")
@@ -189,9 +197,9 @@ def calculate_simulation_metadata(
         cell_width_dl = sim_L_dl /num_cells
         cell_width = cell_width_dl * debye_length
         if beam:
-            print(f"Cell width: {cell_width_dl:.3f} debye lengths ({cell_width/proton_gyroradius:.3f} proton gyroradii, {cell_width/electron_gyroradius:.3f} electron gyroradii, {cell_width/irb_gyroradius:.3f} fast ion gyroradii)")
+            print(f"Cell width: {cell_width_dl:.3f} debye lengths ({cell_width/background_gyroradius:.3f} background gyroradii, {cell_width/electron_gyroradius:.3f} electron gyroradii, {cell_width/irb_gyroradius:.3f} fast ion gyroradii)")
         else:
-            print(f"Cell width: {cell_width_dl/num_cells:.3f} debye lengths ({cell_width/proton_gyroradius:.3f} proton gyroradii, {cell_width/electron_gyroradius:.3f} electron gyroradii)")
+            print(f"Cell width: {cell_width_dl/num_cells:.3f} debye lengths ({cell_width/background_gyroradius:.3f} background gyroradii, {cell_width/electron_gyroradius:.3f} electron gyroradii)")
 
         print(f"Ion gyrofrequency: {ion_gyrofrequency}")
         print(f"Ion gyroperiod: {ion_gyroperiod}")
@@ -242,14 +250,14 @@ def run_energy_analysis(
         energyStats = statsFile.createGroup("Energy")
         energyStats.createDimension("time", dataset.coords["time"].size)
         time_var = energyStats.createVariable("time", "f8", ("time",))
-        ped = energyStats.createVariable("protonMeanEnergyDensity", "f8", ("time",))
+        bed = energyStats.createVariable("backgroundMeanEnergyDensity", "f8", ("time",))
         eed = energyStats.createVariable("electronMeanEnergyDensity", "f8", ("time",))
         efd = energyStats.createVariable("electricFieldMeanEnergyDensity", "f8", ("time",))
         mfd = energyStats.createVariable("magneticFieldMeanEnergyDensity", "f8", ("time",))
     else:
         energyStats = statsFile.groups["Energy"]
         time_var = energyStats.variables["time"]
-        ped = energyStats.variables["protonMeanEnergyDensity"]
+        bed = energyStats.variables["backgroundMeanEnergyDensity"]
         eed = energyStats.variables["electronMeanEnergyDensity"]
         efd = energyStats.variables["electricFieldMeanEnergyDensity"]
         mfd = energyStats.variables["magneticFieldMeanEnergyDensity"]
@@ -259,18 +267,20 @@ def run_energy_analysis(
 
     bkgd_density = inputDeck['constant']['background_density']
     frac_beam = inputDeck['constant']['frac_beam']
+    fast_ion_charge_e = inputDeck['constant']['fast_ion_charge_e']
+    background_ion_charge_e = inputDeck['constant']['background_ion_charge_e']
 
-    proton_density = bkgd_density * (1.0 - frac_beam) # m^-3
+    background_ion_density = (bkgd_density - (frac_beam * bkgd_density * fast_ion_charge_e)) / background_ion_charge_e # m^-3
     electron_density = bkgd_density # m^-3
 
     # Mean over all cells for mean particle/field energy
-    proton_KE : xr.DataArray = dataset['Derived_Average_Particle_Energy_proton'].load()
-    protonKE_mean = proton_KE.mean(dim = "x_space").data # J
-    protonKEdensity_mean = protonKE_mean * proton_density # J / m^3
-    del(proton_KE)
-    del(protonKE_mean)
+    background_ion_KE : xr.DataArray = dataset['Derived_Average_Particle_Energy_backgroundIon'].load()
+    backgroundIonKE_mean = background_ion_KE.mean(dim = "x_space").data # J
+    backgroundIonKEdensity_mean = backgroundIonKE_mean * background_ion_density # J / m^3
+    del(background_ion_KE)
+    del(backgroundIonKE_mean)
     
-    ped[:] = protonKEdensity_mean
+    bed[:] = backgroundIonKEdensity_mean
 
     electron_KE : xr.DataArray = dataset['Derived_Average_Particle_Energy_electron'].load()
     electronKE_mean = electron_KE.mean(dim = "x_space").data # J
@@ -305,11 +315,11 @@ def run_energy_analysis(
     # Calculate B and E energy and convert others to to J/m3
     deltaMeanMagneticEnergyDensity = magneticFieldEnergyDensity_mean - magneticFieldEnergyDensity_mean[0] # J / m^3
     deltaMeanElectricEnergyDensity = electricFieldDensity_mean - electricFieldDensity_mean[0] # J / m^3
-    deltaProtonKE_density = protonKEdensity_mean - protonKEdensity_mean[0] # J / m^3
+    deltaBackgroundIonKE_density = backgroundIonKEdensity_mean - backgroundIonKEdensity_mean[0] # J / m^3
     deltaElectronKE_density = electronKEdensity_mean - electronKEdensity_mean[0] # J / m^3
 
-    totalAbsoluteMeanEnergyDensity = protonKEdensity_mean + electronKEdensity_mean + magneticFieldEnergyDensity_mean + electricFieldDensity_mean
-    totalDeltaMeanEnergyDensity = deltaProtonKE_density + deltaElectronKE_density + deltaMeanMagneticEnergyDensity + deltaMeanElectricEnergyDensity
+    totalAbsoluteMeanEnergyDensity = backgroundIonKEdensity_mean + electronKEdensity_mean + magneticFieldEnergyDensity_mean + electricFieldDensity_mean
+    totalDeltaMeanEnergyDensity = deltaBackgroundIonKE_density + deltaElectronKE_density + deltaMeanMagneticEnergyDensity + deltaMeanElectricEnergyDensity
     timeCoords = dataset.coords['time']
 
     # Write stats
@@ -341,15 +351,15 @@ def run_energy_analysis(
         energyStats.fastIonEnergyDensity_timeMin = timeCoords[index]
         energyStats.fastIonEnergyDensity_delta = deltaFastIonKE_density[-1]
 
-    energyStats.backgroundIonEnergyDensity_start = protonKEdensity_mean[0]
-    energyStats.backgroundIonEnergyDensity_end = protonKEdensity_mean[-1]
-    index = np.nanargmax(protonKEdensity_mean)
-    energyStats.backgroundIonEnergyDensity_max = protonKEdensity_mean[index]
+    energyStats.backgroundIonEnergyDensity_start = backgroundIonKEdensity_mean[0]
+    energyStats.backgroundIonEnergyDensity_end = backgroundIonKEdensity_mean[-1]
+    index = np.nanargmax(backgroundIonKEdensity_mean)
+    energyStats.backgroundIonEnergyDensity_max = backgroundIonKEdensity_mean[index]
     energyStats.backgroundIonEnergyDensity_timeMax = timeCoords[index]
-    index = np.nanargmin(protonKEdensity_mean)
-    energyStats.backgroundIonEnergyDensity_min = protonKEdensity_mean[index]
+    index = np.nanargmin(backgroundIonKEdensity_mean)
+    energyStats.backgroundIonEnergyDensity_min = backgroundIonKEdensity_mean[index]
     energyStats.backgroundIonEnergyDensity_timeMin = timeCoords[index]
-    energyStats.backgroundIonEnergyDensity_delta = deltaProtonKE_density[-1]
+    energyStats.backgroundIonEnergyDensity_delta = deltaBackgroundIonKE_density[-1]
 
     energyStats.electronEnergyDensity_start = electronKEdensity_mean[0]
     energyStats.electronEnergyDensity_end = electronKEdensity_mean[-1]
@@ -394,7 +404,7 @@ def run_energy_analysis(
         print(f"Total energy conservation: {pctConservation}%")
 
     deltaEnergies = {
-        "protonMeanEnergyDensity" : deltaProtonKE_density,
+        "backgroundIonMeanEnergyDensity" : deltaBackgroundIonKE_density,
         "electronMeanEnergyDensity" : deltaElectronKE_density,
         "magneticFieldMeanEnergyDensity" : deltaMeanMagneticEnergyDensity,
         "electricFieldMeanEnergyDensity" : deltaMeanElectricEnergyDensity
@@ -507,17 +517,17 @@ def run_energy_analysis(
     # Specific to IRB transfer
     if beam:
         fastVar = "fastIonMeanEnergyDensity"
-        protVar = "protonMeanEnergyDensity"
+        backIonVar = "backgroundIonMeanEnergyDensity"
         elecVar = "electronMeanEnergyDensity"
         fast = deltaEnergies[fastVar]
         fast_pct = pctEnergies[fastVar]
-        proton = deltaEnergies[protVar]
-        proton_pct = pctEnergies[protVar]
+        backIon = deltaEnergies[backIonVar]
+        backIon_pct = pctEnergies[backIonVar]
         electron = deltaEnergies[elecVar]
         electron_pct = pctEnergies[elecVar]
 
         hasFastIonGain = bool(fast[-1] > 0.0) or energyStats[fastVar].hasPeaks
-        hasBkgdIonGain = bool(proton[-1] > 0.0)
+        hasBkgdIonGain = bool(backIon[-1] > 0.0)
         hasBkgdElectronGain = bool(electron[-1] > 0.0)
 
         energyStats.hasOverallFastIonGain = int(hasFastIonGain)
@@ -526,13 +536,13 @@ def run_energy_analysis(
 
         if debug:
             print(f"Overall fast ion gain: {hasFastIonGain}") # bool
-            print(f"Overall background proton gain: {hasBkgdIonGain}") # bool
+            print(f"Overall background ion gain: {hasBkgdIonGain}") # bool
             print(f"Overall background electron gain: {hasBkgdElectronGain}") # bool
 
         if fastVar in minTroughIndices.keys():
 
-            pGainAtFiTrough = float(proton[minTroughIndices[fastVar]])
-            pGainAtFiTrough_pct = float(proton_pct[minTroughIndices[fastVar]])
+            pGainAtFiTrough = float(backIon[minTroughIndices[fastVar]])
+            pGainAtFiTrough_pct = float(backIon_pct[minTroughIndices[fastVar]])
             eGainAtFiTrough = float(electron[minTroughIndices[fastVar]])
             eGainAtFiTrough_pct = float(electron_pct[minTroughIndices[fastVar]])
 
@@ -543,17 +553,17 @@ def run_energy_analysis(
 
             if debug:
                 print(f"Fast ion trough: {minTroughIndices[fastVar]}") # numeric and already recorded above
-                print(f"Proton gain at fast ion trough: {pGainAtFiTrough} ({pGainAtFiTrough_pct}%)") # numeric
+                print(f"Background ion gain at fast ion trough: {pGainAtFiTrough} ({pGainAtFiTrough_pct}%)") # numeric
                 print(f"Electron gain at fast ion trough: {eGainAtFiTrough} ({eGainAtFiTrough_pct}%)")# numeric
 
-        if protVar in maxPeakIndices.keys():
-            fiLossAtProtonPeak = float(fast[maxPeakIndices[protVar]])
-            fiLossAtProtonPeak_pct = float(fast_pct[maxPeakIndices[protVar]])
-            energyStats.fastIonChangeAtBkgdIonPeak = fiLossAtProtonPeak
-            energyStats.fastIonChangeAtBkgdIonPeak_pct = fiLossAtProtonPeak_pct
+        if backIonVar in maxPeakIndices.keys():
+            fiLossAtBackIonPeak = float(fast[maxPeakIndices[backIonVar]])
+            fiLossAtBackIonPeak_pct = float(fast_pct[maxPeakIndices[backIonVar]])
+            energyStats.fastIonChangeAtBkgdIonPeak = fiLossAtBackIonPeak
+            energyStats.fastIonChangeAtBkgdIonPeak_pct = fiLossAtBackIonPeak_pct
 
             if debug:
-                print(f"Fast ion loss at proton peak: {fiLossAtProtonPeak} ({fiLossAtProtonPeak_pct}%)") # numeric
+                print(f"Fast ion loss at background ion peak: {fiLossAtBackIonPeak} ({fiLossAtBackIonPeak_pct}%)") # numeric
         
         if elecVar in maxPeakIndices.keys():
             fiLossAtElectronPeak = float(fast[maxPeakIndices[elecVar]])
@@ -572,7 +582,7 @@ def run_energy_analysis(
     filename = Path(f"{simName}_absolute_energy_change.png")
     if beam:
         ax.plot(timeCoords, deltaFastIonKE_density, label = r"Fast ion", color="red")
-    ax.plot(timeCoords, deltaProtonKE_density, label = r"Bkgd proton", color="orange")
+    ax.plot(timeCoords, deltaBackgroundIonKE_density, label = r"Bkgd ion", color="orange")
     ax.plot(timeCoords, deltaElectronKE_density, label = r"Bkgd electron", color="blue")
     ax.plot(timeCoords, deltaMeanMagneticEnergyDensity, label = r"B-field", color="purple", linestyle="--")
     ax.plot(timeCoords, deltaMeanElectricEnergyDensity, label = r"E-field", color="green", linestyle="--")
@@ -603,8 +613,8 @@ def process_simulation_batch(
         bispectra : bool = True,
         gammaWindowPctMin : float = 5.0,
         gammaWindowPctMax : float = 15.0,
-        fastSpecies : str = 'p+',
-        bkgdSpecies : str = 'p+',
+        fastSpecies : str = 'He-4 2+',
+        bkgdSpecies : str = 'D+',
         bigLabels : bool = False,
         noTitle : bool = False,
         noLegend : bool = False,
@@ -707,7 +717,6 @@ def process_simulation_batch(
             # For field-specific stats
             fieldStats = statsRoot.createGroup(field)
             field_unit = ds[field].units
-            ##### UNCOMMENT THIS
             fieldStats.baseUnit = field_unit
             field_mag = float(np.abs(ds[field].sum()))
             fieldStats.totalMagnitude = field_mag
