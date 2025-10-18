@@ -252,14 +252,14 @@ def run_energy_analysis(
         energyStats = statsFile.createGroup("Energy")
         energyStats.createDimension("time", dataset.coords["time"].size)
         time_var = energyStats.createVariable("time", "f8", ("time",))
-        bed = energyStats.createVariable("backgroundMeanEnergyDensity", "f8", ("time",))
+        bed = energyStats.createVariable("backgroundIonMeanEnergyDensity", "f8", ("time",))
         eed = energyStats.createVariable("electronMeanEnergyDensity", "f8", ("time",))
         efd = energyStats.createVariable("electricFieldMeanEnergyDensity", "f8", ("time",))
         mfd = energyStats.createVariable("magneticFieldMeanEnergyDensity", "f8", ("time",))
     else:
         energyStats = statsFile.groups["Energy"]
         time_var = energyStats.variables["time"]
-        bed = energyStats.variables["backgroundMeanEnergyDensity"]
+        bed = energyStats.variables["backgroundIonMeanEnergyDensity"]
         eed = energyStats.variables["electronMeanEnergyDensity"]
         efd = energyStats.variables["electricFieldMeanEnergyDensity"]
         mfd = energyStats.variables["magneticFieldMeanEnergyDensity"]
