@@ -240,7 +240,8 @@ def run_energy_analysis(
     displayPlots : bool = False,
     noTitle : bool = False,
     noLegend : bool = False,
-    backgroundSpeciesName : str = "deuteron"
+    backgroundSpeciesName : str = "deuteron",
+    fastSpeciesName : str = "alpha"
 ):
     beam = False
     if "frac_beam" in inputDeck["constant"].keys():
@@ -328,7 +329,7 @@ def run_energy_analysis(
     if beam:
 
         fastIonDensity = bkgd_density * frac_beam # m^-3
-        fastIonKE : xr.DataArray = dataset['Derived_Average_Particle_Energy_ion_ring_beam'].load()
+        fastIonKE : xr.DataArray = dataset[f'Derived_Average_Particle_Energy_{fastSpeciesName}'].load()
         fastIonKE_mean = fastIonKE.mean(dim = "x_space").data # J
         fastIonKEdensity_mean = fastIonKE_mean * fastIonDensity # J / m^3
         del(fastIonKE)
@@ -705,7 +706,18 @@ def process_simulation_batch(
         # Energy analysis
         if energy:
             energyPlotFolder = plotsFolder / "energy"
-            run_energy_analysis(ds, inputDeck, simFolder.name, energyPlotFolder, statsRoot, log=logEnergy, displayPlots = displayPlots, noTitle=noTitle, noLegend=noLegend, backgroundSpeciesName="deuteron" if bkgdSpecies == "D+" else "proton")
+            run_energy_analysis(
+                ds, 
+                inputDeck, 
+                simFolder.name, 
+                energyPlotFolder, 
+                statsRoot, 
+                log=logEnergy, 
+                displayPlots = displayPlots, 
+                noTitle=noTitle, 
+                noLegend=noLegend, 
+                backgroundSpeciesName= "deuteron" if bkgdSpecies == "D+" else "proton",
+                fastSpeciesName= "alpha" if fastSpecies == 'He-4 2+' else "ion_ring_beam")
 
         if "all" in fields:
             fields = [str(f) for f in ds.data_vars.keys() if str(f).startswith("Electric_Field") or str(f).startswith("Magnetic_Field")]
