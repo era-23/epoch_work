@@ -458,7 +458,7 @@ def write_spectral_features_to_csv(csvFile : Path, featureSet : list):
         for instance in featureSet:
             writer.writerow(instance.__dict__)
 
-def __encode_ML_result_to_JSON_dict(result : GPResults | TSRBattery) -> str:
+def __encode_ML_result_to_JSON_dict(result : GPResults | TSRBattery) -> dict:
     results_dict = dc.asdict(result)
     for name, val in results_dict.items():
         if isinstance(val, np.ndarray):
@@ -473,6 +473,13 @@ def write_ML_result_to_file(result : GPResults | TSRBattery, filepath : Path):
     with open(filepath, "w", encoding='utf-8') as f:
         result_json = __encode_ML_result_to_JSON_dict(result)
         json.dump(result_json, f, ensure_ascii=False, indent=4)
+
+def write_ML_results_to_file(results : list, filepath : Path):
+    all_results = {
+        "results": [r.to_dict() for r in results]
+    }
+    with open(filepath, "w", encoding='utf-8') as f:
+        json.dumps(all_results, f, ensure_ascii=False, indent=4)
 
 def anim_init(fig, ax, xx, yy, zz):
     ax.scatter(xx, yy, zz, color="black")
