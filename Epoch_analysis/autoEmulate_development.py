@@ -11,7 +11,7 @@ import torch
 import json
 from matplotlib import pyplot as plt
 import ml_utils
-warnings.filterwarnings("ignore")
+#warnings.filterwarnings("ignore")
 from autoemulate.simulations.projectile import Projectile
 from autoemulate import AutoEmulate
 # from autoemulate.emulators.base import SklearnBackend
@@ -71,14 +71,16 @@ def autoEmulateMultiOutput(
 
     # Proprocessing
     if "B0angle" in inputs:
-        transf = np.array(inputs["B0angle"])
+        transf = np.array(inputs["B0angle"], dtype='float64')
         inputs["B0angle"] = np.abs(transf - 90.0) 
     if "backgroundDensity" in inputs:
-        transf = np.array(inputs["backgroundDensity"])
+        transf = np.array(inputs["backgroundDensity"], dtype='float64')
         inputs["backgroundDensity"] = np.log10(transf)
     if "beamFraction" in inputs:
-        transf = np.array(inputs["beamFraction"])
+        transf = np.array(inputs["beamFraction"], dtype='float64')
         inputs["beamFraction"] = np.log10(transf) 
+    if "B0strength" in inputs:
+        inputs["B0strength"] = np.array(inputs["B0strength"], dtype='float64') 
 
     ##### Get output data
     # Beta: output filter
@@ -100,8 +102,8 @@ def autoEmulateMultiOutput(
                 outputData_list.append(np.array([float(feature_values[i]) for i in sorted_idx]))
     
     ##### Format
-    inputData_arr = np.array([np.array(inputs[f]) for f in inputFields]).T
-    outputData_arr = np.array(outputData_list).T
+    inputData_arr = np.array([np.array(inputs[f], dtype='float64') for f in inputFields]).T
+    outputData_arr = np.array(outputData_list, dtype='float64').T
     input_ptt = torch.from_numpy(inputData_arr)
     output_ptt = torch.from_numpy(outputData_arr)
 
@@ -132,7 +134,7 @@ def autoEmulateMultiOutput(
             shuffle=False,
             n_splits = numFolds, 
             n_bootstraps = numRepeats, 
-            log_level="progress_bar"
+            log_level="debug"
         )
         best = ae.best_result()
         print("Model with id: ", best.id, " performed best: ", best.model_name)

@@ -1,11 +1,28 @@
 import argparse
+import glob
 from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
 import epoch_utils
+import ml_utils
 
-def power_spectrum(dataFile : Path, field : str):
+def all_power_spectra(dataFolder : Path, fields : list):
+    
+    # Get all datafiles
+    data_files = glob.glob(str(dataFolder / "*.nc"))
+
+    allSpectra = []
+
+    allSpectra = ml_utils.read_data(
+        data_files, 
+        {f : [] for f in fields},
+        with_names = True, 
+        with_coords=True)
+    
+    print("WIP")
+
+def power_spectrum(dataFile : Path, field : str, doPlot : bool = True):
     
     data = xr.open_datatree(
             dataFile,
@@ -21,21 +38,24 @@ def power_spectrum(dataFile : Path, field : str):
     coords = data[group].coords[power_trace.dims[0]]
     fieldName = epoch_utils.fieldNameToText(field)
     
-    fig, axs = plt.subplots(figsize=(15, 10))
-    axs.plot(coords, fieldData)
-    axs.set_xticks(ticks=np.arange(np.floor(coords[0]), np.ceil(coords[-1])+1.0, 1.0), minor=True)
-    axs.grid(which='both', axis='x')
-    axs.set_xlabel(r"Frequency [$\omega_{ci}$]")
-    axs.set_ylabel(f"Sum of power in {fieldName} over all k [T]")
-    plt.show()
+    if doPlot:
+        fig, axs = plt.subplots(figsize=(15, 10))
+        axs.plot(coords, fieldData)
+        axs.set_xticks(ticks=np.arange(np.floor(coords[0]), np.ceil(coords[-1])+1.0, 1.0), minor=True)
+        axs.grid(which='both', axis='x')
+        axs.set_xlabel(r"Frequency [$\omega_{ci}$]")
+        axs.set_ylabel(f"Sum of power in {fieldName} over all k [T]")
+        plt.show()
 
-    fig, axs = plt.subplots(figsize=(15, 10))
-    axs.plot(coords, 10.0 * np.log10(fieldData / B0))
-    axs.set_xticks(ticks=np.arange(np.floor(coords[0]), np.ceil(coords[-1])+1.0, 1.0), minor=True)
-    axs.grid(which='both', axis='x')
-    axs.set_xlabel(r"Frequency [$\omega_{ci}$]")
-    axs.set_ylabel(f"Sum of power in {fieldName} over all k [dB]")
-    plt.show()
+        fig, axs = plt.subplots(figsize=(15, 10))
+        axs.plot(coords, 10.0 * np.log10(fieldData / B0))
+        axs.set_xticks(ticks=np.arange(np.floor(coords[0]), np.ceil(coords[-1])+1.0, 1.0), minor=True)
+        axs.grid(which='both', axis='x')
+        axs.set_xlabel(r"Frequency [$\omega_{ci}$]")
+        axs.set_ylabel(f"Sum of power in {fieldName} over all k [dB]")
+        plt.show()
+
+    return fieldData, coords
 
 if __name__ == "__main__":
     
@@ -44,15 +64,23 @@ if __name__ == "__main__":
         "--dataFile",
         action="store",
         help="Filepath of simulation output data to plot, e.g. /data/run_23_stats.nc",
-        required = True,
+        required = False,
         type=Path
     )
     parser.add_argument(
-        "--field",
+        "--dataFolder",
         action="store",
-        help="Field to plot, e.g. /Magnetic_Field_Bz/power/powerByFrequency",
+        help="Filepath of folder of simulation output data to plot, e.g. /data/",
+        required = False,
+        type=Path
+    )
+    parser.add_argument(
+        "--fields",
+        action="store",
+        help="Field(s) to plot, e.g. /Magnetic_Field_Bz/power/powerByFrequency",
         required = True,
-        type=str
+        type=str,
+        nargs="*"
     )
 
     args = parser.parse_args()
@@ -63,5 +91,9 @@ if __name__ == "__main__":
     plt.rcParams.update({'ytick.labelsize': 20.0})
     plt.rcParams.update({'legend.fontsize': 18.0})
 
-    power_spectrum(args.dataFile, args.field)
+    if args.dataFile:
+        for f in args.fields:
+            power_spectrum(args.dataFile, f)
+    if args.dataFolder:
+        all_power_spectra(args.dataFolder, args.fields)
 

@@ -11,11 +11,94 @@ import torch
 import json
 from matplotlib import pyplot as plt
 import ml_utils
+import csv
 warnings.filterwarnings("ignore")
 from autoemulate.simulations.projectile import Projectile
 from autoemulate import AutoEmulate
 from autoemulate.transforms import StandardizeTransform, PCATransform
 from autoemulate.core.sensitivity_analysis import SensitivityAnalysis
+
+# SMALL_SIZE = 10
+# MEDIUM_SIZE = 20
+# BIGGER_SIZE = 24
+# plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
+# plt.rc('axes', titlesize=BIGGER_SIZE)     # fontsize of the axes title
+# plt.rc('axes', labelsize=BIGGER_SIZE)    # fontsize of the x and y labels
+# plt.rc('xtick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
+# plt.rc('ytick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
+# plt.rc('legend', fontsize=MEDIUM_SIZE)    # legend fontsize
+# plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
+
+def plot_results(
+        resultsFile : Path,
+        outputFields : list = None,
+        models : list = None,
+        metric : str = "r2_test",
+        metricThreshold : float = 0.75,
+        featureSet : str = "catch22"
+):
+    SMALL_SIZE = 10
+    MEDIUM_SIZE = 20
+    BIGGER_SIZE = 24
+    plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
+    plt.rc('axes', titlesize=BIGGER_SIZE)     # fontsize of the axes title
+    plt.rc('axes', labelsize=BIGGER_SIZE)    # fontsize of the x and y labels
+    plt.rc('xtick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
+    plt.rc('ytick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
+    plt.rc('legend', fontsize=MEDIUM_SIZE)    # legend fontsize
+    plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
+
+    results_df = pd.read_csv(resultsFile)
+
+    # Useful columns
+    data = results_df[["model_name", "outputField", metric, f"{metric}_std"]]
+
+    # Filter by outputFields
+    if outputFields:
+        data = data[data["outputField"].isin(outputFields)]
+        data = data[data[metric] > metricThreshold]
+    else:
+        outputFields = data[data[metric] > metricThreshold]["outputField"].to_numpy()
+        data = data[data["outputField"].isin(outputFields)]
+    
+    # Filter by models
+    if models:
+        data = data[data["model_name"].isin(outputFields)]
+    else:
+        models = list(set(data["model_name"].to_numpy()))
+    
+    # Plot grouped bar chart
+    barVals = {model : [] for model in models}
+    barErrs = {model : [] for model in models}
+    for field in outputFields:
+        fieldResults = data[data["outputField"] == field]
+        for _, res in fieldResults.iterrows():
+            barVals[res["model_name"]].append(res[metric])
+            barErrs[res["model_name"]].append(res[f"{metric}_std"])
+
+    x = np.arange(len(outputFields))
+    
+    width = 1.0/(len(models) + 1)  # the width of the bars
+    multiplier = 0
+
+    fig, ax = plt.subplots(figsize=(15, 15))
+
+    for model, value in barVals.items():
+        offset = width * multiplier
+        rects = ax.bar(x + offset, value, width, label=model, yerr=barErrs[model], edgecolor='black')
+        #ax.errorbar(x + offset, value, yerr=barErrs[algorithm], fmt=",", color = "k")
+        # ax.bar_label(rects, padding=3)
+        multiplier += 1
+
+    ax.set_xlabel('Output field')
+    ax.set_ylabel(metric)
+    xLabels = [f"{f.split('__')[0]}__{ml_utils.catch22_short_names[f.split('__')[1]]}" for f in outputFields]
+    ax.set_xticks(x + (0.5 * (len(models) -1) * width), xLabels, rotation=90)
+    ax.legend(loc='lower left')
+    ax.set_ylim((0.5, 1))
+    fig.tight_layout()
+
+    plt.show()
 
 def run_single_output_GP(
         input_ptt : torch.Tensor,
@@ -66,7 +149,7 @@ def run_single_output_GP(
         min_input_vals = torch.min(input_ptt, dim = 0)[0]
         for i in range(len(inputFieldNames)):
             parameters_range[inputFieldNames[i]] = (float(max_input_vals[i]), float(min_input_vals[i]))
-        ae.plot_surface(best.model, parameters_range = parameters_range, quantile = 0.5, fname=saveFolder / (f"AE_bestModel_surface_{name}.png" if name is not None else "AE_bestModelSurface.png"))
+        ae.plot_surface(best.model, input_index_pair=(0,2), parameters_range = parameters_range, quantile = 0.5, fname=saveFolder / (f"AE_bestModel_surface_{name}.png" if name is not None else "AE_bestModelSurface.png"))
     # Save best model
     if not os.path.exists(saveFolder):
         os.makedirs(saveFolder)
@@ -267,25 +350,25 @@ if __name__ == "__main__":
         required = False,
         type=int
     )
-    # parser.add_argument(
-    #     "--collateResults",
-    #     action="store_true",
-    #     help="Collate results files.",
-    #     required = False
-    # )
     parser.add_argument(
         "--plot",
         action="store_true",
         help="Plots the best fitting model and saves to saveFolder.",
         required = False
     )
-    # parser.add_argument(
-    #     "--resultsFilePattern",
-    #     action="store",
-    #     help="Pattern of results files to collate, e.g. ae_pca_*.json .",
-    #     required = False,
-    #     type=str
-    # )
+    parser.add_argument(
+        "--resultsFilepath",
+        action="store",
+        help="Filepath of collate results for plotting.",
+        required = False,
+        type=Path
+    )
+    parser.add_argument(
+        "--plotResults",
+        action="store_true",
+        help="Plots the results of a batch run.",
+        required = False
+    )
 
     args = parser.parse_args()
 
@@ -293,18 +376,22 @@ if __name__ == "__main__":
     pd.set_option('display.max_columns', 1000)
     pd.set_option('display.max_colwidth', None)
 
-    harness_multiple_single_output_GPs(
-        args.inputDir, 
-        args.inputFields, 
-        args.outputFile, 
-        args.saveFolder, 
-        args.outputFields,
-        args.models, 
-        args.name, 
-        args.plot if args.plot is not None else False,
-        args.pca if args.pca is not None else False, 
-        args.pcaComponents if args.pcaComponents is not None else 8,
-        args.sobol if args.sobol is not None else False,
-        args.sobolSamples,
-        args.numFolds if args.numFolds is not None else 9,
-        args.numRepeats if args.numRepeats is not None else 3)
+    if args.plotResults:
+        saveFilepath = args.saveFolder / "all_single_GP_results.csv" if args.resultsFilepath is None else args.resultsFilepath
+        plot_results(saveFilepath)
+    else:
+        harness_multiple_single_output_GPs(
+            args.inputDir, 
+            args.inputFields, 
+            args.outputFile, 
+            args.saveFolder, 
+            args.outputFields,
+            args.models, 
+            args.name, 
+            args.plot if args.plot is not None else False,
+            args.pca if args.pca is not None else False, 
+            args.pcaComponents if args.pcaComponents is not None else 8,
+            args.sobol if args.sobol is not None else False,
+            args.sobolSamples,
+            args.numFolds if args.numFolds is not None else 9,
+            args.numRepeats if args.numRepeats is not None else 3)
