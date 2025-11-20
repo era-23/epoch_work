@@ -8,7 +8,7 @@ import epoch_utils
 import ml_utils
 
 def all_power_spectra(dataFolder : Path, fields : list):
-    
+
     # Get all datafiles
     data_files = glob.glob(str(dataFolder / "*.nc"))
 
@@ -18,9 +18,43 @@ def all_power_spectra(dataFolder : Path, fields : list):
         data_files, 
         {f : [] for f in fields},
         with_names = True, 
-        with_coords=True)
+        with_coords=True
+    )
     
-    print("WIP")
+    b0 = np.array(ml_utils.read_data(
+        data_files, 
+        {"B0strength" : []},
+        with_names = True
+    )["B0strength"])
+    
+    # Check all corrdinates are aligned
+    # coords = [v for k,v in allSpectra.items() if k.endswith("_coords")]
+    # for i in range(len(coords)-1):
+    #     assert np.allclose(coords[i], coords[i+1])
+
+    for field in fields:
+        
+        # Raw data
+        spectra = np.array([np.array(s) for s in allSpectra[field]])
+        print(spectra.shape)
+
+        # For each simulation, take log10 of power^2 / B0^2
+        # for i in range(spectra.shape[0]):
+        #     spectra[i] = np.log10(spectra[i]**2 / b0[i]**2)
+        
+        plt.subplots(figsize=(12,8))
+        heatmap = plt.imshow(spectra, cmap="plasma", aspect='auto', origin='lower')
+        # heatmap = plt.imshow(np.log10(spectra), cmap="plasma", aspect='auto', origin='lower')
+        plt.title(f"{epoch_utils.fieldNameToText(field)}")
+        plt.xlim(allSpectra[field + "_coords"][0][0], allSpectra[field + "_coords"][0][-1])
+        plt.ylim(float(allSpectra["sim_ids"][0]), float(allSpectra["sim_ids"][-1]))
+        plt.xlabel(r"Frequency/$\omega_\alpha$")
+        plt.ylabel("Simulation ID")
+        cbar = plt.colorbar(heatmap)
+        cbar.ax.set_ylabel("power/T")
+        plt.tight_layout()
+        plt.show()
+        
 
 def power_spectrum(dataFile : Path, field : str, doPlot : bool = True):
     

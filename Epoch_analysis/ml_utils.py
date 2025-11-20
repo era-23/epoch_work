@@ -404,16 +404,11 @@ def truncate_series(series : ArrayLike, seriesCoordinates : ArrayLike, maxCoordi
 def normalise_1D(data: ArrayLike, doLog : bool = False):
     if isinstance(data, list):
         data = np.array(data)
-    orig_mean = np.mean(data)
-    orig_sd = np.std(data)
     if doLog:
         data = np.log10(data)
-        mean = np.mean(data)
-        sd = np.std(data)
-    else:
-        mean = orig_mean
-        sd = orig_sd
-    return (data - mean) / sd, orig_mean, orig_sd
+    mean = np.mean(data)
+    sd = np.std(data)
+    return (data - mean) / sd, mean, sd
 
 # Normalises data row-wise (mean and sd taken row-wise)
 def normalise_dataset(data: ArrayLike):
@@ -431,15 +426,17 @@ def denormalise_dataset(data: ArrayLike, orig_mean : float, orig_sd : float, unl
     denormed_data = []
     
     for row_id in range(data.shape[0]):
-        denormed_data.append(denormalise_datapoint(data[row_id], orig_mean[row_id], orig_sd[row_id], unlog))
+        denormed_data.append(denormalise_datapoint(data[row_id], orig_mean, orig_sd, unlog))
     
     return denormed_data
 
 # Denormalises a single data point
 def denormalise_datapoint(datapoint : float, orig_mean : float, orig_sd : float, unlog : bool):
+    
     denormed = (datapoint * orig_sd) + orig_mean
     if unlog:
-        denormed = 10**denormed
+        denormed = 10.0**denormed
+
     return  denormed
 
 # Denormalises an RMSE value

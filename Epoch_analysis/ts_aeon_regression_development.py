@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import csv
 from scipy.stats import sem
-from sklearn.model_selection import RepeatedKFold
+from sklearn.model_selection import RepeatedKFold, LeaveOneOut
 
 from aeon.datasets import load_cardano_sentiment, load_covid_3month
 from aeon.transformations.collection import Normalizer
@@ -20,6 +20,12 @@ import logging
 logger = logging.getLogger(__name__)
 warnings.filterwarnings("ignore")
 
+plt.rcParams.update({'axes.titlesize': 26.0})
+plt.rcParams.update({'axes.labelsize': 24.0})
+plt.rcParams.update({'xtick.labelsize': 20.0})
+plt.rcParams.update({'ytick.labelsize': 20.0})
+plt.rcParams.update({'legend.fontsize': 18.0})
+
 def demo():
     covid_train, covid_train_y = load_covid_3month(split="train")
     covid_test, covid_test_y = load_covid_3month(split="test")
@@ -30,6 +36,37 @@ def demo():
     print(f"Cardano spectrum shape: {cardano_train.shape} (n_cases: {cardano_train.shape[0]}, n_channels: {cardano_train.shape[1]}, n_timepoints: {cardano_train.shape[2]})")
     print(f"Cardano output shape:   {cardano_train_y.shape}")
 
+def plot_predictions(
+        algorithm_name : str,
+        field : str,
+        sim_ids : list,
+        truth : list,
+        preds : list,
+        saveFolder : Path,
+        log_x : bool
+):
+    plt.subplots(figsize=(12, 8))
+    plt.scatter(truth, sim_ids, label = "True value", marker = "o", color = "blue")
+    plt.scatter(preds, sim_ids, label = "Predicted value", marker = "o", color = "red")
+    plt.title(f"Predictions from {algorithm_name}")
+    plt.ylabel("Simulation ID")
+    if log_x:
+        plt.xscale("log")
+        plt.xlabel(f"{field} (log)")
+    else:
+        plt.xlabel(field)
+        
+    for i in range(len(truth)):
+        plt.plot([truth[i], preds[i]], [sim_ids[i], sim_ids[i]], color = "black", label = "errors")
+
+    # Set legend
+    handles, labels = plt.gca().get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    plt.legend(by_label.values(), by_label.keys())
+
+    plt.savefig(saveFolder / f"{algorithm_name}_{field}_predictions.png")
+    
+
 def regress(
         directory : Path,
         inputSpectraNames : list,
@@ -38,8 +75,10 @@ def regress(
         algorithms : list,
         cvFolds : int,
         cvRepeats : int,
+        cvStrategy : str = "RepeatedKFolds",
         normalise : bool = True,
-        resultsFilepath = None
+        resultsFilepath : Path = None,
+        doPlot : bool = True
 ):
     logging.basicConfig(filename='aeon_tsc.log', level=logging.INFO)
 
@@ -133,7 +172,7 @@ def regress(
     battery.numTimepointsIfEqual = inputSpectra.shape[2]
     battery.multivariate = battery.numInputDimensions > 1
 
-    battery.cvStrategy = "RepeatedKFolds"
+    battery.cvStrategy = cvStrategy
     battery.cvFolds = cvFolds
     battery.cvRepeats = cvRepeats
     battery.results = []
@@ -143,8 +182,14 @@ def regress(
         assert len(output_values) == inputSpectra.shape[0]
         case_indices = np.arange(len(output_values))
         output_values = np.array(output_values)
-        rkf = RepeatedKFold(n_splits=cvFolds, n_repeats=cvRepeats)
-        tt_split = list(enumerate(rkf.split(case_indices)))
+        if cvStrategy == "RepeatedKFolds":
+            cv = RepeatedKFold(n_splits=cvFolds, n_repeats=cvRepeats)
+        elif cvStrategy == "LeaveOneOut":
+            cv = LeaveOneOut()
+        else:
+            print("CV Strategy not implemented. Defaulting to RepeatedKFolds.")
+            cv = RepeatedKFold(n_splits=cvFolds, n_repeats=cvRepeats)
+        tt_split = list(enumerate(cv.split(case_indices)))
         
         for algorithm in algorithms:
             print(f"Building {algorithm} model for {output_field} from {inputSpectraNames}....")
@@ -156,13 +201,16 @@ def regress(
             
             tsr = ml_utils.get_algorithm(algorithm)
 
-            # Repeated K Folds
+            # CV Folds
+            all_test_indices = []
             all_R2s = []
             all_test_points = []
             all_predictions = []
+            all_test_points_denormed = []
+            all_predictions_denormed = []
             
             for fold, (train, test) in tt_split:
-                print(f"Fold: {fold}....")
+                print(f"Fold: {fold} (test indices: {test})....")
                 # print(f"    Train indices: {train}")
                 # print(f"    Test indices:  {test}")
 
@@ -174,16 +222,23 @@ def regress(
                 print("    Training model....")
                 tsr.fit(train_x, train_y)
                 predictions = tsr.predict(test_x)
-                print(f"    Predictions:  {predictions}")
-                print(f"    Ground truth: {test_y}")
+                denorm_mean, denorm_sd = denormalisation_parameters[output_field]
+                unLog = output_field in logFields
+                preds_denormed = ml_utils.denormalise_dataset(predictions, denorm_mean, denorm_sd, unLog)
+                test_y_denormed = ml_utils.denormalise_dataset(test_y, denorm_mean, denorm_sd, unLog)
+                print(f"    Predictions:  {predictions} (normalised), {preds_denormed} (original)")
+                print(f"    Ground truth: {test_y} (normalised), {test_y_denormed} (original)")
                 score = tsr.score(test_x, test_y, metric='r2')
                 all_R2s.append(score)
                 skl_rmse = root_mean_squared_error(test_y, predictions)
                 print(f"    knn r2:       {score}")
                 print(f"    sklearn rmse: {skl_rmse} (actuals S.D.: {np.std(test_y)})")
 
+                all_test_indices.extend(test.tolist())
                 all_test_points.extend(test_y.tolist())
+                all_test_points_denormed.extend(test_y_denormed)
                 all_predictions.extend(list(predictions))
+                all_predictions_denormed.extend(preds_denormed)
             rmse, rmse_var, rmse_se = ml_utils.root_mean_squared_error(all_predictions, all_test_points)
             summary_str = f"{output_field} -- {algorithm}: Mean r2 = {np.mean(all_R2s):.5f}+-{sem(all_R2s):.5f}, mean RMSE: {rmse:.5f}+-{rmse_se:.5f}"
             print("--------------------------------------------------------------------------------------------------------------------------")
@@ -198,6 +253,9 @@ def regress(
             result.cvRMSE_stderr = rmse_se
 
             battery.results.append(result)
+
+            if doPlot:
+                plot_predictions(algorithm, output_field, all_test_indices, all_test_points_denormed, all_predictions_denormed, resultsFilepath.parent, output_field in logFields)
     
     ml_utils.write_ML_result_to_file(battery, resultsFilepath)
 
@@ -258,6 +316,19 @@ if __name__ == "__main__":
         type=int
     )
     parser.add_argument(
+        "--cvStrategy",
+        action="store",
+        help="CV strategy.",
+        required = False,
+        type=str
+    )
+    parser.add_argument(
+        "--doPlot",
+        action="store_true",
+        help="Plot predictions.",
+        required = False
+    )
+    parser.add_argument(
         "--resultsFilepath",
         action="store",
         help="Filepath of csv to which to write results.",
@@ -267,5 +338,15 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    regress(args.dir, args.inputSpectra, args.outputFields, args.logFields, args.algorithms, args.cvFolds, args.cvRepeats, resultsFilepath=args.resultsFilepath)
+    regress(
+        args.dir, 
+        args.inputSpectra, 
+        args.outputFields, 
+        args.logFields, 
+        args.algorithms, 
+        args.cvFolds, 
+        args.cvRepeats, 
+        args.cvStrategy,
+        resultsFilepath=args.resultsFilepath,
+        doPlot=args.doPlot)
     # demo()

@@ -11,7 +11,7 @@ import torch
 import json
 from matplotlib import pyplot as plt
 import ml_utils
-#warnings.filterwarnings("ignore")
+warnings.filterwarnings("ignore")
 from autoemulate.simulations.projectile import Projectile
 from autoemulate import AutoEmulate
 # from autoemulate.emulators.base import SklearnBackend
@@ -141,6 +141,8 @@ def autoEmulateMultiOutput(
         print(ae.summarise())
         if plot:
             ae.plot(best, fname=saveFolder / (f"AE_bestModel_{name}.png" if name is not None else "AE_bestModel.png"))
+            ae.plot_preds(best, output_names=outputFields, fname=saveFolder / (f"AE_bestModel_predictions_{name}.png" if name is not None else "AE_bestModel_predictions.png"))
+            ae.plot_calibration(best, fname=saveFolder / (f"AE_bestModel_calibration_{name}.png" if name is not None else "AE_bestModel_calibration.png"))     
 
     # Save best model
     if not os.path.exists(saveFolder):
