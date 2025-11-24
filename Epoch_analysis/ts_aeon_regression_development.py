@@ -55,7 +55,7 @@ def plot_predictions(
         plt.xlabel(f"{field} (log)")
     else:
         plt.xlabel(field)
-        
+
     for i in range(len(truth)):
         plt.plot([truth[i], preds[i]], [sim_ids[i], sim_ids[i]], color = "black", label = "errors")
 
@@ -138,33 +138,6 @@ def regress(
     denormalisation_parameters = dict.fromkeys(outputFields)
     battery.original_output_means = dict.fromkeys(outputFields)
     battery.original_output_stdevs = dict.fromkeys(outputFields)
-    if normalise:
-        for field, vals in outputs.items():
-            # print(f"orig mean: {np.mean(vals)}")
-            # print(f"orig SD: {np.std(vals)}")
-            if field in logFields:
-                # print(f"orig log mean: {np.mean(np.log10(vals))}")
-                # print(f"orig log SD: {np.std(np.log10(vals))}")
-                outputs[field], mean, sd = ml_utils.normalise_1D(vals, doLog = True)
-            else:
-                outputs[field], mean, sd = ml_utils.normalise_1D(vals)
-            battery.original_output_means[field] = mean
-            battery.original_output_stdevs[field] = sd
-            denormalisation_parameters[field] = (mean, sd)
-            print(f"1.0 in normalised RMSE units is {ml_utils.denormalise_rmse(1.0, sd)} in original {field} units.")
-        
-        print(f"out mean: {np.mean(list(outputs.values()))}, out std: {np.std(list(outputs.values()))}")
-
-        # norm = Normalizer()
-        # inputSpectra = norm.fit_transform(inputSpectra)
-
-        # spec_flat = []
-        # for c in inputSpectra_norm:
-        #     spec_flat.extend(c[0]) 
-        # print(f"in mean:  {np.mean(spec_flat)}, in std:  {np.std(spec_flat)}")
-    else:
-        for field in logFields:
-            outputs[field] = np.log10(outputs[field])
 
     battery.equalLengthTimeseries = True
     battery.numObservations = inputSpectra.shape[0]
@@ -190,6 +163,9 @@ def regress(
             print("CV Strategy not implemented. Defaulting to RepeatedKFolds.")
             cv = RepeatedKFold(n_splits=cvFolds, n_repeats=cvRepeats)
         tt_split = list(enumerate(cv.split(case_indices)))
+
+        if output_field in logFields:
+            output_values = np.log10(output_values)
         
         for algorithm in algorithms:
             print(f"Building {algorithm} model for {output_field} from {inputSpectraNames}....")
@@ -219,13 +195,21 @@ def regress(
                 test_x = [inputSpectra[t] for t in test]
                 test_y = output_values[test]
 
+                # Renormalise for each split
+                if normalise:
+                    train_y, scaler = ml_utils.normalise_data(train_y)
+                    test_y, _ = ml_utils.normalise_data(test_y, scaler = scaler)
+                    print(f"scaler mean: {scaler.mean_}")
+                    print(f"1.0 in normalised RMSE units is {scaler.inverse_transform([[1.0]])} in original {output_field} units (may be logged).")
+
                 print("    Training model....")
                 tsr.fit(train_x, train_y)
                 predictions = tsr.predict(test_x)
-                denorm_mean, denorm_sd = denormalisation_parameters[output_field]
-                unLog = output_field in logFields
-                preds_denormed = ml_utils.denormalise_dataset(predictions, denorm_mean, denorm_sd, unLog)
-                test_y_denormed = ml_utils.denormalise_dataset(test_y, denorm_mean, denorm_sd, unLog)
+                preds_denormed = ml_utils.denormalise_data(predictions, scaler)
+                test_y_denormed = ml_utils.denormalise_data(test_y, scaler)
+                if output_field in logFields:
+                    preds_denormed = 10.0**preds_denormed
+                    test_y_denormed = 10.0**test_y_denormed
                 print(f"    Predictions:  {predictions} (normalised), {preds_denormed} (original)")
                 print(f"    Ground truth: {test_y} (normalised), {test_y_denormed} (original)")
                 score = tsr.score(test_x, test_y, metric='r2')
@@ -239,6 +223,7 @@ def regress(
                 all_test_points_denormed.extend(test_y_denormed)
                 all_predictions.extend(list(predictions))
                 all_predictions_denormed.extend(preds_denormed)
+
             rmse, rmse_var, rmse_se = ml_utils.root_mean_squared_error(all_predictions, all_test_points)
             summary_str = f"{output_field} -- {algorithm}: Mean r2 = {np.mean(all_R2s):.5f}+-{sem(all_R2s):.5f}, mean RMSE: {rmse:.5f}+-{rmse_se:.5f}"
             print("--------------------------------------------------------------------------------------------------------------------------")
