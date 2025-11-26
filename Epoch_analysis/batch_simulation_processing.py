@@ -123,6 +123,8 @@ def calculate_simulation_metadata(
     outputNcRoot.backgroundDensity = background_density.value
     outputNcRoot.beamFraction = beam_frac
 
+    outputNcRoot.pitch = inputDeck["constant"]["pitch"]
+
     outputNcRoot.debyeLength_m = debye_length.value
     sim_L_dl = sim_L / debye_length
     outputNcRoot.simLength_dL = sim_L_dl

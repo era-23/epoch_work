@@ -1,4 +1,6 @@
+import glob
 from pathlib import Path
+import epydeck
 from matplotlib import pyplot as plt
 import numpy as np
 import xarray as xr
@@ -7,6 +9,7 @@ import astropy.units as u
 import xrft  # noqa: E402
 import copy
 import os
+import re
 from scipy import stats
 from scipy.interpolate import make_smoothing_spline, BSpline
 from plasmapy.formulary import frequencies as ppf
@@ -1370,3 +1373,50 @@ def MeV_to_Kelvin(value_in_MeV : float) -> float :
     value_in_Kelvin = value_in_J / kb
     assert value_in_Kelvin.unit == u.K
     return value_in_Kelvin
+
+def add_field_from_input_deck_to_dataFile(inputDeckFolder : Path, dataFileFolder : Path, field : str):
+
+    parsed_field = field.split("/")
+
+    inputDeck_folders = [Path(f) for f in glob.glob(str(inputDeckFolder / "run_*"))]
+    inputDecks = dict.fromkeys([f.name for f in inputDeck_folders])
+    for path in inputDeck_folders:
+        inputDecks[path.name] = path / "input.deck"
+
+    statsFile_paths = glob.glob(str(dataFileFolder / "run_*_stats.nc"))
+    statsFiles = dict.fromkeys(inputDecks.keys())
+    for path in statsFile_paths:
+        pattern = re.compile(r"run_\d+")
+        sim_id = re.search(pattern, path).group()
+        statsFiles[sim_id] = path
+
+    assert len(inputDecks.items()) == len(statsFiles.items())
+    assert inputDecks.keys() == statsFiles.keys()
+
+    for sim_id, deckPath in inputDecks.items():
+        # Read input deck
+        inputDeck = {}
+        with open(str(deckPath.absolute())) as id:
+
+            # Get input deck
+            inputDeck = epydeck.loads(id.read())
+
+            # Get datafile
+            dataPath = statsFiles[sim_id]
+            data_nc = nc.Dataset(dataPath, "a", format="NETCDF4")
+
+            # Confirm this is the right input deck
+            assert inputDeck["constant"]["b0_strength"] == data_nc.B0strength
+            assert inputDeck["constant"]["background_density"] == data_nc.backgroundDensity
+            assert inputDeck["constant"]["frac_beam"] == data_nc.beamFraction
+
+            # Get field value
+            field_value = inputDeck
+            for fieldComponent in parsed_field:
+                field_value = field_value[fieldComponent]
+
+            print(f"{sim_id}: Copying {field} = {field_value} from {deckPath} to {dataPath}...")
+            
+            # Set value. NOTE: Only works on root group attributes at present
+            data_nc.setncattr(parsed_field[-1], field_value)
+            data_nc.close()

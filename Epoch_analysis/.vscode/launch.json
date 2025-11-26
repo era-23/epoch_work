@@ -793,6 +793,20 @@
             ]
         },
         {
+            "name": "Python Debugger: Combine spectra",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "combine_spectra.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--dir",
+                    "/home/era536/Documents/Epoch/Data/sept_25/analysis/all_angles/",
+                "--outputDir",
+                    "/home/era536/Documents/Epoch/Data/sept_25/analysis/",
+                "--combineSpectra",
+            ]
+        },
+        {
             "name": "Python Debugger: Batch Processing",
             "type": "debugpy",
             "request": "launch",
