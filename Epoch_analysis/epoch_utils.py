@@ -166,6 +166,14 @@ fieldNameToText_dict = {
     "beamFraction" : "beam fraction (log)",
 }
 
+fieldNameToUnit = {
+    "B0strength" : "T", 
+    "B0angle" : r"$^\circ$", 
+    "backgroundDensity" : r"$m^{-1}$", 
+    "beamFraction" : "",
+    "pitch" : "a.u."
+}
+
 def fieldNameToText(name : str) -> str:
     if name in fieldNameToText_dict:
         return fieldNameToText_dict[name]

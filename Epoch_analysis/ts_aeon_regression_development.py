@@ -7,15 +7,18 @@ import ml_utils
 import matplotlib.pyplot as plt
 import numpy as np
 import csv
+import math
 from scipy.stats import sem
 from sklearn.model_selection import RepeatedKFold, LeaveOneOut
 
 from aeon.datasets import load_cardano_sentiment, load_covid_3month
 from aeon.transformations.collection import Normalizer
 
-from sklearn.metrics import root_mean_squared_error
+from sklearn.metrics import root_mean_squared_error, r2_score
 
 import logging
+
+import epoch_utils
 
 logger = logging.getLogger(__name__)
 warnings.filterwarnings("ignore")
@@ -42,19 +45,22 @@ def plot_predictions(
         sim_ids : list,
         truth : list,
         preds : list,
+        r2 : float,
+        rmse : float,
         saveFolder : Path,
-        log_x : bool
+        doLog : bool
 ):
+    unit = epoch_utils.fieldNameToUnit[field]
+
     plt.subplots(figsize=(12, 8))
     plt.scatter(truth, sim_ids, label = "True value", marker = "o", color = "blue")
     plt.scatter(preds, sim_ids, label = "Predicted value", marker = "o", color = "red")
-    plt.title(f"Predictions from {algorithm_name}")
+    plt.title(f"Predictions from {algorithm_name} ({r'$r^2$'} = {r2:.3f}, {r'rmse'} = {rmse:.3f})")
     plt.ylabel("Simulation ID")
-    if log_x:
+    if doLog:
         plt.xscale("log")
-        plt.xlabel(f"{field} (log)")
-    else:
-        plt.xlabel(field)
+    
+    plt.xlabel(f"{field} [{unit}]")
 
     for i in range(len(truth)):
         plt.plot([truth[i], preds[i]], [sim_ids[i], sim_ids[i]], color = "black", label = "errors")
@@ -64,7 +70,27 @@ def plot_predictions(
     by_label = dict(zip(labels, handles))
     plt.legend(by_label.values(), by_label.keys())
 
-    plt.savefig(saveFolder / f"{algorithm_name}_{field}_predictions.png")
+    plt.savefig(saveFolder / f"{algorithm_name}_{field}_allPredictions.png", bbox_inches="tight")
+
+    plt.subplots(figsize=(12, 8))
+    for i in range(len(truth)):
+        plt.plot([truth[i], truth[i]], [preds[i], truth[i]], color = "black", label = "errors")
+    plt.plot([np.min(truth), np.max(truth)], [np.min(truth), np.max(truth)], color = "blue", linestyle="dashed", label="ideal predictions")
+    plt.scatter(truth, preds, marker = "o", color = "red")
+    plt.title(f"{field} -- {algorithm_name} ({r'$r^2$'} = {r2:.3f}, {r'rmse'} = {rmse:.3f})")
+    if doLog:
+        plt.xscale("log")
+        plt.yscale("log")
+
+    plt.xlabel(f"True values [{unit}]")
+    plt.ylabel(f"Predictions [{unit}]")
+
+    # Set legend
+    handles, labels = plt.gca().get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    plt.legend(by_label.values(), by_label.keys())
+
+    plt.savefig(saveFolder / f"{algorithm_name}_{field}_prediction_error.png", bbox_inches="tight")
     
 def regress(
         directory : Path,
@@ -224,12 +250,16 @@ def regress(
                 all_predictions_denormed.extend(preds_denormed)
 
             rmse, rmse_var, rmse_se = ml_utils.root_mean_squared_error(all_predictions, all_test_points)
-            summary_str = f"{output_field} -- {algorithm}: Mean r2 = {np.mean(all_R2s):.5f}+-{sem(all_R2s):.5f}, mean RMSE: {rmse:.5f}+-{rmse_se:.5f}"
+            r2 = np.mean(all_R2s)
+            if math.isnan(r2):
+                # Recalculate based on r2 over folds (primarily for LOOCV)
+                r2 = r2_score(all_test_points_denormed, all_predictions_denormed)
+            summary_str = f"{output_field} -- {algorithm}: Mean r2 = {r2:.5f}+-{sem(all_R2s):.5f}, mean RMSE: {rmse:.5f}+-{rmse_se:.5f}"
             print("--------------------------------------------------------------------------------------------------------------------------")
             print(summary_str)
             logger.info(summary_str)
             print("--------------------------------------------------------------------------------------------------------------------------")
-            result.cvR2_mean = np.mean(all_R2s)
+            result.cvR2_mean = r2
             result.cvR2_var = np.var(all_R2s)
             result.cvR2_stderr = sem(all_R2s)
             result.cvRMSE_mean = rmse
@@ -239,7 +269,16 @@ def regress(
             battery.results.append(result)
 
             if doPlot:
-                plot_predictions(algorithm, output_field, all_test_indices, all_test_points_denormed, all_predictions_denormed, resultsFilepath.parent, output_field in logFields)
+                plot_predictions(
+                    algorithm, 
+                    output_field, 
+                    all_test_indices, 
+                    all_test_points_denormed, 
+                    all_predictions_denormed, 
+                    result.cvR2_mean,
+                    result.cvRMSE_mean,
+                    resultsFilepath.parent, 
+                    output_field in logFields)
     
     ml_utils.write_ML_result_to_file(battery, resultsFilepath)
 
@@ -289,15 +328,17 @@ if __name__ == "__main__":
         "--cvFolds",
         action="store",
         help="Number of folds to use in k-folds cross-validation.",
-        required = True,
-        type=int
+        required = False,
+        type=int,
+        default=10
     )
     parser.add_argument(
         "--cvRepeats",
         action="store",
         help="Number of repeats to use in k-folds cross-validation.",
-        required = True,
-        type=int
+        required = False,
+        type=int,
+        default=10
     )
     parser.add_argument(
         "--cvStrategy",
@@ -322,7 +363,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    if args.doPlot and (args.cvStrategy is not "LeaveOneOut"):
+    if args.doPlot and (args.cvStrategy != "LeaveOneOut"):
         print("WARNING: Prediction plots will only make sense with a LeaveOneOut cross-validation strategy.")
 
     regress(
