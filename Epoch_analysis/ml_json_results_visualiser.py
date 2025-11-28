@@ -7,6 +7,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 
 import ml_utils
+import epoch_utils
 
 SMALL_SIZE = 10
 MEDIUM_SIZE = 20
@@ -154,7 +155,7 @@ def plotBar(resultsDict : dict, metric : str = "cvR2"):
     if resultsDict["cvStrategy"] == "RepeatedKFolds":
         ax.set_title(f'{resultsDict["cvFolds"]}-fold CV results ({resultsDict["cvRepeats"]} repeats)')
     ax.set_xlabel('Output')
-    xLabels = [ml_utils.fieldNameToText(lab) for lab in xLabels]
+    xLabels = [epoch_utils.fieldNameToText(lab) for lab in xLabels]
     ax.set_xticks(x + (0.5 * (len(algorithms) -1) * width), xLabels)
     if len(resultsDict["algorithms"]) > 5:
         ax.legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, -0.3))

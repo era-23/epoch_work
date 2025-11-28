@@ -66,7 +66,6 @@ def plot_predictions(
 
     plt.savefig(saveFolder / f"{algorithm_name}_{field}_predictions.png")
     
-
 def regress(
         directory : Path,
         inputSpectraNames : list,
@@ -322,6 +321,9 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
+
+    if args.doPlot and (args.cvStrategy is not "LeaveOneOut"):
+        print("WARNING: Prediction plots will only make sense with a LeaveOneOut cross-validation strategy.")
 
     regress(
         args.dir, 
