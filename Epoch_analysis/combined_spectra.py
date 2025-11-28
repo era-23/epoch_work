@@ -93,7 +93,7 @@ def combine_spectra(dataDirectory : Path, outputDirectory : Path):
             assert angle_data_xr.attrs["beamFraction"] == newData_xr.attrs["beamFraction"]
             assert angle_data_xr.attrs["pitch"] == newData_xr.attrs["pitch"]
 
-            angle_data_xr.to_netcdf("testToBeAdded.nc")
+            # angle_data_xr.to_netcdf("testToBeAdded.nc")
 
             # Check coordinates are equal
             assert (angle_data_xr["Magnetic_Field_Bz/power"].coords["wavenumber"] == newData_xr["Magnetic_Field_Bz/power"].coords["wavenumber"]).all()
