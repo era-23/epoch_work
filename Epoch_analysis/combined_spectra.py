@@ -1,17 +1,39 @@
 import glob
 from pathlib import Path
+from matplotlib import pyplot as plt
 import numpy as np
 import argparse
 import netCDF4 as nc
 import xarray as xr
+import xrft
 import epoch_utils as eu
 
-def calculate_iciness(combined_directory : Path):
+def calculate_iciness(combined_directory : Path, fields : list):
 
-    combined_statsFiles = glob.glob(str(combined_directory / "_combined_stats.nc"))
+    combined_statsFiles = glob.glob(str(combined_directory / "*_combined_stats.nc"))
 
     for simFile in combined_statsFiles:
         data_xr = xr.open_datatree(simFile, engine="netcdf4")
+
+        for field in fields:
+            filename = Path(simFile).name
+            print(f"File: {filename}, Field: {field}")
+            data : xr.DataArray = data_xr[field]
+            print(f"DATA Dims: {data.dims}, Coords: {data.coords} Sizes: {data.sizes}")
+            spec : xr.DataArray = xrft.xrft.fft(data, true_amplitude=True, true_phase=True, window=None)
+            spec = np.abs(spec)
+            print(f"SPEC Dims: {spec.dims}, Coords: {spec.coords} Sizes: {spec.sizes}")
+            spec = spec.where(spec.freq_frequency > 0.3) # Eliminate very low-frequency components (noise)
+            print(f"Max: {spec.max().data}, Max index: {spec.argmax().data}, Max coord: {spec.idxmax().data}")
+            pwr_in_fundamental_pct = 100.0 * (spec.sel(freq_frequency=slice(0.95, 1.05)).sum().data / spec.sum().data)
+            print(f"Percentage power in fundamental gyrofrequency : {pwr_in_fundamental_pct}")
+            harmonics = np.arange(1.0, np.rint(spec.coords["freq_frequency"].max()) + 1)
+            pwr_in_harmonics_pct = 100.0 * (np.sum([spec.sel(freq_frequency=slice(h-0.05,h+0.05)).sum().data for h in harmonics]) / spec.sum().data)
+            print(f"Percentage power in harmonics of gyrofrequency: {pwr_in_harmonics_pct}")
+            spec.plot(figsize=(10,6))
+            plt.title(f"{filename} -- {field.split('/')[0]}:\nFundamental power: {pwr_in_fundamental_pct:.3f}%, Harmonic power: {pwr_in_harmonics_pct:.3f}% (Mean:{np.mean([pwr_in_fundamental_pct, pwr_in_harmonics_pct]):.3f}%)")
+            plt.tight_layout()
+            plt.show()
 
 def combine_spectra(dataDirectory : Path, outputDirectory : Path):
 
@@ -201,15 +223,22 @@ if __name__ == "__main__":
         help="Calculate ICEiness characteristics for combined spectra.",
         required = False
     )
+    parser.add_argument(
+        "--fields",
+        action="store",
+        help="Fields on which to calculate iciness.",
+        required = False,
+        type=str,
+        nargs="*"
+    )
     
     args = parser.parse_args()
 
     if args.combineSpectra:
         combine_spectra(args.dir, args.outputDir)
-        combined_dir = args.outputDir
-    else:
-        combined_dir = args.dir
+    
+    combined_dir = args.outputDir
 
     if args.doIciness:
-        calculate_iciness(combined_dir)
+        calculate_iciness(combined_dir, args.fields)
 

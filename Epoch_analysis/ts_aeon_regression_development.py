@@ -253,7 +253,7 @@ def regress(
             r2 = np.mean(all_R2s)
             if math.isnan(r2):
                 # Recalculate based on r2 over folds (primarily for LOOCV)
-                r2 = r2_score(all_test_points_denormed, all_predictions_denormed)
+                r2 = r2_score(all_test_points, all_predictions)
             summary_str = f"{output_field} -- {algorithm}: Mean r2 = {r2:.5f}+-{sem(all_R2s):.5f}, mean RMSE: {rmse:.5f}+-{rmse_se:.5f}"
             print("--------------------------------------------------------------------------------------------------------------------------")
             print(summary_str)
