@@ -309,7 +309,7 @@ def get_algorithm(name, **kwargs):
         case "aeon.DisjointCNNRegressor":
             return aeon_deep.DisjointCNNRegressor()
 
-def read_data(dataFiles, data_dict : dict, with_names : bool = False, with_coords : bool = False) -> dict:
+def read_data(dataFiles, data_dict : dict, with_names : bool = False, with_coords : bool = False, with_iciness : bool = False) -> dict:
     
     dataFields = list(data_dict.keys())
     sim_ids = []
@@ -318,6 +318,14 @@ def read_data(dataFiles, data_dict : dict, with_names : bool = False, with_coord
         for fieldPath in dataFields:
             dimCoordsKey = fieldPath + "_coords"
             data_dict[dimCoordsKey] = []
+    
+    if with_iciness:
+        for fieldPath in dataFields:
+            data_dict[fieldPath + "_ICEmetric_fundamentalPower"] = []
+            data_dict[fieldPath + "_ICEmetric_fundamentalPower_pct"] = []
+            data_dict[fieldPath + "_ICEmetric_harmonicPower"] = []
+            data_dict[fieldPath + "_ICEmetric_harmonicPower_pct"] = []
+            data_dict["ICEmetric_energyTransfer"] = []
 
     for simulation in dataFiles:
 
@@ -340,6 +348,17 @@ def read_data(dataFiles, data_dict : dict, with_names : bool = False, with_coord
                     dimName = data[group].variables[fieldName].dims[0]
                     dimVals = data[group].coords[dimName].values
                     data_dict[dimCoordsKey].append(dimVals)
+                if with_iciness:
+                    if "ICEmetric_fundamentalPower" in data[fieldPath].attrs:
+                        data_dict[fieldPath + "_ICEmetric_fundamentalPower"].append(data[fieldPath].attrs["ICEmetric_fundamentalPower"])
+                    if "ICEmetric_fundamentalPower_pct" in data[fieldPath].attrs:
+                        data_dict[fieldPath + "_ICEmetric_fundamentalPower_pct"].append(data[fieldPath].attrs["ICEmetric_fundamentalPower_pct"])
+                    if "ICEmetric_harmonicPower" in data[fieldPath].attrs:
+                        data_dict[fieldPath + "_ICEmetric_harmonicPower"].append(data[fieldPath].attrs["ICEmetric_harmonicPower"])
+                    if "ICEmetric_harmonicPower_pct" in data[fieldPath].attrs:
+                        data_dict[fieldPath + "_ICEmetric_harmonicPower_pct"].append(data[fieldPath].attrs["ICEmetric_harmonicPower_pct"])
+                    if "ICEmetric_energyTransfer" in data["Energy"].attrs:
+                        data_dict["ICEmetric_energyTransfer"].append(data["Energy"].attrs["ICEmetric_energyTransfer"])
 
         sim_ids.append(simulation.split("/")[-1].split("_")[1])
         

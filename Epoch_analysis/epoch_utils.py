@@ -98,6 +98,7 @@ fieldNameToText_dict = {
     "Energy/electronEnergyDensity_timeMin" : "electron_timeMinKE",
     "Energy/electricFieldEnergyDensity_timeMin" : "Ex_timeMinE",
     "Energy/magneticFieldEnergyDensity_timeMin" : "Bz_timeMinE",
+    "Energy/ICEmetric_energyTransfer" : "energy transfer",
     "Magnetic_Field_Bz/totalMagnitude" : "Bz_totalPower", 
     "Magnetic_Field_Bz/meanMagnitude" : "Bz_meanPower", 
     "Magnetic_Field_Bz/totalDelta" : "Bz_deltaTotalPower", 
@@ -135,6 +136,14 @@ fieldNameToText_dict = {
     "Magnetic_Field_Bz/growthRates/positive/bestInHighestTotalPowerK/growthRate" : "Growth rate (total power k)",
     "Magnetic_Field_Bz/growthRates/positive/bestInHighestTotalPowerK/time" : "Time max growth (total power k)",
     "Magnetic_Field_Bz/growthRates/positive/bestInHighestTotalPowerK/wavenumber" : "Total power k",
+    "/Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_fundamentalPower" : "Bz: pwr in fundamental",
+    "Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_fundamentalPower" : "Bz: pwr in fundamental",
+    "/Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_fundamentalPower_pct" : "Bz: pwr in fundamental (%)",
+    "Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_fundamentalPower_pct" : "Bz: pwr in fundamental (%)",
+    "/Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_harmonicPower" : "Bz: pwr in harmonics",
+    "Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_harmonicPower" : "Bz: pwr in harmonics",
+    "/Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_harmonicPower_pct" : "Bz: pwr in harmonics (%)",
+    "Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_harmonicPower_pct" : "Bz: pwr in harmonics (%)",
     "Electric_Field_Ex/totalMagnitude" : "Ex_totalPower", 
     "Electric_Field_Ex/meanMagnitude" : "Ex_meanPower", 
     "Electric_Field_Ex/totalDelta" : "Ex_deltaTotalPower", 
@@ -160,10 +169,27 @@ fieldNameToText_dict = {
     "Electric_Field_Ex/growthRates/maxInHighTotalPowerK/time" : "Ex_totalKmaxGammaTime",
     "Electric_Field_Ex/growthRates/maxInHighTotalPowerK/totalPower" : "Ex_totalKmaxGammaTotalPower",
     "Electric_Field_Ex/growthRates/maxInHighTotalPowerK/wavenumber" : "Ex_totalKmaxGammaK",
+    "/Electric_Field_Ex/power/powerByFrequency_ICEmetric_fundamentalPower" : "Ex: pwr in fundamental",
+    "Electric_Field_Ex/power/powerByFrequency_ICEmetric_fundamentalPower" : "Ex: pwr in fundamental",
+    "/Electric_Field_Ex/power/powerByFrequency_ICEmetric_fundamentalPower_pct" : "Ex: pwr in fundamental (%)",
+    "Electric_Field_Ex/power/powerByFrequency_ICEmetric_fundamentalPower_pct" : "Ex: pwr in fundamental (%)",
+    "/Electric_Field_Ex/power/powerByFrequency_ICEmetric_harmonicPower" : "Ex: pwr in harmonics",
+    "Electric_Field_Ex/power/powerByFrequency_ICEmetric_harmonicPower" : "Ex: pwr in harmonics",
+    "/Electric_Field_Ex/power/powerByFrequency_ICEmetric_harmonicPower_pct" : "Ex: pwr in harmonics (%)",
+    "Electric_Field_Ex/power/powerByFrequency_ICEmetric_harmonicPower_pct" : "Ex: pwr in harmonics (%)",
+    "/Electric_Field_Ey/power/powerByFrequency_ICEmetric_fundamentalPower" : "Ey: pwr in fundamental",
+    "Electric_Field_Ey/power/powerByFrequency_ICEmetric_fundamentalPower" : "Ey: pwr in fundamental",
+    "/Electric_Field_Ey/power/powerByFrequency_ICEmetric_fundamentalPower_pct" : "Ey: pwr in fundamental (%)",
+    "Electric_Field_Ey/power/powerByFrequency_ICEmetric_fundamentalPower_pct" : "Ey: pwr in fundamental (%)",
+    "/Electric_Field_Ey/power/powerByFrequency_ICEmetric_harmonicPower" : "Ey: pwr in harmonics",
+    "Electric_Field_Ey/power/powerByFrequency_ICEmetric_harmonicPower" : "Ey: pwr in harmonics",
+    "/Electric_Field_Ey/power/powerByFrequency_ICEmetric_harmonicPower_pct" : "Ey: pwr in harmonics (%)",
+    "Electric_Field_Ey/power/powerByFrequency_ICEmetric_harmonicPower_pct" : "Ey: pwr in harmonics (%)",
     "B0strength" : "B0", 
     "B0angle" : "B0 angle", 
     "backgroundDensity" : "density (log)", 
     "beamFraction" : "beam fraction (log)",
+    "pitch" : "pitch"
 }
 
 fieldNameToUnit = {
@@ -1045,7 +1071,7 @@ def process_growth_rates(
 
 def my_matrix_plot(
     data_series: list[list],
-    series_labels: list[str] = None,
+    series_labels: list[str] = [],
     parameter_labels: list[str] = None,
     show: bool = True,
     reference: Sequence[float] = None,
@@ -1058,6 +1084,7 @@ def my_matrix_plot(
     hdi_fractions=(0.35, 0.65, 0.95),
     point_size: int = 1,
     label_size: int = 10,
+    tight_layout = False
 ):
     """
     Construct a 'matrix plot' for a set of variables which shows all possible
@@ -1195,7 +1222,7 @@ def my_matrix_plot(
             np.linspace(lwr - (upr - lwr) * 0.35, upr + (upr - lwr) * 0.35, L)
         )
 
-    fig = plt.figure(figsize=(8, 8))
+    fig = plt.figure(figsize=(14, 14))
     # build a lower-triangular indices list in diagonal-striped order
     inds_list = [(N_par - 1, 0)]  # start with bottom-left corner
     for k in range(1, N_par):

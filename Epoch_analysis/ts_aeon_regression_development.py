@@ -15,7 +15,7 @@ from aeon.datasets import load_cardano_sentiment, load_covid_3month
 from aeon.transformations.collection import Normalizer
 
 from sklearn.metrics import root_mean_squared_error, r2_score
-
+from scipy.stats import linregress
 import logging
 
 import epoch_utils
@@ -23,10 +23,10 @@ import epoch_utils
 logger = logging.getLogger(__name__)
 warnings.filterwarnings("ignore")
 
-plt.rcParams.update({'axes.titlesize': 26.0})
-plt.rcParams.update({'axes.labelsize': 24.0})
-plt.rcParams.update({'xtick.labelsize': 20.0})
-plt.rcParams.update({'ytick.labelsize': 20.0})
+plt.rcParams.update({'axes.titlesize': 22.0})
+plt.rcParams.update({'axes.labelsize': 22.0})
+plt.rcParams.update({'xtick.labelsize': 16.0})
+plt.rcParams.update({'ytick.labelsize': 16.0})
 plt.rcParams.update({'legend.fontsize': 18.0})
 
 def demo():
@@ -38,6 +38,68 @@ def demo():
     print(f"Covid output shape:     {covid_train_y.shape}")
     print(f"Cardano spectrum shape: {cardano_train.shape} (n_cases: {cardano_train.shape[0]}, n_channels: {cardano_train.shape[1]}, n_timepoints: {cardano_train.shape[2]})")
     print(f"Cardano output shape:   {cardano_train_y.shape}")
+
+def plot_predictions_with_iciness(
+        algorithm_name : str,
+        field : str,
+        truth : list,
+        preds : list,
+        iceMetrics : dict,
+        r2 : float,
+        rmse : float,
+        saveFolder : Path,
+        doLog : bool
+):
+    squared_errors = (np.array([float(p) for p in preds]) - np.array([float(t) for t in truth]))**2
+    
+    for metric, values in iceMetrics.items():
+        values = np.array(values)
+        xLog = "energyTransfer" not in metric and "pct" not in metric
+        title = f"{field} -- {algorithm_name} (prediction {r'$r^2$'} = {r2:.3f}, {r'rmse'} = {rmse:.3f})"
+        plt.figure(figsize=(14,12))
+        plt.title(title)
+        plt.scatter(values, squared_errors)
+        plt.xlabel(metric)
+        plt.ylabel("Squared prediction errors")
+        if xLog:
+            plt.xscale("log")
+            res = linregress(np.log10(values), np.log10(squared_errors))
+            plt.plot(values, 10**(res.intercept) * values**res.slope, color="black", label = f"r2 = {res.rvalue:.5f}")
+        else:
+            res = linregress(values, np.log10(squared_errors))
+            plt.plot(values, 10**(res.intercept) * 10**(values*res.slope), color="black", label = f"r2 = {res.rvalue:.5f}")
+        plt.yscale("log")
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(saveFolder / f"{field}_{epoch_utils.fieldNameToText(metric).replace(' ', '')}_{algorithm_name}.png")
+
+    for spectrum in ["Bz", "Ex", "Ey"]:
+        title = f"{field} -- {algorithm_name} (prediction {r'$r^2$'} = {r2:.3f}, {r'rmse'} = {rmse:.3f})"
+        # plt.figure(figsize=(14,12))
+        plt.title(title)
+        epoch_utils.my_matrix_plot(
+            data_series=[[v for k, v in iceMetrics.items() if spectrum in k] + [list(squared_errors)]], 
+            series_labels=["ICE metric"],
+            parameter_labels=[epoch_utils.fieldNameToText(m) for m in iceMetrics.keys() if spectrum in m] + ["Squared pred. errors"],
+            show=False,
+            filename=saveFolder / f"{field}_{algorithm_name}_contour.png",
+            equalise_pdf_heights=False,
+            label_size=12,
+            plot_style="contour"
+        )
+        title = f"{field} -- {algorithm_name} (prediction {r'$r^2$'} = {r2:.3f}, {r'rmse'} = {rmse:.3f})"
+        # plt.figure(figsize=(14,12))
+        plt.title(title)
+        epoch_utils.my_matrix_plot(
+            data_series=[[v for k, v in iceMetrics.items() if spectrum in k] + [list(squared_errors)]], 
+            series_labels=["ICE metric"],
+            parameter_labels=[epoch_utils.fieldNameToText(m) for m in iceMetrics.keys() if spectrum in m] + ["Squared pred. errors"],
+            show=False,
+            filename=saveFolder / f"{field}_{algorithm_name}_hdi.png",
+            equalise_pdf_heights=False,
+            label_size=12,
+            plot_style="hdi"
+        )
 
 def plot_predictions(
         algorithm_name : str,
@@ -122,7 +184,7 @@ def regress(
 
     # Input data
     inputs = {name : [] for name in inputSpectraNames}
-    inputs = ml_utils.read_data(data_files, inputs, with_names = True, with_coords = True)
+    inputs = ml_utils.read_data(data_files, inputs, with_names = True, with_coords = True, with_iciness = True)
     battery.inputSpectra = np.array(inputSpectraNames)
 
     # Output data
@@ -160,7 +222,6 @@ def regress(
 
     logFields = np.intersect1d(outputFields, logFields)
     battery.logFields = np.array(logFields)
-    denormalisation_parameters = dict.fromkeys(outputFields)
     battery.original_output_means = dict.fromkeys(outputFields)
     battery.original_output_stdevs = dict.fromkeys(outputFields)
 
@@ -192,6 +253,11 @@ def regress(
         if output_field in logFields:
             output_values = np.log10(output_values)
         
+        # Record denormalisation parameters
+        _, scaler = ml_utils.normalise_data(output_values)
+        battery.original_output_means[output_field] = scaler.mean_
+        battery.original_output_stdevs[output_field] = np.sqrt(scaler.var_)
+
         for algorithm in algorithms:
             print(f"Building {algorithm} model for {output_field} from {inputSpectraNames}....")
             
@@ -251,17 +317,19 @@ def regress(
 
             rmse, rmse_var, rmse_se = ml_utils.root_mean_squared_error(all_predictions, all_test_points)
             r2 = np.mean(all_R2s)
+            r2_sem = sem(all_R2s)
+            r2_var = np.var(all_R2s)
             if math.isnan(r2):
                 # Recalculate based on r2 over folds (primarily for LOOCV)
                 r2 = r2_score(all_test_points, all_predictions)
-            summary_str = f"{output_field} -- {algorithm}: Mean r2 = {r2:.5f}+-{sem(all_R2s):.5f}, mean RMSE: {rmse:.5f}+-{rmse_se:.5f}"
+            summary_str = f"{output_field} -- {algorithm}: Mean r2 = {r2:.5f}+-{r2_sem:.5f}, mean RMSE: {rmse:.5f}+-{rmse_se:.5f}"
             print("--------------------------------------------------------------------------------------------------------------------------")
             print(summary_str)
             logger.info(summary_str)
             print("--------------------------------------------------------------------------------------------------------------------------")
             result.cvR2_mean = r2
-            result.cvR2_var = np.var(all_R2s)
-            result.cvR2_stderr = sem(all_R2s)
+            result.cvR2_var = r2_var
+            result.cvR2_stderr = r2_sem
             result.cvRMSE_mean = rmse
             result.cvRMSE_var = rmse_var
             result.cvRMSE_stderr = rmse_se
@@ -269,16 +337,30 @@ def regress(
             battery.results.append(result)
 
             if doPlot:
-                plot_predictions(
-                    algorithm, 
-                    output_field, 
-                    all_test_indices, 
-                    all_test_points_denormed, 
-                    all_predictions_denormed, 
-                    result.cvR2_mean,
-                    result.cvRMSE_mean,
-                    resultsFilepath.parent, 
-                    output_field in logFields)
+                # plot_predictions(
+                #     algorithm, 
+                #     output_field, 
+                #     all_test_indices, 
+                #     all_test_points_denormed, 
+                #     all_predictions_denormed, 
+                #     result.cvR2_mean,
+                #     result.cvRMSE_mean,
+                #     resultsFilepath.parent, 
+                #     output_field in logFields)
+                
+                iceMetrics = {m : inputs[m] for m in [n for n in inputs if "ICEmetric" in n]}
+
+                plot_predictions_with_iciness(
+                    algorithm_name = algorithm,
+                    field = output_field,
+                    truth = all_test_points_denormed,
+                    preds = all_predictions_denormed,
+                    iceMetrics = iceMetrics,
+                    r2 = result.cvR2_mean,
+                    rmse = result.cvRMSE_mean,
+                    saveFolder = Path("/home/era536/Documents/for_discussion/2025.12.11/Individual_errors_by_iciness/"), 
+                    doLog = output_field in logFields
+                )
     
     ml_utils.write_ML_result_to_file(battery, resultsFilepath)
 

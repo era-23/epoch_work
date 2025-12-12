@@ -111,20 +111,19 @@ def plotScatter(resultsDict : dict, metric : str = "cvR2"):
 
     plt.show()
 
-def plotBar(resultsDict : dict, metric : str = "cvR2"): 
+def plotBar(resultsDict : dict, metric : str = "cvR2", dropAlgorithms : list = []): 
 
     patterns = [ "/" , ".", "\\" , "|" , "-" , "+" , "x",  "o", "O", "*" ]
-    drop_algorithms = ["aeon.KNeighborsTimeSeriesRegressor", "aeon.RDSTRegressor", "aeon.DrCIFRegressor", "aeon.Catch22Regressor"]
     
     # results
     results = resultsDict["results"]
-    results = [r for r in results if r["algorithm"] not in drop_algorithms]
+    results = [r for r in results if r["algorithm"] not in dropAlgorithms]
     
     # x-labels: outputs
     xLabels = resultsDict["outputFields"]
 
     # bar values in output order, grouped by algorithm
-    algorithms = [a for a in resultsDict["algorithms"] if a not in drop_algorithms]
+    algorithms = [a for a in resultsDict["algorithms"] if a not in dropAlgorithms]
     barVals = {algorithm : [] for algorithm in algorithms}
     barErrs = {algorithm : [] for algorithm in algorithms}
     for field in xLabels:
@@ -168,10 +167,10 @@ def plotBar(resultsDict : dict, metric : str = "cvR2"):
 
     plt.show()
 
-def plotResults(resultsFile : Path, metric : str = "cvR2"):
+def plotResults(resultsFile : Path, metric : str = "cvR2", dropAlgorithms : list = []):
     with open(resultsFile, "r") as f:
         parser = json.load(f)
-        plotBar(parser, metric)
+        plotBar(parser, metric, dropAlgorithms)
         # plotScatter(parser, metric)
 
 if __name__ == "__main__":
@@ -211,10 +210,18 @@ if __name__ == "__main__":
         required = False,
         type=str
     )
+    parser.add_argument(
+        "--dropAlgorithms",
+        action="store",
+        help="Algorithms to ignore.",
+        required = False,
+        type=str,
+        nargs="*"
+    )
 
     args = parser.parse_args()
 
     if args.folder is not None:
         plotAeResultsByPcaComponents(args.folder, args.filePattern)
     else:
-        plotResults(args.file, args.metric)
+        plotResults(args.file, args.metric, args.dropAlgorithms)

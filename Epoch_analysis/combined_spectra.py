@@ -1,4 +1,5 @@
 import glob
+import os
 from pathlib import Path
 from matplotlib import pyplot as plt
 import numpy as np
@@ -7,10 +8,30 @@ import netCDF4 as nc
 import xarray as xr
 import xrft
 import epoch_utils as eu
+from scipy.stats import linregress
+from scipy.signal import find_peaks
+import pycatch22
 
-def calculate_iciness(combined_directory : Path, fields : list):
+def plot_iciness(combined_directory : Path, fields : list, percentage : bool = False):
 
-    combined_statsFiles = glob.glob(str(combined_directory / "*_combined_stats.nc"))
+    combined_statsFiles = glob.glob(str(combined_directory / "data" / "*_combined_stats.nc"))
+    iciness_by_field = { 
+        f : 
+            {
+                "energyTransfer" : dict.fromkeys([Path(c).name for c in combined_statsFiles]), 
+                "fundamental" : dict.fromkeys([Path(c).name for c in combined_statsFiles]), 
+                "harmonic" : dict.fromkeys([Path(c).name for c in combined_statsFiles]),
+                "fundamental_pct" : dict.fromkeys([Path(c).name for c in combined_statsFiles]), 
+                "harmonic_pct" : dict.fromkeys([Path(c).name for c in combined_statsFiles])
+            } 
+        for f in fields
+    }
+    field_units = { 
+        "Energy" : "%", 
+        "Magnetic_Field_Bz/power/powerByFrequency" : r"$T \cdot \omega_{c, \alpha}$",
+        "Electric_Field_Ex/power/powerByFrequency" : r"$\frac{V}{m} \cdot \omega_{c, \alpha}$",
+        "Electric_Field_Ey/power/powerByFrequency" : r"$\frac{V}{m} \cdot \omega_{c, \alpha}$"
+    }
 
     for simFile in combined_statsFiles:
         data_xr = xr.open_datatree(simFile, engine="netcdf4")
@@ -18,22 +39,137 @@ def calculate_iciness(combined_directory : Path, fields : list):
         for field in fields:
             filename = Path(simFile).name
             print(f"File: {filename}, Field: {field}")
+
+            # Record
+            iciness_by_field[field]["energyTransfer"][filename] = data_xr["Energy"].ICEmetric_energyTransfer
+            iciness_by_field[field]["fundamental"][filename] = data_xr[field].ICEmetric_fundamentalPower
+            iciness_by_field[field]["fundamental_pct"][filename] = data_xr[field].ICEmetric_fundamentalPower_pct
+            iciness_by_field[field]["harmonic"][filename] = data_xr[field].ICEmetric_harmonicPower
+            iciness_by_field[field]["harmonic_pct"][filename] = data_xr[field].ICEmetric_harmonicPower_pct
+
+        data_xr.close()
+
+    for field in iciness_by_field.keys():
+        iciness = iciness_by_field[field]
+        funds = np.array(list(iciness["fundamental_pct" if percentage else "fundamental"].values()))
+        harms = np.array(list(iciness["harmonic_pct" if percentage else "harmonic"].values()))
+        enTrans = np.array(list(iciness["energyTransfer"].values()))
+        fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
+        fig.set_figheight(12)
+        fig.set_figwidth(18)
+        fig.suptitle(field)
+        ax1.scatter(funds, harms, marker="x")
+        res = linregress(np.log10(funds), np.log10(harms))
+        ax1.plot(funds, 10**(res.intercept) * funds**res.slope, color="black", alpha=0.7, label = f"r2 = {res.rvalue:.5f}")
+        ax1.set_xlabel(f"Power in fundamental [{'%' if percentage else field_units[field]}]")
+        ax1.set_ylabel(f"Power in harmonics [{'%' if percentage else field_units[field]}]")
+        ax1.legend()
+        ax2.scatter(funds, enTrans, marker="x")
+        res = linregress(np.log10(funds), np.log10(enTrans))
+        ax2.plot(funds, 10**(res.intercept) * funds**res.slope, color="black", alpha=0.7, label = f"r2 = {res.rvalue:.5f}")
+        ax2.set_xlabel(f"Power in fundamental [{'%' if percentage else field_units[field]}]")
+        ax2.set_ylabel("Energy transfer from FI to BI [%]")
+        ax2.legend()
+        ax3.scatter(harms, enTrans, marker="x")
+        res = linregress(np.log10(harms), np.log10(enTrans))
+        ax3.plot(harms, 10**(res.intercept) * harms**res.slope, color="black", alpha=0.7, label = f"r2 = {res.rvalue:.5f}")
+        ax3.set_xlabel(f"Power in harmonics [{'%' if percentage else field_units[field]}]")
+        ax3.set_ylabel("Energy transfer from FI to BI [%]")
+        ax3.legend()
+
+        ax1.set_xscale('log')
+        ax1.set_yscale('log')
+        ax2.set_xscale('log')
+        ax2.set_yscale('log')
+        ax3.set_xscale('log')
+        ax3.set_yscale('log')
+
+        plt.tight_layout()
+        plt.show()
+
+def calculate_iciness(combined_directory : Path, fields : list):
+
+    combined_statsFiles = glob.glob(str(combined_directory / "data" / "*_combined_stats.nc"))
+    maxCoords = []
+    removeFirst = 0.5
+    harmonic_tolerance = 0.1
+
+    for simFile in combined_statsFiles:
+        data_nc = nc.Dataset(simFile, mode="a")
+        data_xr = xr.open_datatree(simFile, engine="netcdf4")
+
+        for field in fields:
+            fundamental_index_count = 0
+            harmonic_index_count = 0
+            filename = Path(simFile).name
+            print(f"File: {filename}, Field: {field}")
             data : xr.DataArray = data_xr[field]
-            print(f"DATA Dims: {data.dims}, Coords: {data.coords} Sizes: {data.sizes}")
-            spec : xr.DataArray = xrft.xrft.fft(data, true_amplitude=True, true_phase=True, window=None)
+            spec : xr.DataArray = xrft.xrft.fft(data, true_amplitude=False, true_phase=True, window=None)
             spec = np.abs(spec)
-            print(f"SPEC Dims: {spec.dims}, Coords: {spec.coords} Sizes: {spec.sizes}")
-            spec = spec.where(spec.freq_frequency > 0.3) # Eliminate very low-frequency components (noise)
-            print(f"Max: {spec.max().data}, Max index: {spec.argmax().data}, Max coord: {spec.idxmax().data}")
-            pwr_in_fundamental_pct = 100.0 * (spec.sel(freq_frequency=slice(0.95, 1.05)).sum().data / spec.sum().data)
-            print(f"Percentage power in fundamental gyrofrequency : {pwr_in_fundamental_pct}")
-            harmonics = np.arange(1.0, np.rint(spec.coords["freq_frequency"].max()) + 1)
-            pwr_in_harmonics_pct = 100.0 * (np.sum([spec.sel(freq_frequency=slice(h-0.05,h+0.05)).sum().data for h in harmonics]) / spec.sum().data)
-            print(f"Percentage power in harmonics of gyrofrequency: {pwr_in_harmonics_pct}")
-            spec.plot(figsize=(10,6))
-            plt.title(f"{filename} -- {field.split('/')[0]}:\nFundamental power: {pwr_in_fundamental_pct:.3f}%, Harmonic power: {pwr_in_harmonics_pct:.3f}% (Mean:{np.mean([pwr_in_fundamental_pct, pwr_in_harmonics_pct]):.3f}%)")
-            plt.tight_layout()
-            plt.show()
+            spec = spec.sel(freq_frequency = slice(removeFirst, None)) # Eliminate very low-frequency components (noise)
+            maxFreq = spec.idxmax().data
+            maxCoords.append(maxFreq)
+            print(f"Max: {spec.max().data}, Max index: {spec.argmax().data}, Max coord: {maxFreq}")
+            assert spec.coords["freq_frequency"][-1] == np.max(spec.coords["freq_frequency"])
+
+            # Isolate indices of fundamental frequency
+            fundamentals = spec.sel(freq_frequency=slice(1.0 - harmonic_tolerance, 1.0 + harmonic_tolerance))
+            fundamental_index_count = fundamentals.size
+            expected_pwr_in_fundamental = spec.sum().data * (fundamental_index_count / spec.size) # Power that would be expected in this range
+            pwr_in_fundamental = fundamentals.sum().data - expected_pwr_in_fundamental
+            pwr_in_fundamental_pct = 100.0 * (fundamentals.sum().data / spec.sum().data)
+            
+            harmonic_nums = np.arange(1.0, np.rint(spec.coords["freq_frequency"].max()) + 1)
+            harmonics = [spec.sel(freq_frequency=slice(h - harmonic_tolerance,h + harmonic_tolerance)) for h in harmonic_nums]
+            harmonic_peaks = []
+            # spec.plot()
+            for h in harmonics:
+                p, pd = find_peaks(h.data, height=float(0.05*h.max().data))
+                if len(p) > 0:
+                    harmonic_peaks.append(h.data[p[np.argmax(pd["peak_heights"])]])
+            #         plt.scatter(h.coords["freq_frequency"][p], h.data[p], color="r", marker='x')
+            #     plt.axvspan(h.coords["freq_frequency"][0], h.coords["freq_frequency"][-1], color = "orange", alpha = 0.5)
+            # plt.show()
+            expected_pwr_in_harmonics = spec.sum().data * (harmonic_index_count / spec.size)
+            pwr_in_harmonics = (np.sum([d.sum().data for d in harmonics])) - expected_pwr_in_harmonics
+            pwr_in_harmonics_pct = 100.0 * (pwr_in_harmonics / spec.sum().data)
+            print(f"Power in fundamental gyrofrequency : {pwr_in_fundamental} units ({pwr_in_fundamental_pct:.3f}%), Power in harmonics of gyrofrequency: {pwr_in_harmonics} units ({pwr_in_harmonics_pct:.3f}%)")
+            print(f"Peak harmonic powers: {harmonic_peaks}")
+
+            fundamental_peak_mean_ratio = float(harmonic_peaks[0] / spec.mean().data)
+            fundamental_peak_floor_ratio = float(harmonic_peaks[0] / spec.min().data)
+            harmonics_peak_mean_ratio = float(np.mean(harmonic_peaks) / spec.mean().data)
+            harmonics_peak_floor_ratio = float(np.mean(harmonic_peaks) / spec.min().data)
+
+            # Get periodicity indicators from pycatch22
+            c22 = pycatch22.catch22_all(data.to_numpy())
+            ### Incremendal difference measures
+            ##### High-fluctuation, proportion of difference mags that are greater than 4% of the SD. Lower is more extreme peaks, so take
+            ##### 1.0 - high fluct to indicate more Icey
+            high_fluct_inv = 1.0 - c22["values"][c22["names"].index("MD_hrv_classic_pnn40")]
+            ### Linear autocorrelations
+            acf_ts = c22["values"][c22["names"].index("CO_f1ecac")]
+            acf_firstmin_ts = c22["values"][c22["names"].index("CO_FirstMin_ac")]
+
+
+            # Record
+            data_nc["Energy"].ICEmetric_energyTransfer = data_xr["Energy"].fastIonToBackgroundTransfer_percentage
+            data_nc[field].ICEmetric_fundamentalPower = fundamentals.sum().data
+            data_nc[field].ICEmetric_fundamentalPower_pct = pwr_in_fundamental_pct
+            data_nc[field].ICEmetric_fundamentalPeakMeanRatio = fundamental_peak_mean_ratio
+            data_nc[field].ICEmetric_fundamentalPeakFloorRatio = fundamental_peak_floor_ratio
+            data_nc[field].ICEmetric_harmonicPower = np.sum([d.sum().data for d in harmonics])
+            data_nc[field].ICEmetric_harmonicPower_pct = pwr_in_harmonics_pct
+            data_nc[field].ICEmetric_harmonicPeakMeanRatio = harmonics_peak_mean_ratio
+            data_nc[field].ICEmetric_harmonicPeakFloorRatio = harmonics_peak_floor_ratio
+            data_nc[field].ICEmetric_c22HighFluct = high_fluct_inv
+            data_nc[field].ICEmetric_c22Acf = acf_ts
+            data_nc[field].ICEmetric_c22AcfFirstMin = acf_firstmin_ts
+
+        data_xr.close()
+        data_nc.close()
+    
+    print(f"Max frequency mean: {np.mean(maxCoords)} median: {np.median(maxCoords)} var: {np.var(maxCoords)} sd: {np.std(maxCoords)}")
 
 def combine_spectra(dataDirectory : Path, outputDirectory : Path):
 
@@ -47,6 +183,13 @@ def combine_spectra(dataDirectory : Path, outputDirectory : Path):
 
     data_files = glob.glob(str(first_angle_folder / "*.nc"))
     individual_data_filenames = [Path(n).name for n in data_files]
+
+    outputDataDirectory = outputDirectory / "data"
+    if not os.path.exists(outputDataDirectory):
+        os.mkdir(outputDataDirectory)
+    outputPlotDirectory = outputDirectory / "plots"
+    if not os.path.exists(outputPlotDirectory):
+        os.mkdir(outputPlotDirectory)
 
     # Each simulation (at one angle)
     for filename in individual_data_filenames:
@@ -102,6 +245,15 @@ def combine_spectra(dataDirectory : Path, outputDirectory : Path):
         
         simulation_total_original_power = 0.0
 
+        fig, (axBz, axEx, axEy) = plt.subplots(3, sharex=True, figsize=(16, 16))
+        fig.suptitle(filename)
+        axBz.set_title("Magnetic_Field_Bz")
+        axBz.set_ylabel(r"Spectral power [$T \cdot \omega_{c, \alpha}$]")
+        axEx.set_title("Electric_Field_Ex")
+        axEx.set_ylabel(r"Spectral power [$\frac{V}{m} \cdot \omega_{c, \alpha}$]")
+        axEy.set_title("Electric_Field_Ey")
+        axEy.set_ylabel(r"Spectral power [$\frac{V}{m} \cdot \omega_{c, \alpha}$]")
+        axEy.set_xlabel(r"Frequency/$\omega_{c, \alpha}$")
         for angle_sim_path in all_sim_angle_datapaths:
 
             print(f"Processing {sim_id} -- {angle_sim_path.absolute()}...")
@@ -134,6 +286,23 @@ def combine_spectra(dataDirectory : Path, outputDirectory : Path):
             newData_xr["Electric_Field_Ex/power/powerByFrequency"] += angle_data_xr["Electric_Field_Ex/power/powerByFrequency"]
             newData_xr["Electric_Field_Ey/power/powerByWavenumber"] += angle_data_xr["Electric_Field_Ey/power/powerByWavenumber"]
             newData_xr["Electric_Field_Ey/power/powerByFrequency"] += angle_data_xr["Electric_Field_Ey/power/powerByFrequency"]
+
+            # Plots
+            axBz.plot(
+                angle_data_xr["Magnetic_Field_Bz/power"].coords["frequency"].data, 
+                angle_data_xr["Magnetic_Field_Bz/power/powerByFrequency"].data, 
+                label = f"{angle_data_xr.attrs['B0angle']} degrees"
+            )
+            axEx.plot(
+                angle_data_xr["Electric_Field_Ex/power"].coords["frequency"].data, 
+                angle_data_xr["Electric_Field_Ex/power/powerByFrequency"].data, 
+                label = f"{angle_data_xr.attrs['B0angle']} degrees"
+            )
+            axEy.plot(
+                angle_data_xr["Electric_Field_Ey/power"].coords["frequency"].data, 
+                angle_data_xr["Electric_Field_Ey/power/powerByFrequency"].data, 
+                label = f"{angle_data_xr.attrs['B0angle']} degrees"
+            )
 
             # Energy
             newData_xr["Energy/backgroundIonMeanEnergyDensity"] += angle_data_xr["Energy/backgroundIonMeanEnergyDensity"]
@@ -175,6 +344,33 @@ def combine_spectra(dataDirectory : Path, outputDirectory : Path):
         newData_xr["Energy/magneticFieldMeanEnergyDensity"] /= num_angles
         newData_xr["Energy/fastIonMeanEnergyDensity"] /= num_angles
 
+        # Plot
+        axBz.plot(
+            newData_xr["Magnetic_Field_Bz/power"].coords["frequency"].data, 
+            newData_xr["Magnetic_Field_Bz/power/powerByFrequency"].data, 
+            label = "Combined"
+        )
+        axEx.plot(
+            newData_xr["Electric_Field_Ex/power"].coords["frequency"].data, 
+            newData_xr["Electric_Field_Ex/power/powerByFrequency"].data, 
+            label = "Combined"
+        )
+        axEy.plot(
+            newData_xr["Electric_Field_Ey/power"].coords["frequency"].data, 
+            newData_xr["Electric_Field_Ey/power/powerByFrequency"].data, 
+            label = "Combined"
+        )
+        axBz.set_ylim(bottom=0)
+        axEx.set_ylim(bottom=0)
+        axEy.set_ylim(bottom=0)
+        handles, labels = axBz.get_legend_handles_labels()
+        labels, handles = zip(*sorted(zip(labels, handles), key=lambda t: t[0]))
+        axBz.legend(handles, labels)
+        axBz.grid()
+        axEx.grid()
+        axEy.grid()
+        plt.savefig(outputPlotDirectory / f"{sim_id}_combined_spectra.png")
+
         # Fix energy stats
         for k, _ in newData_xr["Energy"].attrs.items():
             newData_xr["Energy"].attrs[k] = 0.0
@@ -188,13 +384,25 @@ def combine_spectra(dataDirectory : Path, outputDirectory : Path):
         newData_xr["Energy"].attrs["fastIonToBackgroundTransfer_percentage"] = 100.0 * (newData_xr["Energy"].attrs["fastIonToBackgroundTransfer"] / newData_xr["Energy/fastIonMeanEnergyDensity"][0].data)
 
         # Write new file
-        outFname = outputDirectory / f"{sim_id}_combined_stats.nc"
+        outFname = outputDataDirectory / f"{sim_id}_combined_stats.nc"
         newData_xr.to_netcdf(outFname)
         newData_xr.close()
 
         print(f"{filename} complete and written to {outFname.absolute()}.")
 
 if __name__ == "__main__":
+
+    SMALL_SIZE = 10
+    MEDIUM_SIZE = 18
+    BIGGER_SIZE = 22
+    plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
+    plt.rc('axes', titlesize=BIGGER_SIZE)     # fontsize of the axes title
+    plt.rc('axes', labelsize=MEDIUM_SIZE)    # fontsize of the x and y labels
+    plt.rc('xtick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
+    plt.rc('ytick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
+    plt.rc('legend', fontsize=MEDIUM_SIZE)    # legend fontsize
+    plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
+
     # Run python setup.py -h for list of possible arguments
     parser = argparse.ArgumentParser("parser")
     parser.add_argument(
@@ -218,9 +426,15 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
-        "--doIciness",
+        "--calculateIciness",
         action="store_true",
         help="Calculate ICEiness characteristics for combined spectra.",
+        required = False
+    )
+    parser.add_argument(
+        "--plotIciness",
+        action="store_true",
+        help="Plot already calculated and saved ICEiness characteristics for combined spectra.",
         required = False
     )
     parser.add_argument(
@@ -236,9 +450,13 @@ if __name__ == "__main__":
 
     if args.combineSpectra:
         combine_spectra(args.dir, args.outputDir)
+        plt.close("all")
     
     combined_dir = args.outputDir
 
-    if args.doIciness:
+    if args.calculateIciness:
         calculate_iciness(combined_dir, args.fields)
+
+    if args.plotIciness:
+        plot_iciness(combined_dir, args.fields, percentage=True)
 
