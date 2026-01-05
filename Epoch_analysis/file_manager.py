@@ -3,6 +3,7 @@ from pathlib import Path
 import shutil
 import argparse
 import fnmatch
+import json
 
 def modify_line_in_matching_files(src_dir, pattern, search_text, replace_text):
     """
@@ -48,6 +49,24 @@ def copy_files_matching_pattern(src_dir, dest_dir, pattern):
                     os.makedirs(dest_subdir)
                 shutil.copy2(src_file, os.path.join(dest_subdir, file))
 
+def unify_results(source_dir : Path, file_pattern : str):
+
+    _, ftype = os.path.splitext(Path(file_pattern))
+    output_path = os.path.join(source_dir, f"unified_output{ftype}")
+    results_dict = None
+
+    for root, _, files in os.walk(source_dir):
+        for file in files:
+            if fnmatch.fnmatch(file, file_pattern):
+                file_path = os.path.join(root, file)
+                with open(file_path, 'r') as jsonF:
+                    jData = json.loads(jsonF.read())
+                    if results_dict:
+                        results_dict = jData
+                    else:
+                        results_dict["algorithms"] += results_dict["algorithms"]
+                        results_dict["results"] += results_dict["results"]
+
 # Example usage
 if __name__ == "__main__":
 
@@ -72,7 +91,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--destination",
         action="store",
-        help="Destination directory.",
+        help="Destination directory/file.",
         required = False,
         type=Path
     )
@@ -97,20 +116,29 @@ if __name__ == "__main__":
         required = False,
         type=str
     )
+    parser.add_argument(
+        "--unify",
+        action="store_true",
+        help="Unify TSR results json files (output name specified by --destination)."
+    )
 
     args = parser.parse_args()
     source_directory = args.source
     file_pattern = args.file_pattern
 
+    if not source_directory.is_dir():
+            raise ValueError(f"Source directory {source_directory} does not exist or is not a directory.")
+    if not file_pattern:
+        raise ValueError("File pattern must be specified.")
+
+    if args.unify:
+        unify_results(source_directory, file_pattern)
+
     if args.copy:
         destination_directory = args.destination
         print(f"Copying files from {source_directory} to {destination_directory} matching pattern '{file_pattern}'")
-        if not source_directory.is_dir():
-            raise ValueError(f"Source directory {source_directory} does not exist or is not a directory.")
         if not destination_directory.is_dir():
             raise ValueError(f"Destination directory {destination_directory} does not exist or is not a directory.")
-        if not file_pattern:
-            raise ValueError("File pattern must be specified.")
         
         copy_files_matching_pattern(source_directory, destination_directory, file_pattern)
 
@@ -118,9 +146,5 @@ if __name__ == "__main__":
         search_text = args.search_text
         replace_text = args.replace_text
         print(f"Modifying files in {source_directory} matching pattern '{file_pattern}'")
-        if not source_directory.is_dir():
-            raise ValueError(f"Source directory {source_directory} does not exist or is not a directory.")
-        if not file_pattern:
-            raise ValueError("File pattern must be specified.")
         
         modify_line_in_matching_files(source_directory, file_pattern, search_text, replace_text)

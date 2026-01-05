@@ -20,6 +20,8 @@ from warnings import warn
 from inference.pdf.hdi import sample_hdi
 from inference.pdf.kde import GaussianKDE, KDE2D
 
+from scipy.stats import linregress
+
 from matplotlib import colormaps
 
 from scipy import constants
@@ -79,6 +81,20 @@ SPECIES_NAME_MAP = {
     "fastIonMeanEnergyDensity" : "Fast ion"
 }
 
+ICE_METRICS = [
+    "ICEmetric_fundamentalPower",
+    "ICEmetric_fundamentalPower_pct",
+    "ICEmetric_harmonicPower",
+    "ICEmetric_harmonicPower_pct",
+    "ICEmetric_c22Acf",
+    "ICEmetric_c22AcfFirstMin",
+    "ICEmetric_c22HighFluct",
+    "ICEmetric_fundamentalPeakFloorRatio",
+    "ICEmetric_fundamentalPeakMeanRatio",
+    "ICEmetric_harmonicPeakFloorRatio",
+    "ICEmetric_harmonicPeakMeanRatio",
+]
+
 fieldNameToText_dict = {
     "Energy/electricFieldEnergyDensity_delta" : "E_deltaE",
     "Energy/magneticFieldEnergyDensity_delta" : "B_deltaE", 
@@ -136,14 +152,31 @@ fieldNameToText_dict = {
     "Magnetic_Field_Bz/growthRates/positive/bestInHighestTotalPowerK/growthRate" : "Growth rate (total power k)",
     "Magnetic_Field_Bz/growthRates/positive/bestInHighestTotalPowerK/time" : "Time max growth (total power k)",
     "Magnetic_Field_Bz/growthRates/positive/bestInHighestTotalPowerK/wavenumber" : "Total power k",
-    "/Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_fundamentalPower" : "Bz: pwr in fundamental",
-    "Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_fundamentalPower" : "Bz: pwr in fundamental",
-    "/Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_fundamentalPower_pct" : "Bz: pwr in fundamental (%)",
-    "Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_fundamentalPower_pct" : "Bz: pwr in fundamental (%)",
-    "/Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_harmonicPower" : "Bz: pwr in harmonics",
-    "Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_harmonicPower" : "Bz: pwr in harmonics",
-    "/Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_harmonicPower_pct" : "Bz: pwr in harmonics (%)",
-    "Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_harmonicPower_pct" : "Bz: pwr in harmonics (%)",
+    
+    "/Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_fundamentalPower" : "Bz: fund. pwr",
+    "Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_fundamentalPower" : "Bz: fund. pwr",
+    "/Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_fundamentalPower_pct" : "Bz: fund. pwr",
+    "Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_fundamentalPower_pct" : "Bz: fund. pwr",
+    "/Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_harmonicPower" : "Bz: harm. pwr",
+    "Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_harmonicPower" : "Bz: harm. pwr",
+    "/Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_harmonicPower_pct" : "Bz: harm. pwr",
+    "Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_harmonicPower_pct" : "Bz: harm. pwr",
+
+    "/Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_c22Acf" : "Bz: ACF TS (C22)",
+    "Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_c22Acf" : "Bz: ACF TS (C22)",
+    "/Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_c22AcfFirstMin" : "Bz: ACF FM (C22)",
+    "Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_c22AcfFirstMin" : "Bz: ACF FM (C22)",
+    "/Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_c22HighFluct" : "Bz: high fluc. (C22)",
+    "Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_c22HighFluct" : "Bz: high fluc. (C22)",
+    "/Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_fundamentalPeakFloorRatio" : "Bz: fund. peak:floor pwr",
+    "Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_fundamentalPeakFloorRatio" : "Bz: fund. peak:floor pwr",
+    "/Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_harmonicPeakFloorRatio" : "Bz: harm. peak:floor pwr",
+    "Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_harmonicPeakFloorRatio" : "Bz: harm. peak:floor pwr",
+    "/Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_fundamentalPeakMeanRatio" : "Bz: fund. peak:mean pwr",
+    "Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_fundamentalPeakMeanRatio" : "Bz: fund. peak:mean pwr",
+    "/Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_harmonicPeakMeanRatio" : "Bz: harm. peak:mean pwr",
+    "Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_harmonicPeakMeanRatio" : "Bz: harm. peak:mean pwr",
+
     "Electric_Field_Ex/totalMagnitude" : "Ex_totalPower", 
     "Electric_Field_Ex/meanMagnitude" : "Ex_meanPower", 
     "Electric_Field_Ex/totalDelta" : "Ex_deltaTotalPower", 
@@ -169,22 +202,55 @@ fieldNameToText_dict = {
     "Electric_Field_Ex/growthRates/maxInHighTotalPowerK/time" : "Ex_totalKmaxGammaTime",
     "Electric_Field_Ex/growthRates/maxInHighTotalPowerK/totalPower" : "Ex_totalKmaxGammaTotalPower",
     "Electric_Field_Ex/growthRates/maxInHighTotalPowerK/wavenumber" : "Ex_totalKmaxGammaK",
-    "/Electric_Field_Ex/power/powerByFrequency_ICEmetric_fundamentalPower" : "Ex: pwr in fundamental",
-    "Electric_Field_Ex/power/powerByFrequency_ICEmetric_fundamentalPower" : "Ex: pwr in fundamental",
-    "/Electric_Field_Ex/power/powerByFrequency_ICEmetric_fundamentalPower_pct" : "Ex: pwr in fundamental (%)",
-    "Electric_Field_Ex/power/powerByFrequency_ICEmetric_fundamentalPower_pct" : "Ex: pwr in fundamental (%)",
-    "/Electric_Field_Ex/power/powerByFrequency_ICEmetric_harmonicPower" : "Ex: pwr in harmonics",
-    "Electric_Field_Ex/power/powerByFrequency_ICEmetric_harmonicPower" : "Ex: pwr in harmonics",
-    "/Electric_Field_Ex/power/powerByFrequency_ICEmetric_harmonicPower_pct" : "Ex: pwr in harmonics (%)",
-    "Electric_Field_Ex/power/powerByFrequency_ICEmetric_harmonicPower_pct" : "Ex: pwr in harmonics (%)",
-    "/Electric_Field_Ey/power/powerByFrequency_ICEmetric_fundamentalPower" : "Ey: pwr in fundamental",
-    "Electric_Field_Ey/power/powerByFrequency_ICEmetric_fundamentalPower" : "Ey: pwr in fundamental",
-    "/Electric_Field_Ey/power/powerByFrequency_ICEmetric_fundamentalPower_pct" : "Ey: pwr in fundamental (%)",
-    "Electric_Field_Ey/power/powerByFrequency_ICEmetric_fundamentalPower_pct" : "Ey: pwr in fundamental (%)",
-    "/Electric_Field_Ey/power/powerByFrequency_ICEmetric_harmonicPower" : "Ey: pwr in harmonics",
-    "Electric_Field_Ey/power/powerByFrequency_ICEmetric_harmonicPower" : "Ey: pwr in harmonics",
-    "/Electric_Field_Ey/power/powerByFrequency_ICEmetric_harmonicPower_pct" : "Ey: pwr in harmonics (%)",
-    "Electric_Field_Ey/power/powerByFrequency_ICEmetric_harmonicPower_pct" : "Ey: pwr in harmonics (%)",
+    
+    "/Electric_Field_Ex/power/powerByFrequency_ICEmetric_fundamentalPower" : "Ex: fund. pwr",
+    "Electric_Field_Ex/power/powerByFrequency_ICEmetric_fundamentalPower" : "Ex: fund. pwr",
+    "/Electric_Field_Ex/power/powerByFrequency_ICEmetric_fundamentalPower_pct" : "Ex: fund. pwr",
+    "Electric_Field_Ex/power/powerByFrequency_ICEmetric_fundamentalPower_pct" : "Ex: fund. pwr",
+    "/Electric_Field_Ex/power/powerByFrequency_ICEmetric_harmonicPower" : "Ex: harm. pwr",
+    "Electric_Field_Ex/power/powerByFrequency_ICEmetric_harmonicPower" : "Ex: harm. pwr",
+    "/Electric_Field_Ex/power/powerByFrequency_ICEmetric_harmonicPower_pct" : "Ex: harm. pwr",
+    "Electric_Field_Ex/power/powerByFrequency_ICEmetric_harmonicPower_pct" : "Ex: harm. pwr",
+
+    "/Electric_Field_Ey/power/powerByFrequency_ICEmetric_fundamentalPower" : "Ey: fund. pwr",
+    "Electric_Field_Ey/power/powerByFrequency_ICEmetric_fundamentalPower" : "Ey: fund. pwr",
+    "/Electric_Field_Ey/power/powerByFrequency_ICEmetric_fundamentalPower_pct" : "Ey: fund. pwr",
+    "Electric_Field_Ey/power/powerByFrequency_ICEmetric_fundamentalPower_pct" : "Ey: fund. pwr",
+    "/Electric_Field_Ey/power/powerByFrequency_ICEmetric_harmonicPower" : "Ex: harm. pwr",
+    "Electric_Field_Ey/power/powerByFrequency_ICEmetric_harmonicPower" : "Ex: harm. pwr",
+    "/Electric_Field_Ey/power/powerByFrequency_ICEmetric_harmonicPower_pct" : "Ex: harm. pwr",
+    "Electric_Field_Ey/power/powerByFrequency_ICEmetric_harmonicPower_pct" : "Ex: harm. pwr",
+
+    "/Electric_Field_Ex/power/powerByFrequency_ICEmetric_c22Acf" : "Ex: ACF TS (C22)",
+    "Electric_Field_Ex/power/powerByFrequency_ICEmetric_c22Acf" : "Ex: ACF TS (C22)",
+    "/Electric_Field_Ex/power/powerByFrequency_ICEmetric_c22AcfFirstMin" : "Ex: ACF FM (C22)",
+    "Electric_Field_Ex/power/powerByFrequency_ICEmetric_c22AcfFirstMin" : "Ex: ACF FM (C22)",
+    "/Electric_Field_Ex/power/powerByFrequency_ICEmetric_c22HighFluct" : "Ex: high fluc. (C22)",
+    "Electric_Field_Ex/power/powerByFrequency_ICEmetric_c22HighFluct" : "Ex: high fluc. (C22)",
+    "/Electric_Field_Ex/power/powerByFrequency_ICEmetric_fundamentalPeakFloorRatio" : "Ex: fund. peak:floor pwr",
+    "Electric_Field_Ex/power/powerByFrequency_ICEmetric_fundamentalPeakFloorRatio" : "Ex: fund. peak:floor pwr",
+    "/Electric_Field_Ex/power/powerByFrequency_ICEmetric_harmonicPeakFloorRatio" : "Ex: harm. peak:floor pwr",
+    "Electric_Field_Ex/power/powerByFrequency_ICEmetric_harmonicPeakFloorRatio" : "Ex: harm. peak:floor pwr",
+    "/Electric_Field_Ex/power/powerByFrequency_ICEmetric_fundamentalPeakMeanRatio" : "Ex: fund. peak:mean pwr",
+    "Electric_Field_Ex/power/powerByFrequency_ICEmetric_fundamentalPeakMeanRatio" : "Ex: fund. peak:mean pwr",
+    "/Electric_Field_Ex/power/powerByFrequency_ICEmetric_harmonicPeakMeanRatio" : "Ex: harm. peak:mean pwr",
+    "Electric_Field_Ex/power/powerByFrequency_ICEmetric_harmonicPeakMeanRatio" : "Ex: harm. peak:mean pwr",
+
+    "/Electric_Field_Ey/power/powerByFrequency_ICEmetric_c22Acf" : "Ey: ACF TS (C22)",
+    "Electric_Field_Ey/power/powerByFrequency_ICEmetric_c22Acf" : "Ey: ACF TS (C22)",
+    "/Electric_Field_Ey/power/powerByFrequency_ICEmetric_c22AcfFirstMin" : "Ey: ACF FM (C22)",
+    "Electric_Field_Ey/power/powerByFrequency_ICEmetric_c22AcfFirstMin" : "Ey: ACF FM (C22)",
+    "/Electric_Field_Ey/power/powerByFrequency_ICEmetric_c22HighFluct" : "Ey: high fluc. (C22)",
+    "Electric_Field_Ey/power/powerByFrequency_ICEmetric_c22HighFluct" : "Ey: high fluc. (C22)",
+    "/Electric_Field_Ey/power/powerByFrequency_ICEmetric_fundamentalPeakFloorRatio" : "Ey: fund. peak:floor pwr",
+    "Electric_Field_Ey/power/powerByFrequency_ICEmetric_fundamentalPeakFloorRatio" : "Ey: fund. peak:floor pwr",
+    "/Electric_Field_Ey/power/powerByFrequency_ICEmetric_harmonicPeakFloorRatio" : "Ey: harm. peak:floor pwr",
+    "Electric_Field_Ey/power/powerByFrequency_ICEmetric_harmonicPeakFloorRatio" : "Ey: harm. peak:floor pwr",
+    "/Electric_Field_Ey/power/powerByFrequency_ICEmetric_fundamentalPeakMeanRatio" : "Ey: fund. peak:mean pwr",
+    "Electric_Field_Ey/power/powerByFrequency_ICEmetric_fundamentalPeakMeanRatio" : "Ey: fund. peak:mean pwr",
+    "/Electric_Field_Ey/power/powerByFrequency_ICEmetric_harmonicPeakMeanRatio" : "Ey: harm. peak:mean pwr",
+    "Electric_Field_Ey/power/powerByFrequency_ICEmetric_harmonicPeakMeanRatio" : "Ey: harm. peak:mean pwr",
+
     "B0strength" : "B0", 
     "B0angle" : "B0 angle", 
     "backgroundDensity" : "density (log)", 
@@ -192,12 +258,41 @@ fieldNameToText_dict = {
     "pitch" : "pitch"
 }
 
-fieldNameToUnit = {
+fieldNameToUnit_dict = {
     "B0strength" : "T", 
     "B0angle" : r"$^\circ$", 
-    "backgroundDensity" : r"$m^{-1}$", 
-    "beamFraction" : "",
-    "pitch" : "a.u."
+    "backgroundDensity" : r"$m^{-3}$", 
+    "beamFraction" : "a.u.",
+    "pitch" : "a.u.",
+    
+    "/Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_fundamentalPower" : r"$T \cdot \omega_{c, \alpha}$",
+    "Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_fundamentalPower" : r"$T \cdot \omega_{c, \alpha}$",
+    "/Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_fundamentalPower_pct" : "%",
+    "Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_fundamentalPower_pct" : "%",
+    "/Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_harmonicPower" : r"$T \cdot \omega_{c, \alpha}$",
+    "Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_harmonicPower" : r"$T \cdot \omega_{c, \alpha}$",
+    "/Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_harmonicPower_pct" : "%",
+    "Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_harmonicPower_pct" : "%",
+
+    "/Electric_Field_Ex/power/powerByFrequency_ICEmetric_fundamentalPower" : r"$T \cdot \omega_{c, \alpha}$",
+    "Electric_Field_Ex/power/powerByFrequency_ICEmetric_fundamentalPower" : r"$T \cdot \omega_{c, \alpha}$",
+    "/Electric_Field_Ex/power/powerByFrequency_ICEmetric_fundamentalPower_pct" : "%",
+    "Electric_Field_Ex/power/powerByFrequency_ICEmetric_fundamentalPower_pct" : "%",
+    "/Electric_Field_Ex/power/powerByFrequency_ICEmetric_harmonicPower" : r"$T \cdot \omega_{c, \alpha}$",
+    "Electric_Field_Ex/power/powerByFrequency_ICEmetric_harmonicPower" : r"$T \cdot \omega_{c, \alpha}$",
+    "/Electric_Field_Ex/power/powerByFrequency_ICEmetric_harmonicPower_pct" : "%",
+    "Electric_Field_Ex/power/powerByFrequency_ICEmetric_harmonicPower_pct" : "%",
+
+    "/Electric_Field_Ey/power/powerByFrequency_ICEmetric_fundamentalPower" : r"$T \cdot \omega_{c, \alpha}$",
+    "Electric_Field_Ey/power/powerByFrequency_ICEmetric_fundamentalPower" : r"$T \cdot \omega_{c, \alpha}$",
+    "/Electric_Field_Ey/power/powerByFrequency_ICEmetric_fundamentalPower_pct" : "%",
+    "Electric_Field_Ey/power/powerByFrequency_ICEmetric_fundamentalPower_pct" : "%",
+    "/Electric_Field_Ey/power/powerByFrequency_ICEmetric_harmonicPower" : r"$T \cdot \omega_{c, \alpha}$",
+    "Electric_Field_Ey/power/powerByFrequency_ICEmetric_harmonicPower" : r"$T \cdot \omega_{c, \alpha}$",
+    "/Electric_Field_Ey/power/powerByFrequency_ICEmetric_harmonicPower_pct" : "%",
+    "Electric_Field_Ey/power/powerByFrequency_ICEmetric_harmonicPower_pct" : "%",
+
+    "Energy/ICEmetric_energyTransfer" : "% original F.I.",
 }
 
 def fieldNameToText(name : str) -> str:
@@ -206,6 +301,214 @@ def fieldNameToText(name : str) -> str:
     if name.strip('/') in fieldNameToText_dict:
         return fieldNameToText_dict[name.strip('/')]
     return name
+
+def fieldNameToUnit(name : str) -> str:
+    if name in fieldNameToUnit_dict:
+        return fieldNameToUnit_dict[name]
+    if name.strip('/') in fieldNameToUnit_dict:
+        return fieldNameToUnit_dict[name.strip('/')]
+    return ""
+
+def correlate_and_plot_iciness_vs_baseline(
+        iciness_by_metric : dict, 
+        baseline_name : str, 
+        baseline_data : list, 
+        save_folder : Path, 
+        unique_name : str,
+        results : list, 
+        title : str = None,
+        doPlot : bool = False
+    ):
+    
+    spectra = set()
+    for metric in iciness_by_metric.keys():
+        metric_parts = metric.split('_ICEmetric_')
+        metric_short = f"ICEmetric_{metric_parts[1]}" if len(metric_parts) > 1 else metric_parts[0]
+        spectrum_name = metric_parts[0]
+        spectra.add(spectrum_name)
+        
+        iciness = np.array(iciness_by_metric[metric])
+        plotBaseline = np.array(baseline_data) # Baseline
+        
+        # Raw data
+        res = linregress(plotBaseline, iciness)
+
+        if doPlot:
+            fig = plt.figure(figsize=(12,12))
+            if title:
+                fig.suptitle(title)
+            else:    
+                fig.suptitle(f"{fieldNameToText(metric)} vs {baseline_name}")
+            plt.scatter(plotBaseline, iciness, marker="x")
+            plt.plot(plotBaseline, (res.slope * plotBaseline) + res.intercept, color="black", alpha=0.9, label = f"r2 = {res.rvalue:.5f}")
+            plt.xlabel(f"{fieldNameToText(baseline_name)} [{fieldNameToUnit(metric)}]")
+            plt.ylabel(f"{fieldNameToText(metric)} [{fieldNameToUnit(metric)}]")
+            plt.legend()
+            plt.tight_layout()
+            # plt.show()
+            figPath = save_folder / f"{unique_name}_{metric.replace('/', '_')}_vs_{baseline_name.replace(' ', '_')}.png"
+            plt.savefig(figPath)
+
+            plt.close("all")
+
+        result = {
+            "spectrum" : spectrum_name,
+            "metric" : metric_short,
+            "metric_log" : False,
+            "baseline" : baseline_name,
+            "baseline_log" : False,
+            "r2" : res.rvalue,
+            "figurePath" : figPath.as_uri() if doPlot else None
+        }
+        results.append(result)
+
+        # Log-log
+        res = linregress(np.log10(plotBaseline), np.log10(iciness))
+
+        if doPlot:
+            fig = plt.figure(figsize=(12,12))
+            if title:
+                fig.suptitle(title)
+            else:    
+                fig.suptitle(f"log {fieldNameToText(metric)} vs log {baseline_name}")
+            plt.scatter(plotBaseline, iciness, marker="x")
+            plt.plot(plotBaseline, 10**(res.intercept) * plotBaseline**res.slope, color="black", alpha=0.7, label = f"r2 = {res.rvalue:.5f}")
+            plt.xscale('log')
+            plt.yscale('log')
+            plt.xlabel(f"{fieldNameToText(baseline_name)} [{fieldNameToUnit(metric)}]")
+            plt.ylabel(f"{fieldNameToText(metric)} [{fieldNameToUnit(metric)}]")
+            plt.legend()
+            plt.tight_layout()
+            figPath = save_folder / f"{unique_name}_log_{metric.replace('/', '_')}_vs_log_{baseline_name.replace(' ', '_')}.png"
+            plt.savefig(figPath)                      
+
+            plt.close("all")
+
+        result = {
+            "spectrum" : spectrum_name,
+            "metric" : metric_short,
+            "metric_log" : True,
+            "baseline" : baseline_name,
+            "baseline_log" : True,
+            "r2" : res.rvalue,
+            "figurePath" : figPath.as_uri() if doPlot else None
+        }
+        results.append(result)
+
+        # x log
+        res = linregress(np.log10(plotBaseline), iciness)
+        if doPlot:
+            fig = plt.figure(figsize=(12,12))
+            if title:
+                fig.suptitle(title)
+            else:    
+                fig.suptitle(f"log {fieldNameToText(metric)} vs {baseline_name}")
+            plt.scatter(plotBaseline, iciness, marker="x")
+            plt.plot(plotBaseline, res.slope*np.log10(plotBaseline) + res.intercept, color="black", alpha=0.7, label = f"r2 = {res.rvalue:.5f}")
+            plt.xscale('log')
+            plt.xlabel(f"{fieldNameToText(baseline_name)} [{fieldNameToUnit(metric)}]")
+            plt.ylabel(f"{fieldNameToText(metric)} [{fieldNameToUnit(metric)}]")
+            plt.legend()
+            plt.tight_layout()
+            figPath = save_folder / f"{unique_name}_{metric.replace('/', '_')}_vs_log_{baseline_name.replace(' ', '_')}.png"
+            plt.savefig(figPath)                      
+
+            plt.close("all")
+        result = {
+            "spectrum" : spectrum_name,
+            "metric" : metric_short,
+            "metric_log" : False,
+            "baseline" : baseline_name,
+            "baseline_log" : True,
+            "r2" : res.rvalue,
+            "figurePath" : figPath.as_uri() if doPlot else None
+        }
+        results.append(result)
+        
+        # y log
+        res = linregress(plotBaseline, np.log10(iciness))
+        if doPlot:
+            fig = plt.figure(figsize=(12,12))
+            if title:
+                fig.suptitle(title)
+            else:    
+                fig.suptitle(f"log {fieldNameToText(metric)} vs {baseline_name}")
+            plt.scatter(plotBaseline, iciness, marker="x")
+            plt.plot(plotBaseline, (10**(res.slope * plotBaseline)) * 10**res.intercept, color="black", alpha=0.7, label = f"r2 = {res.rvalue:.5f}")
+            plt.yscale('log')
+            plt.xlabel(f"{fieldNameToText(baseline_name)} [{fieldNameToUnit(metric)}]")
+            plt.ylabel(f"{fieldNameToText(metric)} [{fieldNameToUnit(metric)}]")
+            plt.legend()
+            plt.tight_layout()
+            figPath = save_folder / f"{unique_name}_log_{metric.replace('/', '_')}_vs_{baseline_name.replace(' ', '_')}.png"
+            plt.savefig(figPath)                      
+
+            plt.close("all")
+        result = {
+            "spectrum" : spectrum_name,
+            "metric" : metric_short,
+            "metric_log" : True,
+            "baseline" : baseline_name,
+            "baseline_log" : False,
+            "r2" : res.rvalue,
+            "figurePath" : figPath.as_uri() if doPlot else None
+        }
+        results.append(result)
+
+    if doPlot:
+        for spectrum in spectra:
+            data = [[v for k, v in iciness_by_metric.items() if spectrum in k] + [baseline_data]]
+            my_matrix_plot(
+                data_series=data, 
+                series_labels=["metric"],
+                parameter_labels=[fieldNameToText(m) for m in iciness_by_metric.keys() if spectrum in m] + [baseline_name],
+                show=False,
+                filename=save_folder / f"{spectrum.replace('/', '_')}_{baseline_name}_contour.png",
+                equalise_pdf_heights=False,
+                label_size=8,
+                plot_style="contour"
+            )
+            plt.close("all")
+
+            my_matrix_plot(
+                data_series=data, 
+                series_labels=["metric"],
+                parameter_labels=[fieldNameToText(m) for m in iciness_by_metric.keys() if spectrum in m] + [baseline_name],
+                show=False,
+                filename=save_folder / f"{spectrum.replace('/', '_')}_{baseline_name}_hdi.png",
+                equalise_pdf_heights=False,
+                label_size=8,
+                plot_style="hdi"
+            )
+            plt.close("all")
+
+            # Log-log
+            data = [[np.log10(np.array(v)).tolist() for k, v in iciness_by_metric.items() if spectrum in k] + [np.log10(np.array(baseline_data)).tolist()]]
+            my_matrix_plot(
+                data_series=data, 
+                series_labels=["metric"],
+                parameter_labels=[fieldNameToText(m) for m in iciness_by_metric.keys() if spectrum in m] + [baseline_name],
+                show=False,
+                filename=save_folder / f"{spectrum.replace('/', '_')}_{baseline_name}_log_contour.png",
+                equalise_pdf_heights=False,
+                label_size=12,
+                plot_style="contour"
+            )
+            plt.close("all")
+
+            my_matrix_plot(
+                data_series=data, 
+                series_labels=["metric"],
+                parameter_labels=[fieldNameToText(m) for m in iciness_by_metric.keys() if spectrum in m] + [baseline_name],
+                show=False,
+                filename=save_folder / f"{spectrum.replace('/', '_')}_{baseline_name}_log_hdi.png",
+                equalise_pdf_heights=False,
+                label_size=12,
+                plot_style="hdi"
+            )
+            plt.close("all")
+
+    return results
 
 # Formerly everything below maxRes percentile, i.e. maxRes == 0.2 --> all values within bottom (best) 20th percentile
 # Now everything at maxRes proportion and below, i.e. maxRes == 0.2 --> bottom (best) 20% of values
@@ -1083,8 +1386,7 @@ def my_matrix_plot(
     point_colors: Sequence[float] = None,
     hdi_fractions=(0.35, 0.65, 0.95),
     point_size: int = 1,
-    label_size: int = 10,
-    tight_layout = False
+    label_size: int = 10
 ):
     """
     Construct a 'matrix plot' for a set of variables which shows all possible

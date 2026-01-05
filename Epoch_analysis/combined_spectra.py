@@ -1,3 +1,4 @@
+import csv
 import glob
 import os
 from pathlib import Path
@@ -12,80 +13,110 @@ from scipy.stats import linregress
 from scipy.signal import find_peaks
 import pycatch22
 
-def plot_iciness(combined_directory : Path, fields : list, percentage : bool = False):
+def plot_iciness(combined_directory : Path, fields : list, iceMetrics : list = None):
 
     combined_statsFiles = glob.glob(str(combined_directory / "data" / "*_combined_stats.nc"))
+    plots_folder = combined_directory / "plots" / "iciness"
+    first_file = xr.open_datatree(combined_statsFiles[0], engine="netcdf4")
+    
+    # Check spectra and energy groups for ICE metrics
+    metrics_fully_qualified = set()
+    if iceMetrics:
+        for f in fields:
+            for attribute in first_file[f].attrs:
+                if str(attribute) in iceMetrics:
+                    metrics_fully_qualified.add(f"{f}_{attribute}")
+        for attribute in first_file["/Energy"].attrs:
+            if str(attribute) in iceMetrics:
+                metrics_fully_qualified.add(f"Energy_{attribute}")
+    else:
+        for f in fields:
+            for attribute in first_file[f].attrs:
+                if str(attribute).startswith("ICEmetric"):
+                    metrics_fully_qualified.add(f"{f}_{attribute}")
+        for attribute in first_file["/Energy"].attrs:
+            if str(attribute).startswith("ICEmetric"):
+                metrics_fully_qualified.add(f"Energy_{attribute}")
+
     iciness_by_field = { 
-        f : 
-            {
-                "energyTransfer" : dict.fromkeys([Path(c).name for c in combined_statsFiles]), 
-                "fundamental" : dict.fromkeys([Path(c).name for c in combined_statsFiles]), 
-                "harmonic" : dict.fromkeys([Path(c).name for c in combined_statsFiles]),
-                "fundamental_pct" : dict.fromkeys([Path(c).name for c in combined_statsFiles]), 
-                "harmonic_pct" : dict.fromkeys([Path(c).name for c in combined_statsFiles])
-            } 
-        for f in fields
+        m : {file : [] for file in [Path(c).name for c in combined_statsFiles]} for m in metrics_fully_qualified
     }
-    field_units = { 
-        "Energy" : "%", 
-        "Magnetic_Field_Bz/power/powerByFrequency" : r"$T \cdot \omega_{c, \alpha}$",
-        "Electric_Field_Ex/power/powerByFrequency" : r"$\frac{V}{m} \cdot \omega_{c, \alpha}$",
-        "Electric_Field_Ey/power/powerByFrequency" : r"$\frac{V}{m} \cdot \omega_{c, \alpha}$"
-    }
+    # energyTransfer = {file : [] for file in [Path(c).name for c in combined_statsFiles]}
+    B0strength = {file : [] for file in [Path(c).name for c in combined_statsFiles]}
+    pitch = {file : [] for file in [Path(c).name for c in combined_statsFiles]}
+    density = {file : [] for file in [Path(c).name for c in combined_statsFiles]}
+    beamFrac = {file : [] for file in [Path(c).name for c in combined_statsFiles]}
 
     for simFile in combined_statsFiles:
         data_xr = xr.open_datatree(simFile, engine="netcdf4")
 
-        for field in fields:
-            filename = Path(simFile).name
-            print(f"File: {filename}, Field: {field}")
+        filename = Path(simFile).name
+        print(f"File: {filename}")
 
-            # Record
-            iciness_by_field[field]["energyTransfer"][filename] = data_xr["Energy"].ICEmetric_energyTransfer
-            iciness_by_field[field]["fundamental"][filename] = data_xr[field].ICEmetric_fundamentalPower
-            iciness_by_field[field]["fundamental_pct"][filename] = data_xr[field].ICEmetric_fundamentalPower_pct
-            iciness_by_field[field]["harmonic"][filename] = data_xr[field].ICEmetric_harmonicPower
-            iciness_by_field[field]["harmonic_pct"][filename] = data_xr[field].ICEmetric_harmonicPower_pct
+        # Record
+        for metric in iciness_by_field.keys():
+            metric_parts = metric.split('_ICEmetric_')
+            metric_short = f"ICEmetric_{metric_parts[1]}" if len(metric_parts) > 1 else metric_parts
+            spectrum_name = metric_parts[0]
+            iciness_by_field[metric][filename].append(float(data_xr[spectrum_name].attrs[metric_short]))
+
+        # # Energy
+        # energyTransfer[filename].append(float(data_xr["Energy"].attrs["ICEmetric_energyTransfer"]))
+        # iciness_by_field["ICEmetric_energyTransfer"][filename].append(float(data_xr["Energy"].attrs["ICEmetric_energyTransfer"]))
+
+        # Simulation params
+        B0strength[filename].append(data_xr.B0strength)
+        pitch[filename].append(data_xr.pitch)
+        density[filename].append(data_xr.backgroundDensity)
+        beamFrac[filename].append(data_xr.beamFraction)
 
         data_xr.close()
 
-    for field in iciness_by_field.keys():
-        iciness = iciness_by_field[field]
-        funds = np.array(list(iciness["fundamental_pct" if percentage else "fundamental"].values()))
-        harms = np.array(list(iciness["harmonic_pct" if percentage else "harmonic"].values()))
-        enTrans = np.array(list(iciness["energyTransfer"].values()))
-        fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
-        fig.set_figheight(12)
-        fig.set_figwidth(18)
-        fig.suptitle(field)
-        ax1.scatter(funds, harms, marker="x")
-        res = linregress(np.log10(funds), np.log10(harms))
-        ax1.plot(funds, 10**(res.intercept) * funds**res.slope, color="black", alpha=0.7, label = f"r2 = {res.rvalue:.5f}")
-        ax1.set_xlabel(f"Power in fundamental [{'%' if percentage else field_units[field]}]")
-        ax1.set_ylabel(f"Power in harmonics [{'%' if percentage else field_units[field]}]")
-        ax1.legend()
-        ax2.scatter(funds, enTrans, marker="x")
-        res = linregress(np.log10(funds), np.log10(enTrans))
-        ax2.plot(funds, 10**(res.intercept) * funds**res.slope, color="black", alpha=0.7, label = f"r2 = {res.rvalue:.5f}")
-        ax2.set_xlabel(f"Power in fundamental [{'%' if percentage else field_units[field]}]")
-        ax2.set_ylabel("Energy transfer from FI to BI [%]")
-        ax2.legend()
-        ax3.scatter(harms, enTrans, marker="x")
-        res = linregress(np.log10(harms), np.log10(enTrans))
-        ax3.plot(harms, 10**(res.intercept) * harms**res.slope, color="black", alpha=0.7, label = f"r2 = {res.rvalue:.5f}")
-        ax3.set_xlabel(f"Power in harmonics [{'%' if percentage else field_units[field]}]")
-        ax3.set_ylabel("Energy transfer from FI to BI [%]")
-        ax3.legend()
+    baselines = {
+        "B0" : B0strength,
+        "pitch" : pitch,
+        "density" : density,
+        "beam_frac" : beamFrac
+    }
+    correlations = []
+    iciness_by_metric = {k : [d[0] for d in v.values()] for k, v in iciness_by_field.items()}
+    for baseline_name, baseline_data in baselines.items():
+        correlations = eu.correlate_and_plot_iciness_vs_baseline(iciness_by_metric, baseline_name, [v[0] for v in baseline_data.values()], plots_folder, "all", correlations, doPlot=True)
 
-        ax1.set_xscale('log')
-        ax1.set_yscale('log')
-        ax2.set_xscale('log')
-        ax2.set_yscale('log')
-        ax3.set_xscale('log')
-        ax3.set_yscale('log')
+    with open(plots_folder / "iciness_correlations.csv", 'w', newline='') as output_file:
+        dict_writer = csv.DictWriter(output_file, correlations[0].keys())
+        dict_writer.writeheader()
+        dict_writer.writerows(correlations)
 
-        plt.tight_layout()
-        plt.show()
+    metric_correlations = []
+    print("METRIC CORRELATIONS: ")
+    for metric in iciness_by_metric.keys():
+        metric_parts = metric.split('_ICEmetric_')
+        metric_short = f"ICEmetric_{metric_parts[1]}"
+        data = [c["r2"] for c in correlations if c["metric"] == metric_short]
+        mean = np.mean(data)
+        meanAbs = np.mean(np.abs(data))
+        print(f"{metric}:   | raw r2 = {mean:.5f}, abs r2 = {meanAbs:.5f}")
+        metric_correlations.append({"metric" : metric, "mean_r2" : mean, "mean_abs_r2" : meanAbs})
+
+    with open(plots_folder / "mean_iciness_correlations_by_metric.csv", 'w', newline='') as output_file:
+        dict_writer = csv.DictWriter(output_file, metric_correlations[0].keys())
+        dict_writer.writeheader()
+        dict_writer.writerows(metric_correlations)
+
+    baseline_correlations = []
+    print("BASELINE CORRELATIONS: ")
+    for baseline in baselines.keys():
+        data = [c["r2"] for c in correlations if c["baseline"] == baseline]
+        mean = np.mean(data)
+        meanAbs = np.mean(np.abs(data))
+        print(f"{baseline}:   | raw r2 = {mean:.5f}, abs r2 = {meanAbs:.5f}")
+        baseline_correlations.append({"baseline" : baseline, "mean_r2" : mean, "mean_abs_r2" : meanAbs})
+
+    with open(plots_folder / "mean_iciness_correlations_by_baseline.csv", 'w', newline='') as output_file:
+        dict_writer = csv.DictWriter(output_file, baseline_correlations[0].keys())
+        dict_writer.writeheader()
+        dict_writer.writerows(baseline_correlations)
 
 def calculate_iciness(combined_directory : Path, fields : list):
 
@@ -150,7 +181,6 @@ def calculate_iciness(combined_directory : Path, fields : list):
             ### Linear autocorrelations
             acf_ts = c22["values"][c22["names"].index("CO_f1ecac")]
             acf_firstmin_ts = c22["values"][c22["names"].index("CO_FirstMin_ac")]
-
 
             # Record
             data_nc["Energy"].ICEmetric_energyTransfer = data_xr["Energy"].fastIonToBackgroundTransfer_percentage
@@ -445,6 +475,14 @@ if __name__ == "__main__":
         type=str,
         nargs="*"
     )
+    parser.add_argument(
+        "--iceMetrics",
+        action="store",
+        help="Ice metrics to plot.",
+        required = False,
+        type=str,
+        nargs="*"
+    )
     
     args = parser.parse_args()
 
@@ -458,5 +496,5 @@ if __name__ == "__main__":
         calculate_iciness(combined_dir, args.fields)
 
     if args.plotIciness:
-        plot_iciness(combined_dir, args.fields, percentage=True)
+        plot_iciness(combined_dir, args.fields, args.iceMetrics)
 

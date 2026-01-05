@@ -39,7 +39,7 @@ def demo():
     print(f"Cardano spectrum shape: {cardano_train.shape} (n_cases: {cardano_train.shape[0]}, n_channels: {cardano_train.shape[1]}, n_timepoints: {cardano_train.shape[2]})")
     print(f"Cardano output shape:   {cardano_train_y.shape}")
 
-def plot_predictions_with_iciness(
+def correlate_predictions_with_iciness(
         algorithm_name : str,
         field : str,
         truth : list,
@@ -47,59 +47,47 @@ def plot_predictions_with_iciness(
         iceMetrics : dict,
         r2 : float,
         rmse : float,
-        saveFolder : Path,
-        doLog : bool
+        saveFolder : Path
 ):
+    if not os.path.exists(saveFolder):
+        os.makedirs(saveFolder)
+
     squared_errors = (np.array([float(p) for p in preds]) - np.array([float(t) for t in truth]))**2
     
-    for metric, values in iceMetrics.items():
-        values = np.array(values)
-        xLog = "energyTransfer" not in metric and "pct" not in metric
-        title = f"{field} -- {algorithm_name} (prediction {r'$r^2$'} = {r2:.3f}, {r'rmse'} = {rmse:.3f})"
-        plt.figure(figsize=(14,12))
-        plt.title(title)
-        plt.scatter(values, squared_errors)
-        plt.xlabel(metric)
-        plt.ylabel("Squared prediction errors")
-        if xLog:
-            plt.xscale("log")
-            res = linregress(np.log10(values), np.log10(squared_errors))
-            plt.plot(values, 10**(res.intercept) * values**res.slope, color="black", label = f"r2 = {res.rvalue:.5f}")
-        else:
-            res = linregress(values, np.log10(squared_errors))
-            plt.plot(values, 10**(res.intercept) * 10**(values*res.slope), color="black", label = f"r2 = {res.rvalue:.5f}")
-        plt.yscale("log")
-        plt.legend()
-        plt.tight_layout()
-        plt.savefig(saveFolder / f"{field}_{epoch_utils.fieldNameToText(metric).replace(' ', '')}_{algorithm_name}.png")
+    correlations = []
+    plotTitle = f"{field} -- {algorithm_name} (prediction {r'$r^2$'} = {r2:.3f}, {r'rmse'} = {rmse:.3f})"
+    unique_name = f"{algorithm_name}_{field}"
+    correlations = epoch_utils.correlate_and_plot_iciness_vs_baseline(
+        iceMetrics, 
+        "squared prediction error", 
+        squared_errors.tolist(), 
+        saveFolder, 
+        unique_name,
+        correlations, 
+        plotTitle, 
+        doPlot = True
+    )
 
-    for spectrum in ["Bz", "Ex", "Ey"]:
-        title = f"{field} -- {algorithm_name} (prediction {r'$r^2$'} = {r2:.3f}, {r'rmse'} = {rmse:.3f})"
-        # plt.figure(figsize=(14,12))
-        plt.title(title)
-        epoch_utils.my_matrix_plot(
-            data_series=[[v for k, v in iceMetrics.items() if spectrum in k] + [list(squared_errors)]], 
-            series_labels=["ICE metric"],
-            parameter_labels=[epoch_utils.fieldNameToText(m) for m in iceMetrics.keys() if spectrum in m] + ["Squared pred. errors"],
-            show=False,
-            filename=saveFolder / f"{field}_{algorithm_name}_contour.png",
-            equalise_pdf_heights=False,
-            label_size=12,
-            plot_style="contour"
-        )
-        title = f"{field} -- {algorithm_name} (prediction {r'$r^2$'} = {r2:.3f}, {r'rmse'} = {rmse:.3f})"
-        # plt.figure(figsize=(14,12))
-        plt.title(title)
-        epoch_utils.my_matrix_plot(
-            data_series=[[v for k, v in iceMetrics.items() if spectrum in k] + [list(squared_errors)]], 
-            series_labels=["ICE metric"],
-            parameter_labels=[epoch_utils.fieldNameToText(m) for m in iceMetrics.keys() if spectrum in m] + ["Squared pred. errors"],
-            show=False,
-            filename=saveFolder / f"{field}_{algorithm_name}_hdi.png",
-            equalise_pdf_heights=False,
-            label_size=12,
-            plot_style="hdi"
-        )
+    with open(saveFolder / f"{unique_name}_iciness_correlations.csv", 'w', newline='') as output_file:
+        dict_writer = csv.DictWriter(output_file, correlations[0].keys())
+        dict_writer.writeheader()
+        dict_writer.writerows(correlations)
+
+    metric_correlations = []
+    print(f"{algorithm_name} METRIC CORRELATIONS: ")
+    for metric in iceMetrics.keys():
+        metric_parts = metric.split('_ICEmetric_')
+        metric_short = f"ICEmetric_{metric_parts[1]}" if len(metric_parts) > 1 else metric_parts[0]
+        data = [c["r2"] for c in correlations if c["metric"] == metric_short]
+        mean = np.mean(data)
+        meanAbs = np.mean(np.abs(data))
+        print(f"{metric}:   | raw r2 = {mean:.5f}, abs r2 = {meanAbs:.5f}")
+        metric_correlations.append({"metric" : metric, "mean_r2" : mean, "mean_abs_r2" : meanAbs})
+
+    with open(saveFolder / f"{unique_name}_mean_iciness_correlations_by_metric.csv", 'w', newline='') as output_file:
+        dict_writer = csv.DictWriter(output_file, metric_correlations[0].keys())
+        dict_writer.writeheader()
+        dict_writer.writerows(metric_correlations)
 
 def plot_predictions(
         algorithm_name : str,
@@ -112,7 +100,7 @@ def plot_predictions(
         saveFolder : Path,
         doLog : bool
 ):
-    unit = epoch_utils.fieldNameToUnit[field]
+    unit = epoch_utils.fieldNameToUnit_dict[field]
 
     plt.subplots(figsize=(12, 8))
     plt.scatter(truth, sim_ids, label = "True value", marker = "o", color = "blue")
@@ -164,6 +152,7 @@ def regress(
         cvRepeats : int,
         cvStrategy : str = "RepeatedKFolds",
         normalise : bool = True,
+        iceMetricsToUse : list = None,
         resultsFilepath : Path = None,
         doPlot : bool = True
 ):
@@ -186,6 +175,17 @@ def regress(
     inputs = {name : [] for name in inputSpectraNames}
     inputs = ml_utils.read_data(data_files, inputs, with_names = True, with_coords = True, with_iciness = True)
     battery.inputSpectra = np.array(inputSpectraNames)
+
+    iceMetrics = dict()
+    if iceMetricsToUse:
+        for m in iceMetricsToUse:
+            for n in inputs:
+                if m in n:
+                    iceMetrics[n] = inputs[n]
+    else:
+        for n in inputs.keys():
+            if "ICEmetric" in n:
+                iceMetrics[n] = inputs[n]
 
     # Output data
     outputs = {outputField : [] for outputField in outputFields}
@@ -336,30 +336,16 @@ def regress(
 
             battery.results.append(result)
 
-            if doPlot:
-                # plot_predictions(
-                #     algorithm, 
-                #     output_field, 
-                #     all_test_indices, 
-                #     all_test_points_denormed, 
-                #     all_predictions_denormed, 
-                #     result.cvR2_mean,
-                #     result.cvRMSE_mean,
-                #     resultsFilepath.parent, 
-                #     output_field in logFields)
-                
-                iceMetrics = {m : inputs[m] for m in [n for n in inputs if "ICEmetric" in n]}
-
-                plot_predictions_with_iciness(
+            if doPlot:               
+                correlate_predictions_with_iciness(
                     algorithm_name = algorithm,
                     field = output_field,
-                    truth = all_test_points_denormed,
-                    preds = all_predictions_denormed,
+                    truth = all_test_points,
+                    preds = all_predictions,
                     iceMetrics = iceMetrics,
                     r2 = result.cvR2_mean,
                     rmse = result.cvRMSE_mean,
-                    saveFolder = Path("/home/era536/Documents/for_discussion/2025.12.11/Individual_errors_by_iciness/"), 
-                    doLog = output_field in logFields
+                    saveFolder = resultsFilepath.parent / "iciness" / algorithm, 
                 )
     
     ml_utils.write_ML_result_to_file(battery, resultsFilepath)
@@ -442,6 +428,14 @@ if __name__ == "__main__":
         required = False,
         type=Path
     )
+    parser.add_argument(
+        "--iceMetrics",
+        action="store",
+        help="ICE metrics to correlate and plot.",
+        required = False,
+        type=str,
+        nargs="*"
+    )
 
     args = parser.parse_args()
 
@@ -457,6 +451,7 @@ if __name__ == "__main__":
         args.cvFolds, 
         args.cvRepeats, 
         args.cvStrategy,
+        iceMetricsToUse=args.iceMetrics,
         resultsFilepath=args.resultsFilepath,
         doPlot=args.doPlot)
     # demo()
