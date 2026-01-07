@@ -241,6 +241,9 @@ def regress(
     battery.cvRepeats = cvRepeats
     battery.results = []
 
+    # Dumb hack
+    best_results = {"backgroundDensity" : 0.563, "beamFraction" : 0.334, "B0strength" : 0.499, "pitch" : 0.542}
+
     for output_field, output_values in outputs.items():
         
         assert len(output_values) == inputSpectra.shape[0]
@@ -261,8 +264,10 @@ def regress(
         # Record denormalisation parameters
         _, scaler = ml_utils.normalise_data(output_values)
         print(f"Full dataset scaler mean: {scaler.mean_}")
-        print(f"Mean (0.0) in normalised RMSE units is {scaler.inverse_transform([[0.0]])} in original {output_field} units (may be logged).")
-        print(f"SD in normalised RMSE units is {scaler.inverse_transform([[1.0]]) - scaler.inverse_transform([[0.0]])}/{np.sqrt(scaler.var_)} in original {output_field} units (may be logged).")
+        print(f"Original data mean: {np.mean(output_values)}, original data SD: {np.std(output_values)}")
+        print(f"Mean (0.0) in normalised RMSE units is {scaler.mean_} in original {output_field} units (or {np.log10(scaler.mean_)} if this is logged).")
+        print(f"SD in normalised RMSE units is {np.sqrt(scaler.var_)} in original {output_field} units (or {np.log10(np.sqrt(scaler.var_))} if this is logged).")
+        print(f"Best RMSE = {best_results[output_field]}, which denormalises to {scaler.inverse_transform([[best_results[output_field]]])[0][0] - scaler.mean_[0]}")
         battery.original_output_means[output_field] = scaler.mean_
         battery.original_output_stdevs[output_field] = np.sqrt(scaler.var_)
 

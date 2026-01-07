@@ -12,6 +12,99 @@ import epoch_utils as eu
 from scipy.stats import linregress
 from scipy.signal import find_peaks
 import pycatch22
+import plasmapy.formulary.frequencies as ppf
+import plasmapy.particles as ppp
+import astropy.units as u
+
+def estimate_B0_from_spectra(combined_directory : Path, fields : list, particle : str = "He-4 2+"):
+    combined_statsFiles = glob.glob(str(combined_directory / "data" / "*_combined_stats.nc"))
+    originalB0s = {f : [] for f in fields}
+    recoveredB0s = {f : [] for f in fields}
+    variedParams = {"pitch" : [], "backgroundDensity" : [], "beamFraction" : []}
+
+    for simFile in combined_statsFiles:
+        data_nc = nc.Dataset(simFile, mode="a")
+        data_xr = xr.open_datatree(simFile, engine="netcdf4")
+        for key, value in variedParams.items():
+            value.append(data_xr.attrs[key])
+
+        for field in fields:
+            filename = Path(simFile).name
+            print(f"File: {filename}, Field: {field}")
+            data : xr.DataArray = data_xr[field]
+
+            # Convert to SI (on original spectrum)
+            known_B0 = float(data_xr.B0strength)
+            originalB0s[field].append(known_B0)
+            gyrofrequency_in_SI = ppf.gyrofrequency(known_B0 * u.T, particle = particle)
+            print(f"Gyrofrequency in SI: {gyrofrequency_in_SI}")
+            si_coords = data.coords["frequency"] * gyrofrequency_in_SI
+            # print(f"Frequency coords in SI: {si_coords}")
+            data = data.assign_coords({"frequency" : si_coords})
+            # data.plot()
+            # plt.show()
+            
+            og_spec : xr.DataArray = xrft.xrft.fft(data, true_amplitude=False, true_phase=True, window=None)
+            spec = np.abs(og_spec)           
+            spec = spec.sel(freq_frequency = slice(0.0, None))
+            spec = spec.isel(freq_frequency = slice(50, None))
+            maxFreqFreq = float(spec.idxmax().data)
+            maxFreq = 1.0 / maxFreqFreq
+            maxPower = spec.max().data
+            print(f"Max: {maxPower}, Max index: {spec.argmax().data}, Max coord: {maxFreqFreq * 1/gyrofrequency_in_SI.unit} Max coord in OG units: {maxFreq * gyrofrequency_in_SI.unit}")
+            assert spec.coords["freq_frequency"][-1] == np.max(spec.coords["freq_frequency"])
+            # plt.scatter(maxFreqFreq, maxPower, color = "red", marker = "x", label = "peak power")
+            # spec.plot()
+            # plt.legend()
+            # plt.show()
+
+            # Recover B0
+            recovered_B0 = (maxFreq * ppp.alpha.mass) / ppp.alpha.charge
+            print(f"Original B0: {data_xr.B0strength * u.T}, recovered B0 : {recovered_B0}")
+
+            # Record
+            recoveredB0s[field].append(recovered_B0.value)
+            # data_nc[field].recovered_B0 = recovered_B0
+
+        data_xr.close()
+        data_nc.close()
+
+    for field in fields:
+        ogs = originalB0s[field]
+        recs = recoveredB0s[field]
+        squared_errors = (np.array(recs) - np.array(ogs))**2
+        
+        # Plot original vs. recovered B0s
+        result = linregress(ogs, recs)
+        plt.figure(figsize=(8,8))
+        plt.title(f"{field}: B0\n(r2 = {result.rvalue**2:.3f}, S.E. = {result.stderr:.3f})")
+        plt.scatter(ogs, recs, marker = "x", color = "red")
+        sortB0 = sorted(ogs)
+        plt.plot(sortB0, sortB0, color = "blue", alpha = 0.9, linestyle = "dashed", label = "perfect prediciton")
+        plt.xlabel("Original B0 [T]")
+        plt.ylabel("Recovered B0 [T]")
+        plt.grid()
+        plt.legend()
+        plt.tight_layout()
+        plt.show()
+
+        # # Plot errors with other varied quantities
+        # for param, values in variedParams.items():
+        #     result = linregress(values, squared_errors)
+        #     plt.figure(figsize=(8,8))
+        #     plt.title(f"{field}: Errors\n(r2 = {result.rvalue**2:.3f}, S.E. = {result.stderr:.3f})")
+        #     plt.scatter(values, squared_errors, marker = "x", color = "red")
+        #     plt.plot(values, (result.slope * np.array(values)) + result.intercept, color = "black", alpha = 0.9, linestyle = "dashed", label = "fit")
+        #     plt.xlabel(f"{param} [{eu.fieldNameToUnit(param)}]")
+        #     # if param == "backgroundDensity" or param == "beamFraction":
+        #     #     plt.xscale("log")
+        #     plt.ylabel(r"Squared error [$T^2$]")
+        #     plt.grid()
+        #     plt.legend()
+        #     plt.tight_layout()
+        #     plt.show()
+    
+    # print(f"Max frequency mean: {np.mean(maxCoords)} median: {np.median(maxCoords)} var: {np.var(maxCoords)} sd: {np.std(maxCoords)}")
 
 def plot_iciness(combined_directory : Path, fields : list, iceMetrics : list = None):
 
@@ -142,6 +235,8 @@ def calculate_iciness(combined_directory : Path, fields : list):
             maxCoords.append(maxFreq)
             print(f"Max: {spec.max().data}, Max index: {spec.argmax().data}, Max coord: {maxFreq}")
             assert spec.coords["freq_frequency"][-1] == np.max(spec.coords["freq_frequency"])
+            spec.plot()
+            plt.show()
 
             # Isolate indices of fundamental frequency
             fundamentals = spec.sel(freq_frequency=slice(1.0 - harmonic_tolerance, 1.0 + harmonic_tolerance))
@@ -153,14 +248,14 @@ def calculate_iciness(combined_directory : Path, fields : list):
             harmonic_nums = np.arange(1.0, np.rint(spec.coords["freq_frequency"].max()) + 1)
             harmonics = [spec.sel(freq_frequency=slice(h - harmonic_tolerance,h + harmonic_tolerance)) for h in harmonic_nums]
             harmonic_peaks = []
-            # spec.plot()
+            spec.plot()
             for h in harmonics:
                 p, pd = find_peaks(h.data, height=float(0.05*h.max().data))
                 if len(p) > 0:
                     harmonic_peaks.append(h.data[p[np.argmax(pd["peak_heights"])]])
-            #         plt.scatter(h.coords["freq_frequency"][p], h.data[p], color="r", marker='x')
-            #     plt.axvspan(h.coords["freq_frequency"][0], h.coords["freq_frequency"][-1], color = "orange", alpha = 0.5)
-            # plt.show()
+                    plt.scatter(h.coords["freq_frequency"][p], h.data[p], color="r", marker='x')
+                plt.axvspan(h.coords["freq_frequency"][0], h.coords["freq_frequency"][-1], color = "orange", alpha = 0.5)
+            plt.show()
             expected_pwr_in_harmonics = spec.sum().data * (harmonic_index_count / spec.size)
             pwr_in_harmonics = (np.sum([d.sum().data for d in harmonics])) - expected_pwr_in_harmonics
             pwr_in_harmonics_pct = 100.0 * (pwr_in_harmonics / spec.sum().data)
@@ -468,6 +563,12 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
+        "--recoverB0",
+        action="store_true",
+        help="Attempt to analytically recover B0 from ICE analysis spectra.",
+        required = False
+    )
+    parser.add_argument(
         "--fields",
         action="store",
         help="Fields on which to calculate iciness.",
@@ -497,4 +598,7 @@ if __name__ == "__main__":
 
     if args.plotIciness:
         plot_iciness(combined_dir, args.fields, args.iceMetrics)
+
+    if args.recoverB0:
+        estimate_B0_from_spectra(combined_dir, args.fields)
 
