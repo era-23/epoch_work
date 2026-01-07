@@ -100,6 +100,9 @@ def plot_predictions(
         saveFolder : Path,
         doLog : bool
 ):
+    if not os.path.exists(saveFolder):
+        os.makedirs(saveFolder)
+
     unit = epoch_utils.fieldNameToUnit_dict[field]
 
     plt.subplots(figsize=(12, 8))
@@ -152,6 +155,7 @@ def regress(
         cvRepeats : int,
         cvStrategy : str = "RepeatedKFolds",
         normalise : bool = True,
+        doIce : bool = False,
         iceMetricsToUse : list = None,
         resultsFilepath : Path = None,
         doPlot : bool = True
@@ -173,19 +177,20 @@ def regress(
 
     # Input data
     inputs = {name : [] for name in inputSpectraNames}
-    inputs = ml_utils.read_data(data_files, inputs, with_names = True, with_coords = True, with_iciness = True)
+    inputs = ml_utils.read_data(data_files, inputs, with_names = True, with_coords = True, with_iciness = doIce)
     battery.inputSpectra = np.array(inputSpectraNames)
 
-    iceMetrics = dict()
-    if iceMetricsToUse:
-        for m in iceMetricsToUse:
-            for n in inputs:
-                if m in n:
+    if doIce:
+        iceMetrics = dict()
+        if iceMetricsToUse:
+            for m in iceMetricsToUse:
+                for n in inputs:
+                    if m in n:
+                        iceMetrics[n] = inputs[n]
+        else:
+            for n in inputs.keys():
+                if "ICEmetric" in n:
                     iceMetrics[n] = inputs[n]
-    else:
-        for n in inputs.keys():
-            if "ICEmetric" in n:
-                iceMetrics[n] = inputs[n]
 
     # Output data
     outputs = {outputField : [] for outputField in outputFields}
@@ -255,6 +260,9 @@ def regress(
         
         # Record denormalisation parameters
         _, scaler = ml_utils.normalise_data(output_values)
+        print(f"Full dataset scaler mean: {scaler.mean_}")
+        print(f"Mean (0.0) in normalised RMSE units is {scaler.inverse_transform([[0.0]])} in original {output_field} units (may be logged).")
+        print(f"SD in normalised RMSE units is {scaler.inverse_transform([[1.0]]) - scaler.inverse_transform([[0.0]])}/{np.sqrt(scaler.var_)} in original {output_field} units (may be logged).")
         battery.original_output_means[output_field] = scaler.mean_
         battery.original_output_stdevs[output_field] = np.sqrt(scaler.var_)
 
@@ -336,7 +344,7 @@ def regress(
 
             battery.results.append(result)
 
-            if doPlot:               
+            if doIce:               
                 correlate_predictions_with_iciness(
                     algorithm_name = algorithm,
                     field = output_field,
@@ -346,6 +354,18 @@ def regress(
                     r2 = result.cvR2_mean,
                     rmse = result.cvRMSE_mean,
                     saveFolder = resultsFilepath.parent / "iciness" / algorithm, 
+                )
+            if doPlot:
+                plot_predictions(
+                    algorithm_name = algorithm,
+                    field = output_field,
+                    sim_ids = all_test_indices, 
+                    truth = all_test_points_denormed,
+                    preds = all_predictions_denormed,
+                    r2 = result.cvR2_mean,
+                    rmse = result.cvRMSE_mean,
+                    saveFolder = resultsFilepath.parent / "predictions" / algorithm, 
+                    doLog = output_field in logFields
                 )
     
     ml_utils.write_ML_result_to_file(battery, resultsFilepath)
@@ -422,6 +442,12 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
+        "--doIce",
+        action="store_true",
+        help="Correlate predictions with ICE metrics.",
+        required = False
+    )
+    parser.add_argument(
         "--resultsFilepath",
         action="store",
         help="Filepath of csv to which to write results.",
@@ -451,6 +477,7 @@ if __name__ == "__main__":
         args.cvFolds, 
         args.cvRepeats, 
         args.cvStrategy,
+        doIce=args.doIce,
         iceMetricsToUse=args.iceMetrics,
         resultsFilepath=args.resultsFilepath,
         doPlot=args.doPlot)

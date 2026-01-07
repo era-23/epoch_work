@@ -51,21 +51,27 @@ def copy_files_matching_pattern(src_dir, dest_dir, pattern):
 
 def unify_results(source_dir : Path, file_pattern : str):
 
-    _, ftype = os.path.splitext(Path(file_pattern))
-    output_path = os.path.join(source_dir, f"unified_output{ftype}")
+    out_name = "unified_output.json"
+    output_path = os.path.join(source_dir, out_name)
     results_dict = None
 
     for root, _, files in os.walk(source_dir):
         for file in files:
+            if file == out_name:
+                continue
             if fnmatch.fnmatch(file, file_pattern):
+                print(f"Adding results from {file}....")
                 file_path = os.path.join(root, file)
                 with open(file_path, 'r') as jsonF:
                     jData = json.loads(jsonF.read())
                     if results_dict:
-                        results_dict = jData
+                        results_dict["algorithms"] += [a for a in jData["algorithms"] if a not in results_dict["algorithms"]]
+                        results_dict["results"] += jData["results"]
                     else:
-                        results_dict["algorithms"] += results_dict["algorithms"]
-                        results_dict["results"] += results_dict["results"]
+                        results_dict = jData
+    
+    with open(output_path, 'w') as fp:
+        json.dump(results_dict, fp, indent = 4)
 
 # Example usage
 if __name__ == "__main__":
@@ -132,6 +138,7 @@ if __name__ == "__main__":
         raise ValueError("File pattern must be specified.")
 
     if args.unify:
+        print(f"Unifying JSON results files in {source_directory} matching pattern '{file_pattern}'")
         unify_results(source_directory, file_pattern)
 
     if args.copy:

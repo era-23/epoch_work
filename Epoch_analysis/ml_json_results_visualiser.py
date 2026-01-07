@@ -143,7 +143,7 @@ def plotBar(resultsDict : dict, metric : str = "cvR2", dropAlgorithms : list = [
         offset = width * multiplier
         rects = ax.bar(x + offset, value, width, label=algorithm, yerr=barErrs[algorithm], edgecolor='black')
         #ax.errorbar(x + offset, value, yerr=barErrs[algorithm], fmt=",", color = "k")
-        # ax.bar_label(rects, padding=3)
+        ax.bar_label(rects, padding=3, fontsize = 12)
         multiplier += 1
 
     # Add some text for labels, title and custom x-axis tick labels, etc.
@@ -157,13 +157,13 @@ def plotBar(resultsDict : dict, metric : str = "cvR2", dropAlgorithms : list = [
     xLabels = [epoch_utils.fieldNameToText(lab) for lab in xLabels]
     ax.set_xticks(x + (0.5 * (len(algorithms) -1) * width), xLabels)
     if len(resultsDict["algorithms"]) > 5:
-        ax.legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, -0.3))
+        ax.legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, 1.1))
     else:
         ax.legend(loc='upper left' if metric == "cvR2" else 'lower left', ncols = 1)
     ax.set_ylim(top= 1.0 if metric == "cvR2" else np.round(np.max([v for v in barVals.values()]) + 0.2, 1))
     ax.axhline(0.0, color="black", lw=0.5)
     ax.grid(axis="y")
-    fig.tight_layout()
+    plt.tight_layout()
 
     plt.show()
 
@@ -224,4 +224,5 @@ if __name__ == "__main__":
     if args.folder is not None:
         plotAeResultsByPcaComponents(args.folder, args.filePattern)
     else:
-        plotResults(args.file, args.metric, args.dropAlgorithms)
+        dropAlgorithms = [] if args.dropAlgorithms is None else args.dropAlgorithms
+        plotResults(args.file, args.metric, dropAlgorithms)

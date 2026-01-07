@@ -55,7 +55,6 @@ def all_power_spectra(dataFolder : Path, fields : list):
         plt.tight_layout()
         plt.show()
         
-
 def power_spectrum(dataFile : Path, field : str, doPlot : bool = True):
     
     data = xr.open_datatree(
