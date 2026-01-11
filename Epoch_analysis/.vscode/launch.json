@@ -188,9 +188,9 @@
             "program": "ml_json_results_visualiser.py",
             "console": "integratedTerminal",
             "args": [
-                "--file", "/home/era536/Documents/Epoch/Data/sept_25/tsr_viking/LOOCV_testing/unified_output.json",
+                "--file", "/home/era536/Documents/Epoch/Data/2026_analysis/tsr_aeon_viking/LOOCV/unified_output.json",
                 "--plot",
-                "--metric", "cvR2",
+                "--metric", "cvRMSE",
                 // "--folder", "/home/era536/Documents/Epoch/Data/sept_25/analysis/tsr_viking/",
                 // "--filePattern", "AE_results_catch24_gpu_pca_*.json",
                 "--dropAlgorithms", "aeon.DummyRegressor", "aeon.TSFreshRegressor", "aeon.SummaryRegressor", "aeon.RDSTRegressor", "aeon.MiniRocketRegressor"
@@ -270,8 +270,11 @@
             "console": "integratedTerminal",
             "args": [
                 // "--dataFile", "/home/era536/Documents/Epoch/Data/irb_aug25_analysis/data/run_7_stats.nc",
-                "--dataFolder", "/home/era536/Documents/Epoch/Data/irb_ml_dataset_2/data/",
-                "--fields", "/Magnetic_Field_Bz/power/powerByFrequency", "/Electric_Field_Ex/power/powerByFrequency", "/Electric_Field_Ey/power/powerByFrequency"
+                "--dataFolder", "/home/era536/Documents/Epoch/Data/2026_analysis/",
+                "--compareSpectra",
+                "--sims", "2", "15",
+                "--fields", "/Magnetic_Field_Bz/power/powerByFrequency", "/Electric_Field_Ex/power/powerByFrequency", "/Electric_Field_Ey/power/powerByFrequency",
+                "--equateAxes", "Ex", "Bz",
             ]
         },
         {
@@ -801,13 +804,13 @@
             "args": [
                 "--unify",
                 "--source",
-                    "/home/era536/Documents/Epoch/Data/sept_25/tsr_viking/LOOCV_testing/",
+                    "/home/era536/Documents/Epoch/Data/2026_analysis/tsr_aeon_viking/LOOCV/",
                 "--file_pattern",
                     "*.json",
-                "--search_text",
-                    "b0_angle = 92",
-                "--replace_text",
-                    "b0_angle = 96",
+                // "--search_text",
+                //     "b0_angle = 92",
+                // "--replace_text",
+                //     "b0_angle = 96",
             ]
         },
         {

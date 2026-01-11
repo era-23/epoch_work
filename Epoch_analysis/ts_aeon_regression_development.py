@@ -242,7 +242,7 @@ def regress(
     battery.results = []
 
     # Dumb hack
-    best_results = {"backgroundDensity" : 0.563, "beamFraction" : 0.334, "B0strength" : 0.499, "pitch" : 0.542}
+    best_results = {"backgroundDensity" : 0.598, "beamFraction" : 0.312, "B0strength" : 0.505, "pitch" : 0.531}
 
     for output_field, output_values in outputs.items():
         
@@ -260,14 +260,15 @@ def regress(
 
         if output_field in logFields:
             output_values = np.log10(output_values)
-        
+
         # Record denormalisation parameters
         _, scaler = ml_utils.normalise_data(output_values)
-        print(f"Full dataset scaler mean: {scaler.mean_}")
         print(f"Original data mean: {np.mean(output_values)}, original data SD: {np.std(output_values)}")
-        print(f"Mean (0.0) in normalised RMSE units is {scaler.mean_} in original {output_field} units (or {np.log10(scaler.mean_)} if this is logged).")
-        print(f"SD in normalised RMSE units is {np.sqrt(scaler.var_)} in original {output_field} units (or {np.log10(np.sqrt(scaler.var_))} if this is logged).")
-        print(f"Best RMSE = {best_results[output_field]}, which denormalises to {scaler.inverse_transform([[best_results[output_field]]])[0][0] - scaler.mean_[0]}")
+        print(f"Mean (0.0) in normalised RMSE units is {scaler.mean_} in original {output_field} units (or {10**scaler.mean_} in log space).")
+        print(f"SD in normalised RMSE units is {np.sqrt(scaler.var_)} in original {output_field} units (or {10**np.sqrt(scaler.var_)} in log space).")
+        print(f"Best RMSE = {best_results[output_field]}, which denormalises to {scaler.inverse_transform([[best_results[output_field]]])[0][0] - scaler.mean_[0]}, or {10**scaler.inverse_transform([[best_results[output_field]]])[0][0]} in log space.")
+        print(f"ALT LOG: Best RMSE high = {10**(scaler.mean_[0] + (np.sqrt(scaler.var_) * best_results[output_field]))}")
+        print(f"ALT LOG: Best RMSE low = {10**(scaler.mean_[0] - (np.sqrt(scaler.var_) * best_results[output_field]))}")
         battery.original_output_means[output_field] = scaler.mean_
         battery.original_output_stdevs[output_field] = np.sqrt(scaler.var_)
 

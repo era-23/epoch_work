@@ -2,10 +2,15 @@ import argparse
 import glob
 from pathlib import Path
 import matplotlib.pyplot as plt
+from matplotlib.ticker import FormatStrFormatter, ScalarFormatter
 import numpy as np
 import xarray as xr
 import epoch_utils
 import ml_utils
+
+class ScalarFormatterForceFormat(ScalarFormatter):
+    def _set_format(self):  # Override function that finds format to use.
+        self.format = "%.1f"  # Give format here
 
 def all_power_spectra(dataFolder : Path, fields : list):
 
@@ -90,6 +95,148 @@ def power_spectrum(dataFile : Path, field : str, doPlot : bool = True):
 
     return fieldData, coords
 
+def compare_spectra(folder : Path, simNumbers : list, maxXcoord : float = 50.0, axesToEquate = list):
+    
+    # Limit to two simulations for now
+    assert len(simNumbers) == 2
+
+    # Finding folder with all angle data...
+    allAngle_folders = set(glob.glob(str(folder / "*angles*/")) + glob.glob(str(folder.parent / "*angles*/")))
+    assert len(allAngle_folders) == 1
+    # Get angle subfolders
+    # Get data folders for each angle
+    angle_folders = glob.glob(str(Path(allAngle_folders.pop()) / "9[0-9]/data/"))
+    assert len(angle_folders) > 0
+
+    # Finding data folder with combined spectra...
+    combinedSpectra_folder = set(glob.glob(str(folder / "*combined_spectra*/data/")))
+    assert len(combinedSpectra_folder) == 1
+    combinedSpectra_folder = Path(combinedSpectra_folder.pop())
+
+    fig, ((axBz1, axBz2), (axEx1, axEx2), (axEy1, axEy2)) = plt.subplots(3, 2, sharex=True, figsize=(16, 20))
+    # fig.suptitle(f"{simNumbers[0]} vs {simNumbers[1]}")
+    
+    f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
+    f.set_scientific(True)
+    axBz1.set_title(f"Run {simNumbers[0]} spectral power: {r'$B_z$'}")
+    axBz1.yaxis.tick_right()
+    axBz1.yaxis.set_major_formatter(f)
+    f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
+    f.set_scientific(True)
+    axBz2.set_title(f"Run {simNumbers[1]} spectral power: {r'$B_z$'}")
+    axBz2.set_ylabel(r"$T \cdot \omega_{c, \alpha}$")
+    axBz2.yaxis.set_major_formatter(f)
+    
+    f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
+    f.set_scientific(True)
+    axEx1.set_title(f"Run {simNumbers[0]} spectral power: {r'$E_x$'}")
+    axEx1.yaxis.tick_right()
+    axEx1.yaxis.set_major_formatter(f)
+    f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
+    f.set_scientific(True)
+    axEx2.set_title(f"Run {simNumbers[1]} spectral power: {r'$E_x$'}")
+    axEx2.set_ylabel(r"$\frac{V}{m} \cdot \omega_{c, \alpha}$")
+    axEx2.yaxis.set_major_formatter(f)
+    
+    f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
+    f.set_scientific(True)
+    axEy1.set_title(f"Run {simNumbers[0]} spectral power: {r'$E_y$'}")
+    axEy1.yaxis.tick_right()
+    axEy1.yaxis.set_major_formatter(f)
+    f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
+    f.set_scientific(True)
+    axEy1.set_xlabel(r"Frequency [$\omega_{c, \alpha}$]")
+    axEy2.set_title(f"Run {simNumbers[1]} spectral power: {r'$E_y$'}")
+    axEy2.set_ylabel(r"$\frac{V}{m} \cdot \omega_{c, \alpha}$")
+    axEy2.yaxis.set_major_formatter(f)
+    axEy2.set_xlabel(r"Frequency [$\omega_{c, \alpha}$]")
+
+    axes = {simNumbers[0] : (axBz1, axEx1, axEy1), simNumbers[1] : (axBz2, axEx2, axEy2)}
+    allData = {"Bz" : [], "Ex" : [], "Ey": []}
+
+    for simNumber in simNumbers:
+
+        combined_data_xr = xr.open_datatree(combinedSpectra_folder / f"run_{simNumber}_combined_stats.nc", engine="netcdf4")
+        print(f"Run {simNumber} parameters:")
+        print(f"Background Density: {combined_data_xr.backgroundDensity:.3e}")
+        print(f"Beam fraction: {combined_data_xr.beamFraction:.3e}")
+        print(f"B0 strength: {combined_data_xr.B0strength:.3e}")
+        print(f"Pitch: {combined_data_xr.pitch:.3e}")
+
+        for angle_dataPath in angle_folders:
+            angle_dataPath = Path(angle_dataPath)
+            print(f"Processing {simNumber} -- {angle_dataPath.absolute()}...")
+
+            # Get this angle simulation's data
+            angle_data_xr = xr.open_datatree(angle_dataPath / f"run_{simNumber}_stats.nc", engine="netcdf4")
+
+            # Plots
+            axBz = axes[simNumber][0]
+            axEx = axes[simNumber][1]
+            axEy = axes[simNumber][2]
+
+            # Slice to maximum frequency
+            bzData = angle_data_xr["Magnetic_Field_Bz/power/powerByFrequency"].sel(frequency = slice(None, maxXcoord))
+            exData = angle_data_xr["Electric_Field_Ex/power/powerByFrequency"].sel(frequency = slice(None, maxXcoord))
+            eyData = angle_data_xr["Electric_Field_Ey/power/powerByFrequency"].sel(frequency = slice(None, maxXcoord))
+            coords = bzData.coords["frequency"] # Assumes coords are constant for the different spectra
+            axBz.plot(
+                coords.data, 
+                bzData.data, 
+                label = f"{angle_data_xr.attrs['B0angle']} degrees"
+            )
+            axEx.plot(
+                coords.data, 
+                exData.data,
+                label = f"{angle_data_xr.attrs['B0angle']} degrees"
+            )
+            axEy.plot(
+                coords.data, 
+                eyData.data,
+                label = f"{angle_data_xr.attrs['B0angle']} degrees"
+            )
+
+        # Slice to maximum frequency
+        bzData = combined_data_xr["Magnetic_Field_Bz/power/powerByFrequency"].sel(frequency = slice(None, maxXcoord))
+        exData = combined_data_xr["Electric_Field_Ex/power/powerByFrequency"].sel(frequency = slice(None, maxXcoord))
+        eyData = combined_data_xr["Electric_Field_Ey/power/powerByFrequency"].sel(frequency = slice(None, maxXcoord))
+        coords = bzData.coords["frequency"] # Assumes coords are constant for the different spectra
+        allData["Bz"].extend(bzData)
+        allData["Ex"].extend(exData)
+        allData["Ey"].extend(eyData)
+        axBz.plot(
+            coords.data, 
+            bzData.data, 
+            label = "Sum"
+        )
+        axEx.plot(
+            coords.data, 
+            exData.data, 
+            label = "Sum"
+        )
+        axEy.plot(
+            coords.data, 
+            eyData.data, 
+            label = "Sum"
+        )
+    
+    axes = {"Bz" : (axBz1, axBz2), "Ex" : (axEx1, axEx2), "Ey": (axEy1, axEy2)}
+    for field, axs in axes.items():
+        for ax in axs:
+            ax.set_ylim(bottom=0)
+            ax.grid()
+            if field in axesToEquate:
+                ax.set_ylim(top=np.max(allData[field]))
+            
+    handles, labels = axBz1.get_legend_handles_labels()
+    labels, handles = zip(*sorted(zip(labels, handles), key=lambda t: t[0]))
+    # axBz2.legend(handles, labels)
+    axBz2.legend(handles, labels)
+    # fig.tight_layout()
+    fig.align_labels()
+    fig.subplots_adjust(wspace=0.25, hspace=0.25)
+    plt.show()
+
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser("parser")
@@ -99,6 +246,18 @@ if __name__ == "__main__":
         help="Filepath of simulation output data to plot, e.g. /data/run_23_stats.nc",
         required = False,
         type=Path
+    )
+    parser.add_argument(
+        "--powerSpectrum",
+        action="store_true",
+        help="Calculate single power spectrum from a netcdf data file.",
+        required = False
+    )
+    parser.add_argument(
+        "--compareSpectra",
+        action="store_true",
+        help="Compare two sets of combined spectra. Requires two simulation number, plus a folder containing their original uncombined data and combined spectra (in subfolders).",
+        required = False
     )
     parser.add_argument(
         "--dataFolder",
@@ -115,18 +274,37 @@ if __name__ == "__main__":
         type=str,
         nargs="*"
     )
+    parser.add_argument(
+        "--sims",
+        action="store",
+        help="Simulation numbers to compare",
+        required = False,
+        type=str,
+        nargs="*"
+    )
+    parser.add_argument(
+        "--equateAxes",
+        action="store",
+        help="Equate y-axes for the specified fields, e.g. Bz, Ex",
+        required = False,
+        type=str,
+        nargs="*"
+    )
 
     args = parser.parse_args()
 
     plt.rcParams.update({'axes.titlesize': 26.0})
-    plt.rcParams.update({'axes.labelsize': 24.0})
-    plt.rcParams.update({'xtick.labelsize': 20.0})
-    plt.rcParams.update({'ytick.labelsize': 20.0})
-    plt.rcParams.update({'legend.fontsize': 18.0})
+    plt.rcParams.update({'axes.labelsize': 26.0})
+    plt.rcParams.update({'xtick.labelsize': 18.0})
+    plt.rcParams.update({'ytick.labelsize': 18.0})
+    plt.rcParams.update({'legend.fontsize': 16.0})
 
-    if args.dataFile:
-        for f in args.fields:
-            power_spectrum(args.dataFile, f)
-    if args.dataFolder:
-        all_power_spectra(args.dataFolder, args.fields)
+    if args.powerSpectrum:
+        if args.dataFile:
+            for f in args.fields:
+                power_spectrum(args.dataFile, f)
+        if args.dataFolder:
+            all_power_spectra(args.dataFolder, args.fields)
+    if args.compareSpectra:
+        compare_spectra(args.dataFolder, args.sims, 50, args.equateAxes)
 
