@@ -23,11 +23,11 @@ import epoch_utils
 logger = logging.getLogger(__name__)
 warnings.filterwarnings("ignore")
 
-plt.rcParams.update({'axes.titlesize': 22.0})
-plt.rcParams.update({'axes.labelsize': 22.0})
-plt.rcParams.update({'xtick.labelsize': 16.0})
-plt.rcParams.update({'ytick.labelsize': 16.0})
-plt.rcParams.update({'legend.fontsize': 18.0})
+plt.rcParams.update({'axes.titlesize': 32.0})
+plt.rcParams.update({'axes.labelsize': 36.0})
+plt.rcParams.update({'xtick.labelsize': 28.0})
+plt.rcParams.update({'ytick.labelsize': 28.0})
+plt.rcParams.update({'legend.fontsize': 24.0})
 
 def demo():
     covid_train, covid_train_y = load_covid_3month(split="train")
@@ -98,7 +98,8 @@ def plot_predictions(
         r2 : float,
         rmse : float,
         saveFolder : Path,
-        doLog : bool
+        doLog : bool,
+        noTitle : bool = True
 ):
     if not os.path.exists(saveFolder):
         os.makedirs(saveFolder)
@@ -122,7 +123,7 @@ def plot_predictions(
     handles, labels = plt.gca().get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
     plt.legend(by_label.values(), by_label.keys())
-
+    plt.grid()
     plt.savefig(saveFolder / f"{algorithm_name}_{field}_allPredictions.png", bbox_inches="tight")
 
     plt.subplots(figsize=(12, 8))
@@ -142,7 +143,7 @@ def plot_predictions(
     handles, labels = plt.gca().get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
     plt.legend(by_label.values(), by_label.keys())
-
+    plt.grid()
     plt.savefig(saveFolder / f"{algorithm_name}_{field}_prediction_error.png", bbox_inches="tight")
     
 def regress(

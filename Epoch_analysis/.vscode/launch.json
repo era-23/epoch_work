@@ -246,8 +246,8 @@
                 "--cvRepeats",
                     "1",
                 "--cvStrategy",
-                    // "LeaveOneOut",
-                    "RepeatedKFolds",
+                    "LeaveOneOut",
+                    // "RepeatedKFolds",
                 "--resultsFilepath",
                     "/home/era536/Documents/Epoch/Data/2026_analysis/tsr_aeon/dummy.json",
                 // "--doIce",
@@ -259,7 +259,7 @@
                 //     "ICEmetric_harmonicPeakFloorRatio",
                 //     "ICEmetric_harmonicPower",
                 //     "ICEmetric_energyTransfer",
-                // "--doPlot",
+                "--doPlot",
             ]
         },
         {
