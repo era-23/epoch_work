@@ -70,12 +70,12 @@ def cold_plasma_dispersion_relation():
     plt.figure(figsize=(8, 6))
 
     #plt.plot(k_vals, omega_o_mode, label="O-mode (Ordinary)", color="blue")
-    #plt.axhline(y=omega_pe_norm.value, color="blue", linestyle="dashed", label=r"$\omega_{pe}$")
-    #plt.axhline(y=omega_pi_norm.value, color="cyan", linestyle="dashed", label=r"$\omega_{pi}$")
+    #plt.axhline(y=omega_pe_norm.value, color="blue", linestyle="dashed", label=r"$\Omega_{pe}$")
+    #plt.axhline(y=omega_pi_norm.value, color="cyan", linestyle="dashed", label=r"$\Omega_{pi}$")
 
     #plt.plot(k_vals, omega_x_mode * np.ones_like(k_vals), label="X-mode (Extraordinary)", color="red")
-    #plt.axhline(y=omega_uh_norm.value, color="red", linestyle="dashdot", label=r"$\omega_{UH}$")
-    #plt.axhline(y=omega_lh_norm.value, color="orange", linestyle="dashdot", label=r"$\omega_{LH}$ (Lower Hybrid)")
+    #plt.axhline(y=omega_uh_norm.value, color="red", linestyle="dashdot", label=r"$\Omega_{UH}$")
+    #plt.axhline(y=omega_lh_norm.value, color="orange", linestyle="dashdot", label=r"$\Omega_{LH}$ (Lower Hybrid)")
 
     plt.axhline(y=Omega_i_norm.value, color="purple", linestyle="dashed", label=r"$\Omega_i$ (Ion Cyclotron)")
     plt.axhline(y=Omega_e_norm.value, color="brown", linestyle="dashed", label=r"$\Omega_e$ (Electron Cyclotron)")
@@ -215,26 +215,26 @@ def verdon_et_al():
 
     plt.plot(thetaDeg_all, all_intersections)
     plt.xlabel("Theta/degrees")
-    plt.ylabel(r"k at $\omega = \pm\omega_{LH}$")
-    plt.title(r"Intersections of k and $\omega = \pm\omega_{LH}$, by angle")
+    plt.ylabel(r"k at $\Omega = \pm\Omega_{LH}$")
+    plt.title(r"Intersections of k and $\Omega = \pm\Omega_{LH}$, by angle")
     plt.show()
 
     midpoint_index = int(len(thetaDeg_all)/2)
     plt.plot(thetaDeg_all[midpoint_index-29:midpoint_index+30], all_intersections[midpoint_index-29:midpoint_index+30])
     plt.xlabel("Theta/degrees")
     plt.grid()
-    plt.ylabel(r"k at $\omega = \pm\omega_{LH}$")
-    plt.title(r"Intersections of k and $\omega = \pm\omega_{LH}$, near theta = 90")
+    plt.ylabel(r"k at $\Omega = \pm\Omega_{LH}$")
+    plt.title(r"Intersections of k and $\Omega = \pm\Omega_{LH}$, near theta = 90")
     plt.show()
 
     # plt.title(f"Theta = {thetaDeg}deg")
-    # plt.axhline(1.0, color = "gray", linestyle="dotted", label = r"$\omega = \pm\omega_{LH}$")
+    # plt.axhline(1.0, color = "gray", linestyle="dotted", label = r"$\Omega = \pm\Omega_{LH}$")
     # plt.axvline(intersection_1, color = "green", linestyle="dashed", label = f"k = {intersection_1:.3f}")
     # plt.axvline(intersection_2, color = "green", linestyle="dashed", label = f"k = {intersection_2:.3f}")
     # plt.plot(normalised_k, w_squared_over_wLH_squared)
     # plt.legend()
-    # plt.xlabel(r"$kV_A/\omega_i$")
-    # plt.ylabel(r"$\omega^2/\omega_{LH}^2$")
+    # plt.xlabel(r"$kV_A/\Omega_i$")
+    # plt.ylabel(r"$\Omega^2/\Omega_{LH}^2$")
     # plt.show()
 
     # 2.2: plasma is warm but assumes wave is electrostatic/longitudinal

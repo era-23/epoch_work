@@ -252,6 +252,13 @@ fieldNameToText_dict = {
     "/Electric_Field_Ey/power/powerByFrequency_ICEmetric_harmonicPeakMeanRatio" : "Ey: harm. peak:mean pwr",
     "Electric_Field_Ey/power/powerByFrequency_ICEmetric_harmonicPeakMeanRatio" : "Ey: harm. peak:mean pwr",
 
+    "Magnetic_Field_Bz" : r"$B_z$",
+    "/Magnetic_Field_Bz" : r"$B_z$",
+    "Electric_Field_Ex" : r"$E_x$",
+    "/Electric_Field_Ex" : r"$E_x$",
+    "Electric_Field_Ey" : r"$E_y$",
+    "/Electric_Field_Ey" : r"$E_y$",
+
     "B0strength" : "B0", 
     "B0angle" : "B0 angle", 
     "backgroundDensity" : "density (log)", 
@@ -265,31 +272,38 @@ fieldNameToUnit_dict = {
     "backgroundDensity" : r"$m^{-3}$", 
     "beamFraction" : "a.u.",
     "pitch" : "a.u.",
+
+    "/Magnetic_Field_Bz" : "T",
+    "Magnetic_Field_Bz" : "T",
+    "/Electric_Field_Ex" : r"$\frac{V}{m}$",
+    "Electric_Field_Ex" : r"$\frac{V}{m}$",
+    "/Electric_Field_Ey" : r"$\frac{V}{m}$",
+    "Electric_Field_Ey" : r"$\frac{V}{m}$",
     
-    "/Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_fundamentalPower" : r"$T \cdot \omega_{c, \alpha}$",
-    "Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_fundamentalPower" : r"$T \cdot \omega_{c, \alpha}$",
+    "/Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_fundamentalPower" : r"$T \cdot \Omega_{c, \alpha}$",
+    "Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_fundamentalPower" : r"$T \cdot \Omega_{c, \alpha}$",
     "/Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_fundamentalPower_pct" : "%",
     "Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_fundamentalPower_pct" : "%",
-    "/Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_harmonicPower" : r"$T \cdot \omega_{c, \alpha}$",
-    "Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_harmonicPower" : r"$T \cdot \omega_{c, \alpha}$",
+    "/Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_harmonicPower" : r"$T \cdot \Omega_{c, \alpha}$",
+    "Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_harmonicPower" : r"$T \cdot \Omega_{c, \alpha}$",
     "/Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_harmonicPower_pct" : "%",
     "Magnetic_Field_Bz/power/powerByFrequency_ICEmetric_harmonicPower_pct" : "%",
 
-    "/Electric_Field_Ex/power/powerByFrequency_ICEmetric_fundamentalPower" : r"$T \cdot \omega_{c, \alpha}$",
-    "Electric_Field_Ex/power/powerByFrequency_ICEmetric_fundamentalPower" : r"$T \cdot \omega_{c, \alpha}$",
+    "/Electric_Field_Ex/power/powerByFrequency_ICEmetric_fundamentalPower" : r"$T \cdot \Omega_{c, \alpha}$",
+    "Electric_Field_Ex/power/powerByFrequency_ICEmetric_fundamentalPower" : r"$T \cdot \Omega_{c, \alpha}$",
     "/Electric_Field_Ex/power/powerByFrequency_ICEmetric_fundamentalPower_pct" : "%",
     "Electric_Field_Ex/power/powerByFrequency_ICEmetric_fundamentalPower_pct" : "%",
-    "/Electric_Field_Ex/power/powerByFrequency_ICEmetric_harmonicPower" : r"$T \cdot \omega_{c, \alpha}$",
-    "Electric_Field_Ex/power/powerByFrequency_ICEmetric_harmonicPower" : r"$T \cdot \omega_{c, \alpha}$",
+    "/Electric_Field_Ex/power/powerByFrequency_ICEmetric_harmonicPower" : r"$T \cdot \Omega_{c, \alpha}$",
+    "Electric_Field_Ex/power/powerByFrequency_ICEmetric_harmonicPower" : r"$T \cdot \Omega_{c, \alpha}$",
     "/Electric_Field_Ex/power/powerByFrequency_ICEmetric_harmonicPower_pct" : "%",
     "Electric_Field_Ex/power/powerByFrequency_ICEmetric_harmonicPower_pct" : "%",
 
-    "/Electric_Field_Ey/power/powerByFrequency_ICEmetric_fundamentalPower" : r"$T \cdot \omega_{c, \alpha}$",
-    "Electric_Field_Ey/power/powerByFrequency_ICEmetric_fundamentalPower" : r"$T \cdot \omega_{c, \alpha}$",
+    "/Electric_Field_Ey/power/powerByFrequency_ICEmetric_fundamentalPower" : r"$T \cdot \Omega_{c, \alpha}$",
+    "Electric_Field_Ey/power/powerByFrequency_ICEmetric_fundamentalPower" : r"$T \cdot \Omega_{c, \alpha}$",
     "/Electric_Field_Ey/power/powerByFrequency_ICEmetric_fundamentalPower_pct" : "%",
     "Electric_Field_Ey/power/powerByFrequency_ICEmetric_fundamentalPower_pct" : "%",
-    "/Electric_Field_Ey/power/powerByFrequency_ICEmetric_harmonicPower" : r"$T \cdot \omega_{c, \alpha}$",
-    "Electric_Field_Ey/power/powerByFrequency_ICEmetric_harmonicPower" : r"$T \cdot \omega_{c, \alpha}$",
+    "/Electric_Field_Ey/power/powerByFrequency_ICEmetric_harmonicPower" : r"$T \cdot \Omega_{c, \alpha}$",
+    "Electric_Field_Ey/power/powerByFrequency_ICEmetric_harmonicPower" : r"$T \cdot \Omega_{c, \alpha}$",
     "/Electric_Field_Ey/power/powerByFrequency_ICEmetric_harmonicPower_pct" : "%",
     "Electric_Field_Ey/power/powerByFrequency_ICEmetric_harmonicPower_pct" : "%",
 
@@ -714,7 +728,7 @@ def create_omega_k_plots(
         debug):
 
     print("Generating w-k plots....")
-
+    field = fieldNameToText(field)
     spec = abs(fftSpectrum.load())
 
     # Select positive temporal frequencies
@@ -782,8 +796,10 @@ def create_omega_k_plots(
     power_trace.plot(ax=axs)
     axs.set_xticks(ticks=np.arange(np.floor(power_trace.coords['frequency'][0]), np.ceil(power_trace.coords['frequency'][-1])+1.0, 1.0), minor=True)
     axs.grid(which='both', axis='x')
-    axs.set_xlabel(r"Frequency [$\omega_{ci}$]")
-    axs.set_ylabel(f"Sum of power in {field} over all k [{field_unit}]")
+    axs.set_xlabel(r"Frequency [$\Omega_{c,\alpha}$]")
+    axs.set_ylabel(f"Sum of {field} power over all k [{field_unit}]")
+    axs.grid()
+    fig.tight_layout()
     filename = Path(f'{runName}_{field.replace("_", "")}_powerByOmega_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
     fig.savefig(str(saveDirectory / filename))
     if display:
@@ -796,8 +812,10 @@ def create_omega_k_plots(
     axs.plot(power_trace.coords['frequency'], log_power_trace)
     axs.set_xticks(ticks=np.arange(np.floor(power_trace.coords['frequency'][0]), np.ceil(power_trace.coords['frequency'][-1])+1.0, 1.0), minor=True)
     axs.grid(which='both', axis='x')
-    axs.set_xlabel(r"Frequency [$\omega_{ci}$]")
-    axs.set_ylabel(f"log10(power in {field} over all k / B0)")
+    axs.set_xlabel(r"Frequency [$\Omega_{c,\alpha}$]")
+    axs.set_ylabel(f"log10({field} power over all k / {r'$B_0$'})")
+    axs.grid()
+    fig.tight_layout()
     filename = Path(f'{runName}_{field.replace("_", "")}_powerByOmegaLog_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
     fig.savefig(str(saveDirectory / filename))
     if display:
@@ -810,8 +828,11 @@ def create_omega_k_plots(
     axs.plot(power_trace.coords['frequency'], log_power_trace)
     axs.set_xticks(ticks=np.arange(np.floor(power_trace.coords['frequency'][0]), np.ceil(power_trace.coords['frequency'][-1])+1.0, 1.0), minor=True)
     axs.grid(which='both', axis='x')
-    axs.set_xlabel(r"Frequency [$\omega_{ci}$]")
-    axs.set_ylabel(f"log10({r'$power^{2}$'} in {field} over all k / {r'$B0^2$'}")
+    axs.set_xlabel(r"Frequency [$\Omega_{c,\alpha}$]")
+    pow2 = r'$\text{power}^{2}$'
+    axs.set_ylabel(f"log10({field} {pow2} over all k / {r'$B_0^2$'}")
+    axs.grid()
+    fig.tight_layout()
     filename = Path(f'{runName}_{field.replace("_", "")}_powerByOmegaLogSquare_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
     fig.savefig(str(saveDirectory / filename))
     if display:
@@ -824,8 +845,10 @@ def create_omega_k_plots(
     axs.plot(power_trace.coords['frequency'], log_power_trace)
     axs.set_xticks(ticks=np.arange(np.floor(power_trace.coords['frequency'][0]), np.ceil(power_trace.coords['frequency'][-1])+1.0, 1.0), minor=True)
     axs.grid(which='both', axis='x')
-    axs.set_xlabel(r"Frequency [$\omega_{ci}$]")
-    axs.set_ylabel(f"Normalised power in {field} over all k [dB]")
+    axs.set_xlabel(r"Frequency [$\Omega_{c,\alpha}$]")
+    axs.set_ylabel(f"Normalised {field} power over all k [dB]")
+    axs.grid()
+    fig.tight_layout()
     filename = Path(f'{runName}_{field.replace("_", "")}_powerByOmegaLog_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
     fig.savefig(str(saveDirectory / filename))
     if display:
@@ -838,8 +861,10 @@ def create_omega_k_plots(
     axs.plot(power_trace.coords['frequency'], log_power_trace)
     axs.set_xticks(ticks=np.arange(np.floor(power_trace.coords['frequency'][0]), np.ceil(power_trace.coords['frequency'][-1])+1.0, 1.0), minor=True)
     axs.grid(which='both', axis='x')
-    axs.set_xlabel(r"Frequency [$\omega_{ci}$]")
-    axs.set_ylabel(f"Normalised square power in {field} over all k [dB]")
+    axs.set_xlabel(r"Frequency [$\Omega_{c,\alpha}$]")
+    axs.set_ylabel(f"Normalised {field} {pow2} over all k [dB]")
+    axs.grid()
+    fig.tight_layout()
     filename = Path(f'{runName}_{field.replace("_", "")}_powerByOmegaDB_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
     fig.savefig(str(saveDirectory / filename))
     if display:
@@ -853,9 +878,11 @@ def create_omega_k_plots(
     power_trace.plot(ax=axs)
     axs.set_xticks(ticks=np.arange(np.floor(power_trace.coords['wavenumber'][0]), np.ceil(power_trace.coords['wavenumber'][-1])+1.0, 1.0), minor=True)
     axs.grid(which='both', axis='x')
-    axs.set_xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
-    omega = r'$\omega_{ci}$'
-    axs.set_ylabel(f"Sum of power in {field} over all {omega} [{field_unit}]")
+    axs.set_xlabel(r"Wavenumber [$\frac{\Omega_{c,\alpha}}{v_A}$]")
+    omega = r'$\Omega_{c,\alpha}$'
+    axs.set_ylabel(f"Sum of {field} power over all {omega} [{field_unit}]")
+    axs.grid()
+    fig.tight_layout()
     filename = Path(f'{runName}_{field.replace("_", "")}_powerByK_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
     fig.savefig(str(saveDirectory / filename))
     if display:
@@ -864,9 +891,11 @@ def create_omega_k_plots(
 
     # Full dispersion relation for positive omega
     fig, axs = plt.subplots(figsize=(15, 10))
-    spec.plot(ax=axs, cbar_kwargs={'label': f'Spectral power in {field} [{field_unit}]'}, cmap='plasma')
-    axs.set_ylabel(r"Frequency [$\omega_{ci}$]")
-    axs.set_xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
+    spec.plot(ax=axs, cbar_kwargs={'label': f'{field} power [{field_unit}]'}, cmap='plasma')
+    axs.set_ylabel(r"Frequency [$\Omega_{c,\alpha}$]")
+    axs.set_xlabel(r"Wavenumber [$\frac{\Omega_{c,\alpha}}{v_A}$]")
+    axs.grid()
+    fig.tight_layout()
     filename = Path(f'{runName}_{field.replace("_", "")}_wk_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
     fig.savefig(str(saveDirectory / filename))
     if display:
@@ -877,9 +906,11 @@ def create_omega_k_plots(
 
     # Full dispersion relation for positive omega (log)
     fig, axs = plt.subplots(figsize=(15, 10))
-    log_spec.plot(ax=axs, cbar_kwargs={'label': f'Log of spectral power in {field}'}, cmap='plasma')
-    axs.set_ylabel(r"Frequency [$\omega_{ci}$]")
-    axs.set_xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
+    log_spec.plot(ax=axs, cbar_kwargs={'label': f'Log10 of {field} power'}, cmap='plasma')
+    axs.set_ylabel(r"Frequency [$\Omega_{c,\alpha}$]")
+    axs.set_xlabel(r"Wavenumber [$\frac{\Omega_{c,\alpha}}{v_A}$]")
+    axs.grid()
+    fig.tight_layout()
     filename = Path(f'{runName}_{field.replace("_", "")}_wk_log_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
     fig.savefig(str(saveDirectory / filename))
     if display:
@@ -889,14 +920,16 @@ def create_omega_k_plots(
     # Positive omega/positive k with vA and lower hybrid frequency
     fig, axs = plt.subplots(figsize=(15, 10))
     spec = spec.sel(wavenumber=spec.wavenumber>0.0)
-    spec.plot(ax=axs, cbar_kwargs={'label': f'Spectral power in {field} [{field_unit}]'}, cmap='plasma')
-    axs.plot(spec.coords['wavenumber'].data, spec.coords['wavenumber'].data, 'w--', label=r'$V_A$ branch')
+    spec.plot(ax=axs, cbar_kwargs={'label': f'{field} power [{field_unit}]'}, cmap='plasma')
+    axs.plot(spec.coords['wavenumber'].data, spec.coords['wavenumber'].data, 'w--', linewidth = 3.0, label=r'$v_A$ branch')
     bkgd_number_density = float(inputDeck['constant']['background_density'])
     wLH_cyclo = ppf.lower_hybrid_frequency(B0 * u.T, bkgd_number_density * u.m**-3, bkgdSpecies) / ppf.gyrofrequency(B0 * u.T, fastSpecies)
-    axs.axhline(y = wLH_cyclo, color='white', linestyle=':', label=r'Lower hybrid frequency')
+    axs.axhline(y = wLH_cyclo, color='white', linestyle=':', linewidth = 3.0, label=r'lower hybrid frequency')
     axs.legend(loc='upper left')
-    axs.set_ylabel(r"Frequency [$\omega_{ci}$]")
-    axs.set_xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
+    axs.set_ylabel(r"Frequency [$\Omega_{c,\alpha}$]")
+    axs.set_xlabel(r"Wavenumber [$\frac{\Omega_{c,\alpha}}{v_A}$]")
+    axs.grid()
+    fig.tight_layout()
     filename = Path(f'{runName}_{field.replace("_", "")}_wk_positiveK_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
     fig.savefig(str(saveDirectory / filename))
     if display:
@@ -906,12 +939,14 @@ def create_omega_k_plots(
     # Positive omega/positive k with vA and lower hybrid frequency (log)
     fig, axs = plt.subplots(figsize=(15, 10))
     log_spec = log_spec.sel(wavenumber=log_spec.wavenumber>0.0)
-    log_spec.plot(ax=axs, cbar_kwargs={'label': f'Log of spectral power in {field}'}, cmap='plasma')
-    axs.plot(log_spec.coords['wavenumber'].data, log_spec.coords['wavenumber'].data, 'w--', label=r'$V_A$ branch')
-    axs.axhline(y = wLH_cyclo, color='white', linestyle=':', label=r'Lower hybrid frequency')
+    log_spec.plot(ax=axs, cbar_kwargs={'label': f'Log10 of {field} power'}, cmap='plasma')
+    axs.plot(log_spec.coords['wavenumber'].data, log_spec.coords['wavenumber'].data, 'k--', linewidth = 3.0, label=r'$v_A$ branch')
+    axs.axhline(y = wLH_cyclo, color='black', linestyle=':', linewidth = 3.0, label=r'lower hybrid frequency')
     axs.legend(loc='upper left')
-    axs.set_ylabel(r"Frequency [$\omega_{ci}$]")
-    axs.set_xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
+    axs.set_ylabel(r"Frequency [$\Omega_{c,\alpha}$]")
+    axs.set_xlabel(r"Wavenumber [$\frac{\Omega_{c,\alpha}}{v_A}$]")
+    axs.grid()
+    fig.tight_layout()
     filename = Path(f'{runName}_{field.replace("_", "")}_wk_positiveK_log_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
     fig.savefig(str(saveDirectory / filename))
     if display:
@@ -939,22 +974,19 @@ def create_t_k_spectrum(
     tk_spec = xrft.xrft.ifft(tk_spec, dim="frequency")
     tk_spec = tk_spec.rename(freq_frequency="time")
     abs_spec = np.abs(tk_spec)
+    
+    tk_sum = float(abs_spec.sum())
+    tk_squared = float((abs_spec**2).sum())
+    parseval_tk = tk_squared  * abs_spec.coords['wavenumber'].spacing * abs_spec.coords['time'].spacing
+    tk_peak = float(np.nanmax(abs_spec))
+    tk_mean = float(abs_spec.mean())
 
     if statsFile is not None:
         # Log stats on spectrum
-        tk_sum = float(abs_spec.sum())
         statsFile.totalTkSpectralPower = tk_sum
-
-        tk_squared = float((np.abs(abs_spec)**2).sum())
-        parseval_tk = tk_squared  * abs_spec.coords['wavenumber'].spacing * abs_spec.coords['time'].spacing
         statsFile.parsevalTk = parseval_tk
-        
-        tk_peak = float(np.nanmax(abs_spec))
         statsFile.peakTkSpectralPower = tk_peak
-        
-        tk_mean = float(abs_spec.mean())
         statsFile.meanTkSpectralPower = tk_mean
-
         statsFile.peakTkSpectralPowerRatio = tk_peak/tk_mean
     
     if debug:
@@ -991,10 +1023,12 @@ def create_t_k_plot(
     
     # Time-wavenumber
     fig, axs = plt.subplots(figsize=(15, 10))
-    tkSpec_plot.plot(ax=axs, x = "wavenumber", y = "time", cbar_kwargs={'label': f'Spectral power in {field} [{field_unit}]'}, cmap='plasma')
+    field_name = fieldNameToText(field)
+    tkSpec_plot.plot(ax=axs, x = "wavenumber", y = "time", cbar_kwargs={'label': f'Spectral power in {field_name} [{field_unit}]'}, cmap='plasma')
     axs.grid()
-    axs.set_xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
-    axs.set_ylabel(r"Time [$\tau_{ci}$]")
+    axs.set_xlabel(r"Wavenumber [$\frac{\Omega_{c,\alpha}}{v_A}$]")
+    axs.set_ylabel(r"Time [$\tau_{c,\alpha}$]")
+    fig.tight_layout()
     if saveDirectory is not None:
         filename = Path(f'{runName}_{field.replace("_", "")}_tk_maxK-{maxK if maxK is not None else "all"}.png')
         fig.savefig(str(saveDirectory / filename))
@@ -1004,10 +1038,11 @@ def create_t_k_plot(
 
     # Time-wavenumber (log)
     fig, axs = plt.subplots(figsize=(15, 10))
-    tkSpec_plot_log.plot(ax=axs, x = "wavenumber", y = "time", cbar_kwargs={'label': f'Log of spectral power in {field}'}, cmap='plasma')
+    tkSpec_plot_log.plot(ax=axs, x = "wavenumber", y = "time", cbar_kwargs={'label': f'Log of spectral power in {field_name}'}, cmap='plasma')
     axs.grid()
-    axs.set_xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
-    axs.set_ylabel(r"Time [$\tau_{ci}$]")
+    axs.set_xlabel(r"Wavenumber [$\frac{\Omega_{c,\alpha}}{v_A}$]")
+    axs.set_ylabel(r"Time [$\tau_{c,\alpha}$]")
+    fig.tight_layout()
     if saveDirectory is not None:
         filename = Path(f'{runName}_{field.replace("_", "")}_tk_log_maxK-{maxK if maxK is not None else "all"}.png')
         fig.savefig(str(saveDirectory / filename))
@@ -1284,7 +1319,7 @@ def plot_growth_rates(
         logSignal.plot(ax=ax, alpha = 0.5, color = "blue")
         if g.smoothingFunction is not None:
             ax.plot(logSignal.coords['time'], np.log(g.smoothingFunction(logSignal.coords['time'])), linestyle = "dashed", color="purple", label = "Smoothed signal")
-        ax.plot(timeVals, g.gamma * timeVals + g.yIntercept, color = "orange", label = r"$\gamma = $" + f"{g.gamma:.3f}" + r"$\pm$" + f"{g.stdErr:.3f}" + r"$\omega_{ci}$")
+        ax.plot(timeVals, g.gamma * timeVals + g.yIntercept, color = "orange", label = r"$\gamma = $" + f"{g.gamma:.3f}" + r"$\pm$" + f"{g.stdErr:.3f}" + r"$\Omega_{ci}$")
         ax.set_xlabel(r"Time [$\tau_{ci}$]")
         ax.set_ylabel(f"Log10 of {field} signal power")
         ax.grid()

@@ -182,8 +182,8 @@ def plot_growth_rate_data(
             spec = spec.sel(frequency=spec.frequency<=maxW)
         spec.plot(size=9, cbar_kwargs={'label': f'Spectral power in {field}' if not log else f'Log of spectral power in {field}'}, cmap='plasma')
         #plt.title(f"{directory.name}: Dispersion relation of {field}")
-        plt.ylabel(r"Frequency [$\omega_{ci}$]")
-        plt.xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
+        plt.ylabel(r"Frequency [$\Omega_{ci}$]")
+        plt.xlabel(r"Wavenumber [$\Omega_{ci}/V_A$]")
         if savePath is not None:
             plt.savefig(savePath / f'{directory.name}_wk_dField-{deltaField}_log-{log}_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
             plt.clf()
@@ -195,8 +195,8 @@ def plot_growth_rate_data(
         plt.plot(spec.coords['wavenumber'].data, spec.coords['wavenumber'].data, 'k--', label=r'$V_A$ branch')
         plt.axhline(y = wLH_cyclo, color='black', linestyle=':', label=r'Lower hybrid frequency')
         plt.legend()
-        plt.ylabel(r"Frequency [$\omega_{ci}$]")
-        plt.xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
+        plt.ylabel(r"Frequency [$\Omega_{ci}$]")
+        plt.xlabel(r"Wavenumber [$\Omega_{ci}/V_A$]")
         if savePath is not None:
             plt.savefig(savePath / f'{directory.name}_wk_positiveK_dField-{deltaField}_log-{log}_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
             plt.clf()
@@ -207,7 +207,7 @@ def plot_growth_rate_data(
         f_over_all_k.plot(size=9)
         plt.xticks(ticks=np.arange(np.floor(f_over_all_k.coords['frequency'][0]), np.ceil(f_over_all_k.coords['frequency'][-1])+1.0, 1.0), minor=True)
         plt.grid(which='both', axis='x')
-        plt.xlabel(r"Frequency [$\omega_{ci}$]")
+        plt.xlabel(r"Frequency [$\Omega_{ci}$]")
         plt.ylabel(r"Sum of power in Bz over all k")
         if savePath is not None:
             plt.savefig(savePath / f'{directory.name}_powerByOmega_dField-{deltaField}_log-{log}_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
@@ -237,7 +237,7 @@ def plot_growth_rate_data(
         spec_tk_plot.plot(size=9, x = "wavenumber", y = "time", cbar_kwargs={'label': f'Spectral power in {field}' if not log else f'Log of spectral power in {field}'}, cmap='plasma')
         #plt.title(f"{directory.name}: Time evolution of spectral power in {field}")
         plt.grid()
-        plt.xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
+        plt.xlabel(r"Wavenumber [$\Omega_{ci}/V_A$]")
         plt.ylabel(r"Time [$\tau_{ci}$]")
         if savePath is not None:
             plt.savefig(savePath / f'{directory.name}_tk_dField-{deltaField}_log-{log}_maxK-{maxK if maxK is not None else "all"}.png')
@@ -295,7 +295,7 @@ def plot_growth_rate_data(
             plt.title(f'k = {float(spec_tk.coords["wavenumber"][k]):.4f}')
             plt.scatter(filtered_times, filtered_gammas, marker = 'x')
             plt.xlabel(r"Time at centre of window [$\tau_{ci}$]")
-            plt.ylabel(r"Gamma [$\omega_{ci}$]")
+            plt.ylabel(r"Gamma [$\Omega_{ci}$]")
             #plt.yscale("log")
             #plt.title(f"{directory.name}: k = {float(spec_tk.coords['wavenumber'][k]):.4f} Growth rate within sliding window of size {gammaWindow} ({gammaWindow*100.0/num_t}%)")
             if savePath is not None:
@@ -439,7 +439,7 @@ def calculate_max_growth_rate_in_simulation(
     if plot or figureSavePath is not None:
         spec_tk.plot(size=9, x = "wavenumber", y = "time", cbar_kwargs={'label': f'Spectral power in {field}' if not log else f'Log of spectral power in {field}'})
         plt.title(f"{directory.name}: time-wavenumber up to k = {maxK if maxK is not None else nyq_freq_space}")
-        plt.xlabel(r"Wavenumber [$\omega_{ci}/V_A$]")
+        plt.xlabel(r"Wavenumber [$\Omega_{ci}/V_A$]")
         plt.ylabel(r"Time [$\tau_{ci}$]")
         if figureSavePath is not None:
             plt.savefig(figureSavePath / f"{directory.name}_tk_maxK{maxK if maxK is not None else nyq_freq_space}.png")
@@ -510,11 +510,11 @@ def analyse_growth_rates_across_simulations(csvData : str):
 
     df = pd.read_csv(csvData, header=0)
     
-    #matrix_plot([np.log(df.background_density.to_numpy()), np.log(df.frac_beam.to_numpy()), df.b0_strength.to_numpy(), df.b0_angle.to_numpy(), df.maxGamma.to_numpy()], labels = ["Log(Density)", "Log(Beam Fraction)", r"B0 [$T$]", r"B0 Angle $[^\circ]$", r"Max Gamma [$\omega_{ci}$]"])
+    #matrix_plot([np.log(df.background_density.to_numpy()), np.log(df.frac_beam.to_numpy()), df.b0_strength.to_numpy(), df.b0_angle.to_numpy(), df.maxGamma.to_numpy()], labels = ["Log(Density)", "Log(Beam Fraction)", r"B0 [$T$]", r"B0 Angle $[^\circ]$", r"Max Gamma [$\Omega_{ci}$]"])
     #matrix_plot([np.log(df.background_density.to_numpy()), np.log(df.frac_beam.to_numpy()), df.b0_strength.to_numpy(), df.b0_angle.to_numpy(), df.time.to_numpy()], labels = ["Log(Density)", "Log(Beam Fraction)", r"B0 [$T$]", r"B0 Angle $[^\circ]$", r"Time [$\tau_{ci}$]"])
-    #matrix_plot([np.log(df.background_density.to_numpy()), np.log(df.frac_beam.to_numpy()), df.b0_strength.to_numpy(), df.b0_angle.to_numpy(), df.wavenumber.to_numpy()], labels = ["Log(Density)", "Log(Beam Fraction)", r"B0 [$T$]", r"B0 Angle $[^\circ]$", r"Wavenumber [$\omega_{ci}/V_A$]"])
-    matrix_plot([np.log(df.background_density.to_numpy()), np.log(df.frac_beam.to_numpy()), df.b0_strength.to_numpy(), df.b0_angle.to_numpy(), df.maxGamma.to_numpy(), df.time.to_numpy(), df.wavenumber.to_numpy()], labels = ["Log(Density)", "Log(Beam Fraction)", r"B0 [$T$]", r"B0 Angle $[^\circ]$", r"Max Gamma [$\omega_{ci}$]", r"Time [$\tau_{ci}$]", r"Wavenumber [$\omega_{ci}/V_A$]"], show_ticks=True)
-    #matrix_plot([df.wavenumber.to_numpy(), df.time.to_numpy(), df.maxGamma.to_numpy()], labels = [r"Wavenumber [$\omega_{ci}/V_A$]", r"Time [$\tau_{ci}$]", r"Max Gamma [$\omega_{ci}$]"])
+    #matrix_plot([np.log(df.background_density.to_numpy()), np.log(df.frac_beam.to_numpy()), df.b0_strength.to_numpy(), df.b0_angle.to_numpy(), df.wavenumber.to_numpy()], labels = ["Log(Density)", "Log(Beam Fraction)", r"B0 [$T$]", r"B0 Angle $[^\circ]$", r"Wavenumber [$\Omega_{ci}/V_A$]"])
+    matrix_plot([np.log(df.background_density.to_numpy()), np.log(df.frac_beam.to_numpy()), df.b0_strength.to_numpy(), df.b0_angle.to_numpy(), df.maxGamma.to_numpy(), df.time.to_numpy(), df.wavenumber.to_numpy()], labels = ["Log(Density)", "Log(Beam Fraction)", r"B0 [$T$]", r"B0 Angle $[^\circ]$", r"Max Gamma [$\Omega_{ci}$]", r"Time [$\tau_{ci}$]", r"Wavenumber [$\Omega_{ci}/V_A$]"], show_ticks=True)
+    #matrix_plot([df.wavenumber.to_numpy(), df.time.to_numpy(), df.maxGamma.to_numpy()], labels = [r"Wavenumber [$\Omega_{ci}/V_A$]", r"Time [$\tau_{ci}$]", r"Max Gamma [$\Omega_{ci}$]"])
     
 
 def collate_growth_rate_CSVs(overallDirectory : Path):

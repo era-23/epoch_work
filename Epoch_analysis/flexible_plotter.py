@@ -1,12 +1,19 @@
 import argparse
 import glob
 from pathlib import Path
+import epydeck
 import matplotlib.pyplot as plt
-from matplotlib.ticker import FormatStrFormatter, ScalarFormatter
+from matplotlib.ticker import ScalarFormatter
+from sdf_xarray import SDFPreprocess
 import numpy as np
 import xarray as xr
+import xrft
 import epoch_utils
 import ml_utils
+import plasmapy.formulary.frequencies as ppf
+import plasmapy.formulary.speeds as pps
+import astropy.units as u
+import netCDF4 as nc
 
 class ScalarFormatterForceFormat(ScalarFormatter):
     def _set_format(self):  # Override function that finds format to use.
@@ -53,7 +60,7 @@ def all_power_spectra(dataFolder : Path, fields : list):
         plt.title(f"{epoch_utils.fieldNameToText(field)}")
         plt.xlim(allSpectra[field + "_coords"][0][0], allSpectra[field + "_coords"][0][-1])
         plt.ylim(float(allSpectra["sim_ids"][0]), float(allSpectra["sim_ids"][-1]))
-        plt.xlabel(r"Frequency/$\omega_\alpha$")
+        plt.xlabel(r"Frequency/$\Omega_\alpha$")
         plt.ylabel("Simulation ID")
         cbar = plt.colorbar(heatmap)
         cbar.ax.set_ylabel("power/T")
@@ -81,7 +88,7 @@ def power_spectrum(dataFile : Path, field : str, doPlot : bool = True):
         axs.plot(coords, fieldData)
         axs.set_xticks(ticks=np.arange(np.floor(coords[0]), np.ceil(coords[-1])+1.0, 1.0), minor=True)
         axs.grid(which='both', axis='x')
-        axs.set_xlabel(r"Frequency [$\omega_{ci}$]")
+        axs.set_xlabel(r"Frequency [$\Omega_{ci}$]")
         axs.set_ylabel(f"Sum of power in {fieldName} over all k [T]")
         plt.show()
 
@@ -89,7 +96,7 @@ def power_spectrum(dataFile : Path, field : str, doPlot : bool = True):
         axs.plot(coords, 10.0 * np.log10(fieldData / B0))
         axs.set_xticks(ticks=np.arange(np.floor(coords[0]), np.ceil(coords[-1])+1.0, 1.0), minor=True)
         axs.grid(which='both', axis='x')
-        axs.set_xlabel(r"Frequency [$\omega_{ci}$]")
+        axs.set_xlabel(r"Frequency [$\Omega_{ci}$]")
         axs.set_ylabel(f"Sum of power in {fieldName} over all k [dB]")
         plt.show()
 
@@ -124,7 +131,7 @@ def compare_spectra(folder : Path, simNumbers : list, maxXcoord : float = 50.0, 
     f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
     f.set_scientific(True)
     axBz2.set_title(f"Run {simNumbers[1]} spectral power: {r'$B_z$'}")
-    axBz2.set_ylabel(r"$T \cdot \omega_{c, \alpha}$")
+    axBz2.set_ylabel(r"$T \cdot \Omega_{c, \alpha}$")
     axBz2.yaxis.set_major_formatter(f)
     
     f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
@@ -135,7 +142,7 @@ def compare_spectra(folder : Path, simNumbers : list, maxXcoord : float = 50.0, 
     f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
     f.set_scientific(True)
     axEx2.set_title(f"Run {simNumbers[1]} spectral power: {r'$E_x$'}")
-    axEx2.set_ylabel(r"$\frac{V}{m} \cdot \omega_{c, \alpha}$")
+    axEx2.set_ylabel(r"$\frac{V}{m} \cdot \Omega_{c, \alpha}$")
     axEx2.yaxis.set_major_formatter(f)
     
     f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
@@ -145,11 +152,11 @@ def compare_spectra(folder : Path, simNumbers : list, maxXcoord : float = 50.0, 
     axEy1.yaxis.set_major_formatter(f)
     f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
     f.set_scientific(True)
-    axEy1.set_xlabel(r"Frequency [$\omega_{c, \alpha}$]")
+    axEy1.set_xlabel(r"Frequency [$\Omega_{c, \alpha}$]")
     axEy2.set_title(f"Run {simNumbers[1]} spectral power: {r'$E_y$'}")
-    axEy2.set_ylabel(r"$\frac{V}{m} \cdot \omega_{c, \alpha}$")
+    axEy2.set_ylabel(r"$\frac{V}{m} \cdot \Omega_{c, \alpha}$")
     axEy2.yaxis.set_major_formatter(f)
-    axEy2.set_xlabel(r"Frequency [$\omega_{c, \alpha}$]")
+    axEy2.set_xlabel(r"Frequency [$\Omega_{c, \alpha}$]")
 
     axes = {simNumbers[0] : (axBz1, axEx1, axEy1), simNumbers[1] : (axBz2, axEx2, axEy2)}
     allData = {"Bz" : [], "Ex" : [], "Ey": []}
@@ -237,8 +244,75 @@ def compare_spectra(folder : Path, simNumbers : list, maxXcoord : float = 50.0, 
     fig.subplots_adjust(wspace=0.25, hspace=0.25)
     plt.show()
 
-def dispersion_relations_for_papers(dataFolder : Path, inputFile : Path, simNumber : int):
-    print("Not implemented yet")
+def dispersion_relations_for_papers(
+        dataFolder : Path, 
+        outFolder : Path, 
+        simNumber : int, 
+        field : str, 
+        maxK : float = 100.0,
+        maxW : float = 100.0,
+        fastSpecies : str = 'He-4 2+', 
+        bkgdSpecies : str = 'D+'
+    ):
+    
+    plt.rcParams.update({'axes.titlesize': 32.0})
+    plt.rcParams.update({'axes.labelsize': 36.0})
+    plt.rcParams.update({'xtick.labelsize': 28.0})
+    plt.rcParams.update({'ytick.labelsize': 28.0})
+    plt.rcParams.update({'legend.fontsize': 24.0})
+
+    if "Bz" in field:
+        field = "Magnetic_Field_Bz"
+    elif "Ex" in field:
+        field = "Electric_Field_Ex"
+    elif "Ey" in field:
+        field = "Electric_Field_Ey"
+
+    print("Reading data....")
+    # Open datafiles as xarray
+    ds = xr.open_mfdataset(
+        str(dataFolder / "*.sdf"),
+        data_vars='minimal', 
+        coords='minimal', 
+        compat='override', 
+        preprocess=SDFPreprocess()
+    )
+
+    # Drop initial conditions because they may not represent a solution
+    ds = ds.sel(time=ds.coords["time"]>ds.coords["time"][0])
+
+    # Read input deck
+    inputDeck = {}
+    with open(str(dataFolder / "input.deck")) as id:
+        inputDeck = epydeck.loads(id.read())
+
+    ion_gyroperiod = 2.0 * np.pi / ppf.gyrofrequency(inputDeck["constant"]["b0_strength"] * u.T, particle = fastSpecies)
+    alfven_velocity = pps.Alfven_speed(inputDeck["constant"]["b0_strength"] * u.T, density = float(inputDeck["constant"]["background_density"]) / u.m**3, ion = fastSpecies)
+
+    print("Normalising data....")
+    ds = epoch_utils.normalise_data(ds, ion_gyroperiod, alfven_velocity)
+
+    # Take FFT
+    print("Taking FFT....")
+    original_spec : xr.DataArray = xrft.xrft.fft(ds[field].load(), true_amplitude=True, true_phase=True, window=None)
+    original_spec = original_spec.rename(freq_time="frequency", freq_x_space="wavenumber")
+    # Remove zero-frequency component
+    original_spec = original_spec.where(original_spec.wavenumber!=0.0, None)
+
+    # Dispersion relations
+    maxK = 100.0
+    maxW = 100.0
+    print("Creating t-k spectrum....")
+    tk_spec = epoch_utils.create_t_k_spectrum(original_spec, maxK = maxK, load=True, debug=True)
+    dotFftUnits = r'$\cdot\frac{\Omega_{c,\alpha}}{v_A}$'
+    tk_unit = f"{epoch_utils.fieldNameToUnit(field)}{dotFftUnits}"
+    epoch_utils.create_t_k_plot(tk_spec, field, tk_unit, outFolder, f"run_{simNumber}", maxK, display=False)
+    print("Creating w-k spectrum....")
+    dummyStats = nc.Dataset(outFolder / "dummy.nc", mode="w")
+    dotFftUnits = r'$\cdot\frac{\Omega_{c,\alpha}^2}{v_A}$'
+    wk_unit = f"{epoch_utils.fieldNameToUnit(field)}{dotFftUnits}"
+    _ = epoch_utils.create_omega_k_plots(original_spec, dummyStats, field, wk_unit, outFolder, f"run_{simNumber}", inputDeck, bkgdSpecies, fastSpecies, maxK=maxK, maxW=maxW, display=False, debug=True)
+    print("Done.")
 
 if __name__ == "__main__":
     
@@ -263,9 +337,22 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
+        "--dispersion",
+        action="store_true",
+        help="Plot dispersion relations in paper-friendly way.",
+        required = False
+    )
+    parser.add_argument(
         "--dataFolder",
         action="store",
         help="Filepath of folder of simulation output data to plot, e.g. /data/",
+        required = False,
+        type=Path
+    )
+    parser.add_argument(
+        "--outputFolder",
+        action="store",
+        help="Filepath of folder for plot output.",
         required = False,
         type=Path
     )
@@ -284,6 +371,20 @@ if __name__ == "__main__":
         required = False,
         type=str,
         nargs="*"
+    )
+    parser.add_argument(
+        "--maxK",
+        action="store",
+        help="Maximum wavenumber for plotting.",
+        required = False,
+        type=float
+    )
+    parser.add_argument(
+        "--maxW",
+        action="store",
+        help="Maximum frequency for plotting.",
+        required = False,
+        type=float
     )
     parser.add_argument(
         "--equateAxes",
@@ -310,4 +411,6 @@ if __name__ == "__main__":
             all_power_spectra(args.dataFolder, args.fields)
     if args.compareSpectra:
         compare_spectra(args.dataFolder, args.sims, 50, args.equateAxes)
+    if args.dispersion:
+        dispersion_relations_for_papers(args.dataFolder, args.outputFolder, args.sims[0], field=args.fields[0], maxK=args.maxK, maxW=args.maxW)
 
