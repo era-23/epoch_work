@@ -287,7 +287,8 @@ def dispersion_relations_for_papers(
         inputDeck = epydeck.loads(id.read())
 
     ion_gyroperiod = 2.0 * np.pi / ppf.gyrofrequency(inputDeck["constant"]["b0_strength"] * u.T, particle = fastSpecies)
-    alfven_velocity = pps.Alfven_speed(inputDeck["constant"]["b0_strength"] * u.T, density = float(inputDeck["constant"]["background_density"]) / u.m**3, ion = fastSpecies)
+    number_density_bkgd = float(inputDeck["constant"]["background_density"]) * (1.0 - inputDeck['constant']['frac_beam'])
+    alfven_velocity = pps.Alfven_speed(inputDeck["constant"]["b0_strength"] * u.T, density = number_density_bkgd / u.m**3, ion = bkgdSpecies)
 
     print("Normalising data....")
     ds = epoch_utils.normalise_data(ds, ion_gyroperiod, alfven_velocity)
@@ -300,8 +301,6 @@ def dispersion_relations_for_papers(
     original_spec = original_spec.where(original_spec.wavenumber!=0.0, None)
 
     # Dispersion relations
-    maxK = 100.0
-    maxW = 100.0
     print("Creating t-k spectrum....")
     tk_spec = epoch_utils.create_t_k_spectrum(original_spec, maxK = maxK, load=True, debug=True)
     dotFftUnits = r'$\cdot\frac{\Omega_{c,\alpha}}{v_A}$'

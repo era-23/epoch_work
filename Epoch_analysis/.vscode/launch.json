@@ -280,6 +280,8 @@
                 "--sims", 
                     "31", 
                     // "53",
+                "--maxK", "40.0",
+                "--maxW", "40.0",
                 "--fields", 
                     "/Magnetic_Field_Bz/power/powerByFrequency", 
                     // "/Electric_Field_Ex/power/powerByFrequency", 
