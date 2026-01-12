@@ -238,7 +238,7 @@ def compare_spectra(folder : Path, simNumbers : list, maxXcoord : float = 50.0, 
     plt.show()
 
 def dispersion_relations_for_papers(dataFolder : Path, inputFile : Path, simNumber : int):
-    
+    print("Not implemented yet")
 
 if __name__ == "__main__":
     
