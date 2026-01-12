@@ -176,9 +176,9 @@ def compare_spectra(folder : Path, simNumbers : list, maxXcoord : float = 50.0, 
             axEy = axes[simNumber][2]
 
             # Slice to maximum frequency
-            bzData = angle_data_xr["Magnetic_Field_Bz/power/powerByFrequency"].sel(frequency = slice(None, maxXcoord))
-            exData = angle_data_xr["Electric_Field_Ex/power/powerByFrequency"].sel(frequency = slice(None, maxXcoord))
-            eyData = angle_data_xr["Electric_Field_Ey/power/powerByFrequency"].sel(frequency = slice(None, maxXcoord))
+            bzData = angle_data_xr["Magnetic_Field_Bz/power/powerByFrequency"].sel(frequency = slice(0.1, maxXcoord))
+            exData = angle_data_xr["Electric_Field_Ex/power/powerByFrequency"].sel(frequency = slice(0.1, maxXcoord))
+            eyData = angle_data_xr["Electric_Field_Ey/power/powerByFrequency"].sel(frequency = slice(0.1, maxXcoord))
             coords = bzData.coords["frequency"] # Assumes coords are constant for the different spectra
             axBz.plot(
                 coords.data, 
@@ -197,9 +197,9 @@ def compare_spectra(folder : Path, simNumbers : list, maxXcoord : float = 50.0, 
             )
 
         # Slice to maximum frequency
-        bzData = combined_data_xr["Magnetic_Field_Bz/power/powerByFrequency"].sel(frequency = slice(None, maxXcoord))
-        exData = combined_data_xr["Electric_Field_Ex/power/powerByFrequency"].sel(frequency = slice(None, maxXcoord))
-        eyData = combined_data_xr["Electric_Field_Ey/power/powerByFrequency"].sel(frequency = slice(None, maxXcoord))
+        bzData = combined_data_xr["Magnetic_Field_Bz/power/powerByFrequency"].sel(frequency = slice(0.1, maxXcoord))
+        exData = combined_data_xr["Electric_Field_Ex/power/powerByFrequency"].sel(frequency = slice(0.1, maxXcoord))
+        eyData = combined_data_xr["Electric_Field_Ey/power/powerByFrequency"].sel(frequency = slice(0.1, maxXcoord))
         coords = bzData.coords["frequency"] # Assumes coords are constant for the different spectra
         allData["Bz"].extend(bzData)
         allData["Ex"].extend(exData)
@@ -231,11 +231,14 @@ def compare_spectra(folder : Path, simNumbers : list, maxXcoord : float = 50.0, 
     handles, labels = axBz1.get_legend_handles_labels()
     labels, handles = zip(*sorted(zip(labels, handles), key=lambda t: t[0]))
     # axBz2.legend(handles, labels)
-    axBz2.legend(handles, labels)
+    axBz1.legend(handles, labels)
     # fig.tight_layout()
     fig.align_labels()
     fig.subplots_adjust(wspace=0.25, hspace=0.25)
     plt.show()
+
+def dispersion_relations_for_papers(dataFolder : Path, inputFile : Path, simNumber : int):
+    
 
 if __name__ == "__main__":
     

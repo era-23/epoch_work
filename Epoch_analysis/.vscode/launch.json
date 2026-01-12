@@ -272,9 +272,9 @@
                 // "--dataFile", "/home/era536/Documents/Epoch/Data/irb_aug25_analysis/data/run_7_stats.nc",
                 "--dataFolder", "/home/era536/Documents/Epoch/Data/2026_analysis/",
                 "--compareSpectra",
-                "--sims", "2", "15",
+                "--sims", "31", "53",
                 "--fields", "/Magnetic_Field_Bz/power/powerByFrequency", "/Electric_Field_Ex/power/powerByFrequency", "/Electric_Field_Ey/power/powerByFrequency",
-                "--equateAxes", "Ex", "Bz",
+                "--equateAxes", "Ex", "Ey", "Bz",
             ]
         },
         {
