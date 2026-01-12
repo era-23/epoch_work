@@ -109,7 +109,8 @@ def plot_predictions(
     plt.subplots(figsize=(12, 8))
     plt.scatter(truth, sim_ids, label = "True value", marker = "o", color = "blue")
     plt.scatter(preds, sim_ids, label = "Predicted value", marker = "o", color = "red")
-    plt.title(f"Predictions from {algorithm_name} ({r'$r^2$'} = {r2:.3f}, {r'rmse'} = {rmse:.3f})")
+    if not noTitle:
+        plt.title(f"Predictions from {algorithm_name} ({r'$r^2$'} = {r2:.3f}, {r'rmse'} = {rmse:.3f})")
     plt.ylabel("Simulation ID")
     if doLog:
         plt.xscale("log")
@@ -131,7 +132,8 @@ def plot_predictions(
         plt.plot([truth[i], truth[i]], [preds[i], truth[i]], color = "black", label = "errors")
     plt.plot([np.min(truth), np.max(truth)], [np.min(truth), np.max(truth)], color = "blue", linestyle="dashed", label="ideal predictions")
     plt.scatter(truth, preds, marker = "o", color = "red")
-    plt.title(f"{field} -- {algorithm_name} ({r'$r^2$'} = {r2:.3f}, {r'rmse'} = {rmse:.3f})")
+    if not noTitle:
+        plt.title(f"{field} -- {algorithm_name} ({r'$r^2$'} = {r2:.3f}, {r'rmse'} = {rmse:.3f})")
     if doLog:
         plt.xscale("log")
         plt.yscale("log")
