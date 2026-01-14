@@ -906,7 +906,7 @@ def create_omega_k_plots(
 
     # Full dispersion relation for positive omega (log)
     fig, axs = plt.subplots(figsize=(15, 10))
-    log_spec.plot(ax=axs, cbar_kwargs={'label': f'Log10 of {field} power'}, cmap='plasma')
+    log_spec.plot(ax=axs, cbar_kwargs={'label': f'{field} power [{r"log$_{10}$"}]'}, cmap='plasma')
     axs.set_ylabel(r"Frequency [$\Omega_{c,\alpha}$]")
     axs.set_xlabel(r"Wavenumber [$\frac{\Omega_{c,\alpha}}{v_A}$]")
     axs.grid()
@@ -939,7 +939,7 @@ def create_omega_k_plots(
     # Positive omega/positive k with vA and lower hybrid frequency (log)
     fig, axs = plt.subplots(figsize=(15, 10))
     log_spec = log_spec.sel(wavenumber=log_spec.wavenumber>0.0)
-    log_spec.plot(ax=axs, cbar_kwargs={'label': f'Log10 of {field} power'}, cmap='plasma')
+    log_spec.plot(ax=axs, cbar_kwargs={'label': f'{field} power [{r"log$_{10}$"}]'}, cmap='plasma')
     axs.plot(log_spec.coords['wavenumber'].data, log_spec.coords['wavenumber'].data, 'k--', linewidth = 3.0, label=r'$v_A$ branch')
     axs.axhline(y = wLH_cyclo, color='black', linestyle=':', linewidth = 3.0, label=r'lower hybrid frequency')
     axs.legend(loc='upper left')
@@ -1018,13 +1018,13 @@ def create_t_k_plot(
     if maxK is not None:
         tkSpec_plot = tkSpectrum.sel(wavenumber=tkSpectrum.wavenumber<=maxK)
         tkSpec_plot = tkSpec_plot.sel(wavenumber=tkSpec_plot.wavenumber>=-maxK)
-    tkSpec_plot = np.abs(tkSpec_plot)
-    tkSpec_plot_log = np.log10(tkSpec_plot)
+    tkSpec_plot : xr.DataArray = np.abs(tkSpec_plot) # Returns DataArray somehow (xarray magic)
+    tkSpec_plot_log : xr.DataArray = np.log10(tkSpec_plot) # Returns DataArray somehow (xarray magic)
     
     # Time-wavenumber
     fig, axs = plt.subplots(figsize=(15, 10))
     field_name = fieldNameToText(field)
-    tkSpec_plot.plot(ax=axs, x = "wavenumber", y = "time", cbar_kwargs={'label': f'Spectral power in {field_name} [{field_unit}]'}, cmap='plasma')
+    tkSpec_plot.plot(ax=axs, x = "wavenumber", y = "time", cbar_kwargs={'label': f'{field_name} power [{field_unit}]'}, cmap='plasma')
     axs.grid()
     axs.set_xlabel(r"Wavenumber [$\frac{\Omega_{c,\alpha}}{v_A}$]")
     axs.set_ylabel(r"Time [$\tau_{c,\alpha}$]")
@@ -1036,15 +1036,44 @@ def create_t_k_plot(
         plt.show()
     plt.close('all')
 
+    # Time-wavenumber (positive)
+    fig, axs = plt.subplots(figsize=(15, 10))
+    field_name = fieldNameToText(field)
+    tkSpec_plot.sel(wavenumber=tkSpec_plot.wavenumber>=0.0).plot(ax=axs, x = "wavenumber", y = "time", cbar_kwargs={'label': f'{field_name} power [{field_unit}]'}, cmap='plasma')
+    axs.grid()
+    axs.set_xlabel(r"Wavenumber [$\frac{\Omega_{c,\alpha}}{v_A}$]")
+    axs.set_ylabel(r"Time [$\tau_{c,\alpha}$]")
+    fig.tight_layout()
+    if saveDirectory is not None:
+        filename = Path(f'{runName}_{field.replace("_", "")}_tk_maxK-{maxK if maxK is not None else "all"}_pos.png')
+        fig.savefig(str(saveDirectory / filename))
+    if display:
+        plt.show()
+    plt.close('all')
+
     # Time-wavenumber (log)
     fig, axs = plt.subplots(figsize=(15, 10))
-    tkSpec_plot_log.plot(ax=axs, x = "wavenumber", y = "time", cbar_kwargs={'label': f'Log of spectral power in {field_name}'}, cmap='plasma')
+    tkSpec_plot_log.plot(ax=axs, x = "wavenumber", y = "time", cbar_kwargs={'label': f'{field_name} power [{r"log$_{10}$"}]'}, cmap='plasma')
     axs.grid()
     axs.set_xlabel(r"Wavenumber [$\frac{\Omega_{c,\alpha}}{v_A}$]")
     axs.set_ylabel(r"Time [$\tau_{c,\alpha}$]")
     fig.tight_layout()
     if saveDirectory is not None:
         filename = Path(f'{runName}_{field.replace("_", "")}_tk_log_maxK-{maxK if maxK is not None else "all"}.png')
+        fig.savefig(str(saveDirectory / filename))
+    if display:
+        plt.show()
+    plt.close('all')
+
+    # Time-wavenumber (log, positive)
+    fig, axs = plt.subplots(figsize=(15, 10))
+    tkSpec_plot_log.sel(wavenumber=tkSpec_plot_log.wavenumber>=0.0).plot(ax=axs, x = "wavenumber", y = "time", cbar_kwargs={'label': f'{field_name} power [{r"log$_{10}$"}]'}, cmap='plasma')
+    axs.grid()
+    axs.set_xlabel(r"Wavenumber [$\frac{\Omega_{c,\alpha}}{v_A}$]")
+    axs.set_ylabel(r"Time [$\tau_{c,\alpha}$]")
+    fig.tight_layout()
+    if saveDirectory is not None:
+        filename = Path(f'{runName}_{field.replace("_", "")}_tk_log_maxK-{maxK if maxK is not None else "all"}_pos.png')
         fig.savefig(str(saveDirectory / filename))
     if display:
         plt.show()
