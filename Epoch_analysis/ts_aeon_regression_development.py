@@ -109,11 +109,13 @@ def plot_predictions(
     plt.subplots(figsize=(12, 8))
     plt.scatter(truth, sim_ids, label = "True value", marker = "o", color = "blue")
     plt.scatter(preds, sim_ids, label = "Predicted value", marker = "o", color = "red")
+    plt.grid()
     if not noTitle:
         plt.title(f"Predictions from {algorithm_name} ({r'$r^2$'} = {r2:.3f}, {r'rmse'} = {rmse:.3f})")
     plt.ylabel("Simulation ID")
     if doLog:
         plt.xscale("log")
+        plt.grid(which="both")
     
     plt.xlabel(f"{field} [{unit}]")
 
@@ -124,7 +126,6 @@ def plot_predictions(
     handles, labels = plt.gca().get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
     plt.legend(by_label.values(), by_label.keys())
-    plt.grid()
     plt.savefig(saveFolder / f"{algorithm_name}_{field}_allPredictions.png", bbox_inches="tight")
 
     plt.subplots(figsize=(12, 8))
@@ -132,11 +133,13 @@ def plot_predictions(
         plt.plot([truth[i], truth[i]], [preds[i], truth[i]], color = "black", label = "errors")
     plt.plot([np.min(truth), np.max(truth)], [np.min(truth), np.max(truth)], color = "blue", linestyle="dashed", label="ideal predictions")
     plt.scatter(truth, preds, marker = "o", color = "red")
+    plt.grid()
     if not noTitle:
         plt.title(f"{field} -- {algorithm_name} ({r'$r^2$'} = {r2:.3f}, {r'rmse'} = {rmse:.3f})")
     if doLog:
         plt.xscale("log")
         plt.yscale("log")
+        plt.grid(which="both")
 
     plt.xlabel(f"True values [{unit}]")
     plt.ylabel(f"Predictions [{unit}]")
@@ -145,7 +148,6 @@ def plot_predictions(
     handles, labels = plt.gca().get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
     plt.legend(by_label.values(), by_label.keys())
-    plt.grid()
     plt.savefig(saveFolder / f"{algorithm_name}_{field}_prediction_error.png", bbox_inches="tight")
     
 def regress(
@@ -161,7 +163,8 @@ def regress(
         doIce : bool = False,
         iceMetricsToUse : list = None,
         resultsFilepath : Path = None,
-        doPlot : bool = True
+        doPlot : bool = True,
+        noTitle : bool = False
 ):
     logging.basicConfig(filename='aeon_tsc.log', level=logging.INFO)
 
@@ -374,7 +377,8 @@ def regress(
                     r2 = result.cvR2_mean,
                     rmse = result.cvRMSE_mean,
                     saveFolder = resultsFilepath.parent / "predictions" / algorithm, 
-                    doLog = output_field in logFields
+                    doLog = output_field in logFields,
+                    noTitle = noTitle
                 )
     
     ml_utils.write_ML_result_to_file(battery, resultsFilepath)
@@ -451,6 +455,12 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
+        "--noTitle",
+        action="store_true",
+        help="Exclude title from prediction plots.",
+        required = False
+    )
+    parser.add_argument(
         "--doIce",
         action="store_true",
         help="Correlate predictions with ICE metrics.",
@@ -489,5 +499,6 @@ if __name__ == "__main__":
         doIce=args.doIce,
         iceMetricsToUse=args.iceMetrics,
         resultsFilepath=args.resultsFilepath,
-        doPlot=args.doPlot)
+        doPlot=args.doPlot,
+        noTitle=args.noTitle)
     # demo()

@@ -800,7 +800,7 @@ def create_omega_k_plots(
     axs.set_ylabel(f"Sum of {field} power over all k [{field_unit}]")
     axs.grid()
     fig.tight_layout()
-    filename = Path(f'{runName}_{field.replace("_", "")}_powerByOmega_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
+    filename = Path(f'{runName}_{field.replace("_", "").replace("$", "")}_powerByOmega_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
     fig.savefig(str(saveDirectory / filename))
     if display:
         plt.show()
@@ -816,7 +816,7 @@ def create_omega_k_plots(
     axs.set_ylabel(f"log10({field} power over all k / {r'$B_0$'})")
     axs.grid()
     fig.tight_layout()
-    filename = Path(f'{runName}_{field.replace("_", "")}_powerByOmegaLog_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
+    filename = Path(f'{runName}_{field.replace("_", "").replace("$", "")}_powerByOmegaLog_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
     fig.savefig(str(saveDirectory / filename))
     if display:
         plt.show()
@@ -833,7 +833,7 @@ def create_omega_k_plots(
     axs.set_ylabel(f"log10({field} {pow2} over all k / {r'$B_0^2$'}")
     axs.grid()
     fig.tight_layout()
-    filename = Path(f'{runName}_{field.replace("_", "")}_powerByOmegaLogSquare_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
+    filename = Path(f'{runName}_{field.replace("_", "").replace("$", "")}_powerByOmegaLogSquare_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
     fig.savefig(str(saveDirectory / filename))
     if display:
         plt.show()
@@ -849,7 +849,7 @@ def create_omega_k_plots(
     axs.set_ylabel(f"Normalised {field} power over all k [dB]")
     axs.grid()
     fig.tight_layout()
-    filename = Path(f'{runName}_{field.replace("_", "")}_powerByOmegaLog_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
+    filename = Path(f'{runName}_{field.replace("_", "").replace("$", "")}_powerByOmegaLog_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
     fig.savefig(str(saveDirectory / filename))
     if display:
         plt.show()
@@ -865,7 +865,7 @@ def create_omega_k_plots(
     axs.set_ylabel(f"Normalised {field} {pow2} over all k [dB]")
     axs.grid()
     fig.tight_layout()
-    filename = Path(f'{runName}_{field.replace("_", "")}_powerByOmegaDB_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
+    filename = Path(f'{runName}_{field.replace("_", "").replace("$", "")}_powerByOmegaDB_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
     fig.savefig(str(saveDirectory / filename))
     if display:
         plt.show()
@@ -883,7 +883,7 @@ def create_omega_k_plots(
     axs.set_ylabel(f"Sum of {field} power over all {omega} [{field_unit}]")
     axs.grid()
     fig.tight_layout()
-    filename = Path(f'{runName}_{field.replace("_", "")}_powerByK_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
+    filename = Path(f'{runName}_{field.replace("_", "").replace("$", "")}_powerByK_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
     fig.savefig(str(saveDirectory / filename))
     if display:
         plt.show()
@@ -896,7 +896,7 @@ def create_omega_k_plots(
     axs.set_xlabel(r"Wavenumber [$\frac{\Omega_{c,\alpha}}{v_A}$]")
     axs.grid()
     fig.tight_layout()
-    filename = Path(f'{runName}_{field.replace("_", "")}_wk_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
+    filename = Path(f'{runName}_{field.replace("_", "").replace("$", "")}_wk_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
     fig.savefig(str(saveDirectory / filename))
     if display:
         plt.show()
@@ -911,7 +911,7 @@ def create_omega_k_plots(
     axs.set_xlabel(r"Wavenumber [$\frac{\Omega_{c,\alpha}}{v_A}$]")
     axs.grid()
     fig.tight_layout()
-    filename = Path(f'{runName}_{field.replace("_", "")}_wk_log_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
+    filename = Path(f'{runName}_{field.replace("_", "").replace("$", "")}_wk_log_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
     fig.savefig(str(saveDirectory / filename))
     if display:
         plt.show()
@@ -930,7 +930,7 @@ def create_omega_k_plots(
     axs.set_xlabel(r"Wavenumber [$\frac{\Omega_{c,\alpha}}{v_A}$]")
     axs.grid()
     fig.tight_layout()
-    filename = Path(f'{runName}_{field.replace("_", "")}_wk_positiveK_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
+    filename = Path(f'{runName}_{field.replace("_", "").replace("$", "")}_wk_positiveK_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
     fig.savefig(str(saveDirectory / filename))
     if display:
         plt.show()
@@ -947,7 +947,7 @@ def create_omega_k_plots(
     axs.set_xlabel(r"Wavenumber [$\frac{\Omega_{c,\alpha}}{v_A}$]")
     axs.grid()
     fig.tight_layout()
-    filename = Path(f'{runName}_{field.replace("_", "")}_wk_positiveK_log_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
+    filename = Path(f'{runName}_{field.replace("_", "").replace("$", "")}_wk_positiveK_log_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
     fig.savefig(str(saveDirectory / filename))
     if display:
         plt.show()
