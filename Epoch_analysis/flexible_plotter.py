@@ -14,6 +14,7 @@ import plasmapy.formulary.frequencies as ppf
 import plasmapy.formulary.speeds as pps
 import astropy.units as u
 import netCDF4 as nc
+from scipy.interpolate import make_smoothing_spline
 
 class ScalarFormatterForceFormat(ScalarFormatter):
     def _set_format(self):  # Override function that finds format to use.
@@ -313,6 +314,95 @@ def dispersion_relations_for_papers(
     _ = epoch_utils.create_omega_k_plots(original_spec, dummyStats, field, wk_unit, outFolder, f"run_{simNumber}", inputDeck, bkgdSpecies, fastSpecies, maxK=maxK, maxW=maxW, display=False, debug=True)
     print("Done.")
 
+def energy_plots_for_papers(
+        statsFile : Path, 
+        outFolder : Path, 
+        maxTime : float = None,
+        displayPlots : bool = True,
+        doLog : bool = False,
+        noTitle : bool = True
+):
+    plt.rcParams.update({'axes.titlesize': 32.0})
+    plt.rcParams.update({'axes.labelsize': 32.0})
+    plt.rcParams.update({'xtick.labelsize': 28.0})
+    plt.rcParams.update({'ytick.labelsize': 28.0})
+    plt.rcParams.update({'legend.fontsize': 20.0})
+
+    simNumber = int(statsFile.name.split("_")[1])
+
+    stats = xr.open_datatree(
+        statsFile,
+        engine="netcdf4"
+    )
+
+    deltaEnergies = {
+        "backgroundIonMeanEnergyDensity" : stats["/Energy/backgroundIonMeanEnergyDensity"] - stats["/Energy/backgroundIonMeanEnergyDensity"].isel({"time" : 0}),
+        "electronMeanEnergyDensity" : stats["/Energy/electronMeanEnergyDensity"] - stats["/Energy/electronMeanEnergyDensity"].isel({"time" : 0}),
+        "magneticFieldMeanEnergyDensity" : stats["/Energy/magneticFieldMeanEnergyDensity"] - stats["/Energy/magneticFieldMeanEnergyDensity"].isel({"time" : 0}),
+        "electricFieldMeanEnergyDensity" : stats["/Energy/electricFieldMeanEnergyDensity"] - stats["/Energy/electricFieldMeanEnergyDensity"].isel({"time" : 0}),
+        "fastIonMeanEnergyDensity": stats["/Energy/fastIonMeanEnergyDensity"] - stats["/Energy/fastIonMeanEnergyDensity"].isel({"time" : 0})
+    }
+    percentageBaseline = float(stats["/Energy/fastIonMeanEnergyDensity"].isel({"time" : 0})) # Initial fast ion energy density
+    timeCoords = stats["/Energy"].coords["time"].data
+
+    # if maxTime:
+    #     for _, v in deltaEnergies.items():
+    #         v = v.sel(v.coords["time"]<maxTime)
+    #     timeCoords = timeCoords.sel(timeCoords = slice(None, maxTime))
+
+    pctEnergies = dict.fromkeys(deltaEnergies.keys())
+
+    # Initialise plotting
+    fig, ax = plt.subplots(figsize=(12, 8))
+    filename = Path(f"run_{simNumber}_percentage_energy_change.png")
+    totalDeltaED = np.zeros_like(deltaEnergies["magneticFieldMeanEnergyDensity"].as_numpy())
+    # Iterate deltas
+    for variable, deltaED in deltaEnergies.items():
+        
+        # Record for total
+        totalDeltaED += deltaED
+
+        # Smooth curve
+        smoothDeltaED = make_smoothing_spline(timeCoords, deltaED, lam = 0.01)
+        smoothDeltaData = smoothDeltaED(timeCoords)
+
+        # Calculate percentage change relative to baseline
+        percentageED = 100.0 * (deltaED / percentageBaseline) # %
+        pctEnergies[variable] = percentageED
+
+        # Record
+        smoothPctData = 100.0 * (smoothDeltaData / percentageBaseline)   
+        
+        colour = next((epoch_utils.E_TRACE_SPECIES_COLOUR_MAP[c] for c in epoch_utils.E_TRACE_SPECIES_COLOUR_MAP.keys() if c in variable), False)
+        if colour:
+            ax.plot(timeCoords, percentageED, alpha=0.5, color = colour)
+            ax.plot(timeCoords, smoothPctData, label=f"{epoch_utils.SPECIES_NAME_MAP[variable]}", linestyle="--", color = colour)
+        else:
+            ax.plot(timeCoords, percentageED, alpha=0.5)
+            ax.plot(timeCoords, smoothPctData, label=f"{epoch_utils.SPECIES_NAME_MAP[variable]}", linestyle="--")
+    
+    # Plot sum
+    pctTotalED = 100.0 * (totalDeltaED / percentageBaseline)
+    smoothDeltaED = make_smoothing_spline(timeCoords, totalDeltaED, lam = 0.01)
+    smoothDeltaData = smoothDeltaED(timeCoords)
+    smoothPctData = 100.0 * (smoothDeltaData / percentageBaseline)   
+    ax.plot(timeCoords, pctTotalED, alpha=0.5, color = "black")
+    ax.plot(timeCoords, smoothPctData, label=f"Total", linestyle="--", color = "black")
+
+    ax.legend()
+    ax.set_xlabel(r"Time [$\tau_{ci}$]")
+    ax.set_ylabel("Change in energy density [%]")
+    if doLog:
+        ax.set_yscale("symlog")
+    ax.grid()
+    if not noTitle:
+        ax.set_title(f"Run {simNumber}: Percentage change in ED relative to fast ion energy")
+    fig.tight_layout()
+    fig.savefig(outFolder / filename)
+    if displayPlots:
+        plt.show()
+    plt.close("all")
+
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser("parser")
@@ -339,6 +429,12 @@ if __name__ == "__main__":
         "--dispersion",
         action="store_true",
         help="Plot dispersion relations in paper-friendly way.",
+        required = False
+    )
+    parser.add_argument(
+        "--energy",
+        action="store_true",
+        help="Plot energy traces in paper-friendly way.",
         required = False
     )
     parser.add_argument(
@@ -412,4 +508,6 @@ if __name__ == "__main__":
         compare_spectra(args.dataFolder, args.sims, 50, args.equateAxes)
     if args.dispersion:
         dispersion_relations_for_papers(args.dataFolder, args.outputFolder, args.sims[0], field=args.fields[0], maxK=args.maxK, maxW=args.maxW)
+    if args.energy:
+        energy_plots_for_papers(args.dataFile, args.outputFolder)
 
