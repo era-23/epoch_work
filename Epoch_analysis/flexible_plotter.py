@@ -305,7 +305,7 @@ def dispersion_relations_for_papers(
     tk_unit = f"{epoch_utils.fieldNameToUnit(field)}{dotFftUnits}"
     epoch_utils.create_t_k_plot(tk_spec, field, tk_unit, outFolder, f"run_{simNumber}", maxK, display=False)
     print("Creating w-k spectrum....")
-    dummyStats = nc.Dataset(outFolder / "dummy.nc", mode="w")
+    dummyStats = nc.Dataset(outFolder / f"dummy_{simNumber}_{field}_{maxK}_{maxW}.nc", mode="w")
     dotFftUnits = r'$\cdot\frac{\Omega_{c,\alpha}^2}{v_A}$'
     wk_unit = f"{epoch_utils.fieldNameToUnit(field)}{dotFftUnits}"
     _ = epoch_utils.create_omega_k_plots(original_spec, dummyStats, field, wk_unit, outFolder, f"run_{simNumber}", inputDeck, bkgdSpecies, fastSpecies, maxK=maxK, maxW=maxW, display=False, debug=True)
