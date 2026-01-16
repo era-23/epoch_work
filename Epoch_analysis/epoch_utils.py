@@ -71,7 +71,8 @@ E_TRACE_SPECIES_COLOUR_MAP = {
     "electron" : "blue",
     "magneticField" : "purple",
     "electricField" : "green",
-    "fastIon" : "red"
+    "fastIon" : "red",
+    "total" : "black"
 }
 
 SPECIES_NAME_MAP = {
@@ -79,7 +80,15 @@ SPECIES_NAME_MAP = {
     "electronMeanEnergyDensity" : "Bkgd electron",
     "magneticFieldMeanEnergyDensity" : "B-field",
     "electricFieldMeanEnergyDensity" : "E-field",
-    "fastIonMeanEnergyDensity" : "Fast ion"
+    "fastIonMeanEnergyDensity" : "Fast ion",
+    "totalMeanEnergyDensity" : "Total",
+
+    "/Energy/backgroundIonMeanEnergyDensity" : "Bkgd ion",
+    "/Energy/electronMeanEnergyDensity" : "Bkgd electron",
+    "/Energy/magneticFieldMeanEnergyDensity" : "B-field",
+    "/Energy/electricFieldMeanEnergyDensity" : "E-field",
+    "/Energy/fastIonMeanEnergyDensity" : "Fast ion",
+    "/Energy/totalMeanEnergyDensity" : "Total",
 }
 
 ICE_METRICS = [
@@ -262,7 +271,7 @@ fieldNameToText_dict = {
     "B0strength" : "B0", 
     "B0angle" : "B0 angle", 
     "backgroundDensity" : "density (log)", 
-    "beamFraction" : "beam fraction (log)",
+    "beamFraction" : "fast ion fraction (log)",
     "pitch" : "pitch"
 }
 

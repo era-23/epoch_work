@@ -127,35 +127,32 @@ def compare_spectra(folder : Path, simNumbers : list, maxXcoord : float = 50.0, 
     f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
     f.set_scientific(True)
     axBz1.set_title(f"Run {simNumbers[0]} spectral power: {r'$B_z$'}")
-    axBz1.yaxis.tick_right()
+    axBz1.set_ylabel(r"$T \cdot \Omega_{c, \alpha}$")
     axBz1.yaxis.set_major_formatter(f)
     f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
     f.set_scientific(True)
     axBz2.set_title(f"Run {simNumbers[1]} spectral power: {r'$B_z$'}")
-    axBz2.set_ylabel(r"$T \cdot \Omega_{c, \alpha}$")
     axBz2.yaxis.set_major_formatter(f)
     
     f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
     f.set_scientific(True)
     axEx1.set_title(f"Run {simNumbers[0]} spectral power: {r'$E_x$'}")
-    axEx1.yaxis.tick_right()
+    axEx1.set_ylabel(r"$\frac{V}{m} \cdot \Omega_{c, \alpha}$")
     axEx1.yaxis.set_major_formatter(f)
     f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
     f.set_scientific(True)
     axEx2.set_title(f"Run {simNumbers[1]} spectral power: {r'$E_x$'}")
-    axEx2.set_ylabel(r"$\frac{V}{m} \cdot \Omega_{c, \alpha}$")
     axEx2.yaxis.set_major_formatter(f)
     
     f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
     f.set_scientific(True)
     axEy1.set_title(f"Run {simNumbers[0]} spectral power: {r'$E_y$'}")
-    axEy1.yaxis.tick_right()
+    axEy1.set_ylabel(r"$\frac{V}{m} \cdot \Omega_{c, \alpha}$")
     axEy1.yaxis.set_major_formatter(f)
     f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
     f.set_scientific(True)
     axEy1.set_xlabel(r"Frequency [$\Omega_{c, \alpha}$]")
     axEy2.set_title(f"Run {simNumbers[1]} spectral power: {r'$E_y$'}")
-    axEy2.set_ylabel(r"$\frac{V}{m} \cdot \Omega_{c, \alpha}$")
     axEy2.yaxis.set_major_formatter(f)
     axEy2.set_xlabel(r"Frequency [$\Omega_{c, \alpha}$]")
 
@@ -238,11 +235,11 @@ def compare_spectra(folder : Path, simNumbers : list, maxXcoord : float = 50.0, 
             
     handles, labels = axBz1.get_legend_handles_labels()
     labels, handles = zip(*sorted(zip(labels, handles), key=lambda t: t[0]))
-    # axBz2.legend(handles, labels)
+    axBz2.legend(handles, labels)
     axBz1.legend(handles, labels)
     # fig.tight_layout()
     fig.align_labels()
-    fig.subplots_adjust(wspace=0.25, hspace=0.25)
+    fig.subplots_adjust(wspace=0.1, hspace=0.25)
     plt.show()
 
 def dispersion_relations_for_papers(
@@ -315,12 +312,13 @@ def dispersion_relations_for_papers(
     print("Done.")
 
 def energy_plots_for_papers(
-        statsFile : Path, 
-        outFolder : Path, 
+        folder : Path, 
         maxTime : float = None,
         displayPlots : bool = True,
         doLog : bool = False,
-        noTitle : bool = True
+        noTitle : bool = True,
+        equateAxes : bool = True,
+        compareTracesBeta : bool = False
 ):
     plt.rcParams.update({'axes.titlesize': 32.0})
     plt.rcParams.update({'axes.labelsize': 32.0})
@@ -328,80 +326,96 @@ def energy_plots_for_papers(
     plt.rcParams.update({'ytick.labelsize': 28.0})
     plt.rcParams.update({'legend.fontsize': 20.0})
 
-    simNumber = int(statsFile.name.split("_")[1])
+    angles = glob.glob(str(folder / "data"/ "9*"))
+    upperBound = float("-inf")
+    lowerBound = float("inf")
+    energyTraces = {}
+    energyFields = [
+        "/Energy/backgroundIonMeanEnergyDensity", 
+        "/Energy/electronMeanEnergyDensity", 
+        "/Energy/magneticFieldMeanEnergyDensity", 
+        "/Energy/electricFieldMeanEnergyDensity", 
+        "/Energy/fastIonMeanEnergyDensity"
+    ]
+    timeCoords = None
 
-    stats = xr.open_datatree(
-        statsFile,
-        engine="netcdf4"
-    )
-
-    deltaEnergies = {
-        "backgroundIonMeanEnergyDensity" : stats["/Energy/backgroundIonMeanEnergyDensity"] - stats["/Energy/backgroundIonMeanEnergyDensity"].isel({"time" : 0}),
-        "electronMeanEnergyDensity" : stats["/Energy/electronMeanEnergyDensity"] - stats["/Energy/electronMeanEnergyDensity"].isel({"time" : 0}),
-        "magneticFieldMeanEnergyDensity" : stats["/Energy/magneticFieldMeanEnergyDensity"] - stats["/Energy/magneticFieldMeanEnergyDensity"].isel({"time" : 0}),
-        "electricFieldMeanEnergyDensity" : stats["/Energy/electricFieldMeanEnergyDensity"] - stats["/Energy/electricFieldMeanEnergyDensity"].isel({"time" : 0}),
-        "fastIonMeanEnergyDensity": stats["/Energy/fastIonMeanEnergyDensity"] - stats["/Energy/fastIonMeanEnergyDensity"].isel({"time" : 0})
-    }
-    percentageBaseline = float(stats["/Energy/fastIonMeanEnergyDensity"].isel({"time" : 0})) # Initial fast ion energy density
-    timeCoords = stats["/Energy"].coords["time"].data
-
-    # if maxTime:
-    #     for _, v in deltaEnergies.items():
-    #         v = v.sel(v.coords["time"]<maxTime)
-    #     timeCoords = timeCoords.sel(timeCoords = slice(None, maxTime))
-
-    pctEnergies = dict.fromkeys(deltaEnergies.keys())
-
-    # Initialise plotting
-    fig, ax = plt.subplots(figsize=(12, 8))
-    filename = Path(f"run_{simNumber}_percentage_energy_change.png")
-    totalDeltaED = np.zeros_like(deltaEnergies["magneticFieldMeanEnergyDensity"].as_numpy())
-    # Iterate deltas
-    for variable, deltaED in deltaEnergies.items():
+    # Get all data
+    for angle in angles:
         
-        # Record for total
-        totalDeltaED += deltaED
+        # Get simulation stats files
+        simFiles = glob.glob(str(Path(angle) / "*_stats.nc"))
 
-        # Smooth curve
-        smoothDeltaED = make_smoothing_spline(timeCoords, deltaED, lam = 0.01)
-        smoothDeltaData = smoothDeltaED(timeCoords)
+        for s in simFiles:
+            stats = xr.open_datatree(
+                s,
+                engine="netcdf4"
+            )
+            energyTraces[s] = dict.fromkeys(energyFields)
 
-        # Calculate percentage change relative to baseline
-        percentageED = 100.0 * (deltaED / percentageBaseline) # %
-        pctEnergies[variable] = percentageED
+            if timeCoords is None: # Assuming constant
+                timeCoords = stats["/Energy"].coords["time"].data
+            
+            totalDeltaED = np.zeros_like(stats["/Energy/backgroundIonMeanEnergyDensity"].to_numpy())
+            for field in energyFields:
+                deltaED = (stats[field] - stats[field].isel({"time" : 0})).to_numpy() / float(stats["/Energy/fastIonMeanEnergyDensity"].isel({"time" : 0}).data)
+                totalDeltaED += deltaED
+                energyTraces[s][field] = 100.0 * deltaED
+            energyTraces[s]["totalMeanEnergyDensity"] = 100.0 * totalDeltaED
+            if equateAxes:
+                for trace in energyTraces[s].values():
+                    if np.max(trace) > upperBound:
+                        upperBound = np.max(trace)
+                    if np.min(trace) < lowerBound:
+                        lowerBound = np.min(trace)
+                # Increase by 5% for viewability
+                upperBound *= 1.05
+                lowerBound *= 1.05
 
-        # Record
-        smoothPctData = 100.0 * (smoothDeltaData / percentageBaseline)   
+    # Plot
+    for statsFile, tracesByField in energyTraces.items():
         
-        colour = next((epoch_utils.E_TRACE_SPECIES_COLOUR_MAP[c] for c in epoch_utils.E_TRACE_SPECIES_COLOUR_MAP.keys() if c in variable), False)
-        if colour:
-            ax.plot(timeCoords, percentageED, alpha=0.5, color = colour)
-            ax.plot(timeCoords, smoothPctData, label=f"{epoch_utils.SPECIES_NAME_MAP[variable]}", linestyle="--", color = colour)
-        else:
-            ax.plot(timeCoords, percentageED, alpha=0.5)
-            ax.plot(timeCoords, smoothPctData, label=f"{epoch_utils.SPECIES_NAME_MAP[variable]}", linestyle="--")
-    
-    # Plot sum
-    pctTotalED = 100.0 * (totalDeltaED / percentageBaseline)
-    smoothDeltaED = make_smoothing_spline(timeCoords, totalDeltaED, lam = 0.01)
-    smoothDeltaData = smoothDeltaED(timeCoords)
-    smoothPctData = 100.0 * (smoothDeltaData / percentageBaseline)   
-    ax.plot(timeCoords, pctTotalED, alpha=0.5, color = "black")
-    ax.plot(timeCoords, smoothPctData, label=f"Total", linestyle="--", color = "black")
+        simNumber = Path(statsFile).name.split("_")[1]
+        angle = Path(statsFile).parent.name
 
-    ax.legend()
-    ax.set_xlabel(r"Time [$\tau_{ci}$]")
-    ax.set_ylabel("Change in energy density [%]")
-    if doLog:
-        ax.set_yscale("symlog")
-    ax.grid()
-    if not noTitle:
-        ax.set_title(f"Run {simNumber}: Percentage change in ED relative to fast ion energy")
-    fig.tight_layout()
-    fig.savefig(outFolder / filename)
-    if displayPlots:
-        plt.show()
-    plt.close("all")
+        if compareTracesBeta:
+            sameSim = [s for s in energyTraces.keys() if f"run_{simNumber}" in s and f"data/{angle}/" not in s][0]
+            sameAngle = [s for s in energyTraces.keys() if f"data/{angle}/" in s and f"run_{simNumber}" not in s][0]
+            sameSimTraces = energyTraces[sameSim]
+            sameAngleTraces = energyTraces[sameAngle]
+
+        # Initialise plotting
+        fig, ax = plt.subplots(figsize=(12, 8))
+        filename = Path(f"run_{simNumber}_angle_{angle}_percentage_energy_change.png")
+        totalDeltaED = np.zeros_like(tracesByField["/Energy/backgroundIonMeanEnergyDensity"])
+        
+        # Iterate deltas
+        for variable, percentageED in tracesByField.items(): 
+            
+            colour = next((epoch_utils.E_TRACE_SPECIES_COLOUR_MAP[c] for c in epoch_utils.E_TRACE_SPECIES_COLOUR_MAP.keys() if c in variable), False)
+            ax.plot(timeCoords, percentageED, label=f"{epoch_utils.SPECIES_NAME_MAP[variable]}", color = colour)
+            if compareTracesBeta:
+                if variable == "totalMeanEnergyDensity": # Fixes legend
+                    ax.plot(timeCoords, sameSimTraces[variable], label="Same simulation", linestyle = '--', color = colour, alpha = 0.6)
+                    ax.plot(timeCoords, sameAngleTraces[variable], label="Same angle", linestyle = ':', color = colour, alpha = 0.6)
+                else:
+                    ax.plot(timeCoords, sameSimTraces[variable], linestyle = '--', color = colour, alpha = 0.6)
+                    ax.plot(timeCoords, sameAngleTraces[variable], linestyle = ':', color = colour, alpha = 0.6)
+        
+        ax.legend()
+        ax.set_xlabel(r"Time [$\tau_{ci}$]")
+        ax.set_ylabel("Change in energy density [%]")
+        if equateAxes:
+            ax.set_ylim(bottom=lowerBound, top=upperBound)
+        if doLog:
+            ax.set_yscale("symlog")
+        ax.grid()
+        if not noTitle:
+            ax.set_title(f"Run {simNumber} Angle {angle}: Percentage change in ED relative to fast ion energy")
+        fig.tight_layout()
+        fig.savefig(folder / filename)
+        if displayPlots:
+            plt.show()
+        plt.close("all")
 
 if __name__ == "__main__":
     
@@ -509,5 +523,5 @@ if __name__ == "__main__":
     if args.dispersion:
         dispersion_relations_for_papers(args.dataFolder, args.outputFolder, args.sims[0], field=args.fields[0], maxK=args.maxK, maxW=args.maxW)
     if args.energy:
-        energy_plots_for_papers(args.dataFile, args.outputFolder)
+        energy_plots_for_papers(args.dataFolder)
 

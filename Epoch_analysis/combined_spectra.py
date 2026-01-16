@@ -17,6 +17,13 @@ import plasmapy.particles as ppp
 import astropy.units as u
 
 def estimate_B0_from_spectra(combined_directory : Path, fields : list, particle : str = "He-4 2+"):
+
+    plt.rcParams.update({'axes.titlesize': 32.0})
+    plt.rcParams.update({'axes.labelsize': 36.0})
+    plt.rcParams.update({'xtick.labelsize': 28.0})
+    plt.rcParams.update({'ytick.labelsize': 28.0})
+    plt.rcParams.update({'legend.fontsize': 24.0})
+
     combined_statsFiles = glob.glob(str(combined_directory / "data" / "*_combined_stats.nc"))
     originalB0s = {f : [] for f in fields}
     recoveredB0s = {f : [] for f in fields}
@@ -30,14 +37,14 @@ def estimate_B0_from_spectra(combined_directory : Path, fields : list, particle 
 
         for field in fields:
             filename = Path(simFile).name
-            print(f"File: {filename}, Field: {field}")
+            # print(f"File: {filename}, Field: {field}")
             data : xr.DataArray = data_xr[field]
 
             # Convert to SI (on original spectrum)
             known_B0 = float(data_xr.B0strength)
             originalB0s[field].append(known_B0)
             gyrofrequency_in_SI = ppf.gyrofrequency(known_B0 * u.T, particle = particle)
-            print(f"Gyrofrequency in SI: {gyrofrequency_in_SI}")
+            # print(f"Gyrofrequency in SI: {gyrofrequency_in_SI}")
             si_coords = data.coords["frequency"] * gyrofrequency_in_SI
             # print(f"Frequency coords in SI: {si_coords}")
             data = data.assign_coords({"frequency" : si_coords})
@@ -51,7 +58,7 @@ def estimate_B0_from_spectra(combined_directory : Path, fields : list, particle 
             maxFreqFreq = float(spec.idxmax().data)
             maxFreq = 1.0 / maxFreqFreq
             maxPower = spec.max().data
-            print(f"Max: {maxPower}, Max index: {spec.argmax().data}, Max coord: {maxFreqFreq * 1/gyrofrequency_in_SI.unit} Max coord in OG units: {maxFreq * gyrofrequency_in_SI.unit}")
+            # print(f"Max: {maxPower}, Max index: {spec.argmax().data}, Max coord: {maxFreqFreq * 1/gyrofrequency_in_SI.unit} Max coord in OG units: {maxFreq * gyrofrequency_in_SI.unit}")
             assert spec.coords["freq_frequency"][-1] == np.max(spec.coords["freq_frequency"])
             # plt.scatter(maxFreqFreq, maxPower, color = "red", marker = "x", label = "peak power")
             # spec.plot()
@@ -60,7 +67,14 @@ def estimate_B0_from_spectra(combined_directory : Path, fields : list, particle 
 
             # Recover B0
             recovered_B0 = (maxFreq * ppp.alpha.mass) / ppp.alpha.charge
-            print(f"Original B0: {data_xr.B0strength * u.T}, recovered B0 : {recovered_B0}")
+            simName = Path(simFile).name
+            # print(f"{simName}: Original B0: {data_xr.B0strength * u.T}, recovered B0 : {recovered_B0}")
+            if abs(recovered_B0.value - data_xr.B0strength) > 1.0:
+                print("-------------------------------------------------------")
+                print(f"{field}: Poor revoery of B0: {simName} -- error = {recovered_B0.value - data_xr.B0strength}")
+                print(f"{simName} parameters: B0 {data_xr.B0strength}, pitch {data_xr.pitch}, density {data_xr.backgroundDensity}, beam frac {data_xr.beamFraction}.")
+                print(f"Percentiles: B0 {int(np.rint(((data_xr.B0strength - 1.0) / 4.0) * 100.0))}, pitch {int(np.rint(((data_xr.pitch - 0.01) / (0.99-0.01)) * 100.0))}, density {int(np.rint(((np.log10(data_xr.backgroundDensity) - 19) / 1.0) * 100.0))} beam frac {int(np.rint(((np.log10(data_xr.beamFraction) + 2) / -2.0) * 100.0))}")
+                print("-------------------------------------------------------")
 
             # Record
             recoveredB0s[field].append(recovered_B0.value)
@@ -76,11 +90,11 @@ def estimate_B0_from_spectra(combined_directory : Path, fields : list, particle 
         
         # Plot original vs. recovered B0s
         result = linregress(ogs, recs)
-        plt.figure(figsize=(8,8))
-        plt.title(f"{field}: B0\n(r2 = {result.rvalue**2:.3f}, S.E. = {result.stderr:.3f})")
+        plt.figure(figsize=(8.5,8.5))
+        # plt.title(f"{field}: B0\n(r2 = {result.rvalue**2:.3f}, S.E. = {result.stderr:.3f})")
         plt.scatter(ogs, recs, marker = "x", color = "red")
         sortB0 = sorted(ogs)
-        plt.plot(sortB0, sortB0, color = "blue", alpha = 0.9, linestyle = "dashed", label = "perfect prediciton")
+        plt.plot(sortB0, sortB0, color = "blue", alpha = 0.9, linestyle = "dashed", label = "ideal prediction")
         plt.xlabel("Original B0 [T]")
         plt.ylabel("Recovered B0 [T]")
         plt.grid()
@@ -88,7 +102,7 @@ def estimate_B0_from_spectra(combined_directory : Path, fields : list, particle 
         plt.tight_layout()
         plt.show()
 
-        # # Plot errors with other varied quantities
+        # Plot errors with other varied quantities
         # for param, values in variedParams.items():
         #     result = linregress(values, squared_errors)
         #     plt.figure(figsize=(8,8))
