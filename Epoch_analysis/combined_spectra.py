@@ -11,6 +11,7 @@ import xrft
 import epoch_utils as eu
 from scipy.stats import linregress
 from scipy.signal import find_peaks
+from sklearn.metrics import root_mean_squared_error
 import pycatch22
 import plasmapy.formulary.frequencies as ppf
 import plasmapy.particles as ppp
@@ -36,7 +37,7 @@ def estimate_B0_from_spectra(combined_directory : Path, fields : list, particle 
             value.append(data_xr.attrs[key])
 
         for field in fields:
-            filename = Path(simFile).name
+            simName = Path(simFile).name
             # print(f"File: {filename}, Field: {field}")
             data : xr.DataArray = data_xr[field]
 
@@ -52,9 +53,10 @@ def estimate_B0_from_spectra(combined_directory : Path, fields : list, particle 
             # plt.show()
             
             og_spec : xr.DataArray = xrft.xrft.fft(data, true_amplitude=False, true_phase=True, window=None)
-            spec = np.abs(og_spec)           
+            spec = np.abs(og_spec)
+            # print(spec.coords["freq_frequency"])           
             spec = spec.sel(freq_frequency = slice(0.0, None))
-            spec = spec.isel(freq_frequency = slice(50, None))
+            spec = spec.isel(freq_frequency = slice(int(0.1*len(spec.coords["freq_frequency"])), None))
             maxFreqFreq = float(spec.idxmax().data)
             maxFreq = 1.0 / maxFreqFreq
             maxPower = spec.max().data
@@ -67,7 +69,6 @@ def estimate_B0_from_spectra(combined_directory : Path, fields : list, particle 
 
             # Recover B0
             recovered_B0 = (maxFreq * ppp.alpha.mass) / ppp.alpha.charge
-            simName = Path(simFile).name
             # print(f"{simName}: Original B0: {data_xr.B0strength * u.T}, recovered B0 : {recovered_B0}")
             if abs(recovered_B0.value - data_xr.B0strength) > 1.0:
                 print("-------------------------------------------------------")
@@ -86,10 +87,15 @@ def estimate_B0_from_spectra(combined_directory : Path, fields : list, particle 
     for field in fields:
         ogs = originalB0s[field]
         recs = recoveredB0s[field]
+        absErrors = np.abs(np.array(recs) - np.array(ogs))
         squared_errors = (np.array(recs) - np.array(ogs))**2
         
         # Plot original vs. recovered B0s
         result = linregress(ogs, recs)
+        print(f"Plotting predictions vs true values for {field}")
+        print(f"{field}: B0 r2 = {result.rvalue**2:.3f}, S.E. = {result.stderr:.3f}, rmse = {root_mean_squared_error(ogs, recs)}")
+        threshold = 0.2
+        print(f"{field}: {sum(v > threshold for v in absErrors)}/{len(absErrors)} predictions are outside of {threshold}T.")
         plt.figure(figsize=(8.5,8.5))
         # plt.title(f"{field}: B0\n(r2 = {result.rvalue**2:.3f}, S.E. = {result.stderr:.3f})")
         plt.scatter(ogs, recs, marker = "x", color = "red")
