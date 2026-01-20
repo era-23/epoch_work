@@ -127,6 +127,20 @@ class TSRResult:
     cvRMSE_stderr : float = 0.0
 
 @dataclass
+class TSRPrediction:
+    algorithm : str = None
+    inputChannels : list = None
+    outputQuantity : str = None
+    datapoint_ID : int = None
+    fold_ID : int = None
+    trueValue_normalised : float = None
+    trueValue_denormalised : float = None
+    trueValue_denormalised_log10 : float = None
+    predictedValue_normalised : float = None
+    predictedValue_denormalised : float = None
+    predictedValue_denormalised_log10 : float = None
+
+@dataclass
 class SimulationMetadata:
     simId : int
     backgroundDensity : float

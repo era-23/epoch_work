@@ -231,7 +231,7 @@
                     // "aeon.TimeSeriesForestRegressor",
                     // "aeon.FreshPRINCERegressor",
                     // "aeon.RocketRegressor",
-                    // "aeon.MiniRocketRegressor",
+                    "aeon.MiniRocketRegressor",
                     // "aeon.MultiRocketHydraRegressor",
                     // "aeon.RISTRegressor",
                     // "aeon.QUANTRegressor",
@@ -259,8 +259,8 @@
                 //     "ICEmetric_harmonicPeakFloorRatio",
                 //     "ICEmetric_harmonicPower",
                 //     "ICEmetric_energyTransfer",
-                "--doPlot",
-                "--noTitle"
+                // "--doPlot",
+                // "--noTitle"
             ]
         },
         {

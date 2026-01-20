@@ -20,6 +20,8 @@ import logging
 
 import epoch_utils
 
+from dataclass_csv import DataclassWriter
+
 logger = logging.getLogger(__name__)
 warnings.filterwarnings("ignore")
 
@@ -168,8 +170,9 @@ def regress(
 ):
     logging.basicConfig(filename='aeon_tsc.log', level=logging.INFO)
 
-    # Initialise results object
+    # Initialise results objects
     battery = ml_utils.TSRBattery()
+    allPredictionsRecord = []
     battery.package = "Aeon"
 
     if directory.name != "data":
@@ -335,6 +338,25 @@ def regress(
                 all_predictions.extend(list(predictions))
                 all_predictions_denormed.extend(preds_denormed)
 
+                # Log predictions
+                testLens = [len(predictions), len(test), len(test_y), len(test_y_denormed), len(predictions), len(preds_denormed)]
+                assert len(set(testLens)) == 1 # All lists have equal length
+                for i in range(len(predictions)):
+                    predRecord = ml_utils.TSRPrediction(
+                        algorithm=algorithm,
+                        inputChannels=inputSpectraNames,
+                        outputQuantity=output_field,
+                        datapoint_ID=test[i],
+                        fold_ID=fold,
+                        trueValue_normalised=test_y[i],
+                        trueValue_denormalised=test_y_denormed[i][0],
+                        trueValue_denormalised_log10=np.log10(test_y_denormed[i][0]),
+                        predictedValue_normalised=predictions[i],
+                        predictedValue_denormalised=preds_denormed[i][0],
+                        predictedValue_denormalised_log10=np.log10(preds_denormed[i][0])
+                    )
+                    allPredictionsRecord.append(predRecord)
+
             rmse, rmse_var, rmse_se = ml_utils.root_mean_squared_error(all_predictions, all_test_points)
             r2 = np.mean(all_R2s)
             r2_sem = sem(all_R2s)
@@ -381,7 +403,12 @@ def regress(
                     noTitle = noTitle
                 )
     
+    # Write results and all predictions
     ml_utils.write_ML_result_to_file(battery, resultsFilepath)
+    if len(allPredictionsRecord) > 0:
+        with open(resultsFilepath.parent / "predictions" / f"{resultsFilepath.name.replace('.json', '').replace('.', '')}_predictions.csv", "w") as f:
+            w = DataclassWriter(f, allPredictionsRecord, ml_utils.TSRPrediction)
+            w.write()
 
 if __name__ == "__main__":
     
