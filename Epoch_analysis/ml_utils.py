@@ -129,7 +129,7 @@ class TSRResult:
 @dataclass
 class TSRPrediction:
     algorithm : str = None
-    inputChannels : list = None
+    inputChannels : ArrayLike = None
     outputQuantity : str = None
     datapoint_ID : int = None
     fold_ID : int = None

@@ -344,7 +344,7 @@ def regress(
                 for i in range(len(predictions)):
                     predRecord = ml_utils.TSRPrediction(
                         algorithm=algorithm,
-                        inputChannels=inputSpectraNames,
+                        inputChannels=np.array(inputSpectraNames),
                         outputQuantity=output_field,
                         datapoint_ID=test[i],
                         fold_ID=fold,

@@ -1,3 +1,4 @@
+from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 from plasmapy.formulary import frequencies as ppf
@@ -5,6 +6,10 @@ from plasmapy.formulary import speeds as pps
 from plasmapy.formulary import lengths as ppl
 from scipy import constants as constants
 import astropy.units as u
+import dataclass_csv
+import csv
+import ml_utils
+import copy
 
 def cold_plasma_dispersion_relation():
     # Constants
@@ -239,10 +244,28 @@ def verdon_et_al():
 
     # 2.2: plasma is warm but assumes wave is electrostatic/longitudinal
 
+def analyse_bad_predictions(csvPredictions : Path):
+    
+    with open(csvPredictions, "r") as csvFile:
+
+        csvr = csv.DictReader(csvFile)
+        header = csvr.fieldnames
+        for row in csvr:
+            newPredictionObject = copy.deepcopy(row)
+            # newPredictionObject[]
+        
+    # with open(csvPredictions.parent / "newCsv.csv", "w") as csvwf:
+    #     csvw = csv.writer(csvwf)
+    #     csvw.writerows(newRows)
+
+        # csvdclr = dataclass_csv.DataclassReader(csvFile, ml_utils.TSRPrediction)
+        # for row in csvdclr:
+        #     print(row)
 
 if __name__ == "__main__":
 
     #cold_plasma_dispersion_relation()
     #appleton_hartree()
     #trigonometry()
-    verdon_et_al()
+    #verdon_et_al()
+    analyse_bad_predictions(Path("/home/era536/Documents/Epoch/Data/2026_analysis/tsr_aeon_viking/LOOCV/aeon_combined_loocv_csvPredictions_predictions.csv"))
