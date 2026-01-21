@@ -3,3 +3,4 @@
 .vscode/launch.json
 .virtualenvs/
 Epoch_analysis/aeon_tsc.log
+Epoch_analysis/newCsv.csv
