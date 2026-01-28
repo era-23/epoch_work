@@ -10,6 +10,7 @@ import csv
 import math
 from scipy.stats import sem
 from sklearn.model_selection import RepeatedKFold, LeaveOneOut
+from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error, log_loss
 
 from aeon.datasets import load_cardano_sentiment, load_covid_3month
 from aeon.transformations.collection import Normalizer
@@ -361,6 +362,7 @@ def regress(
             r2 = np.mean(all_R2s)
             r2_sem = sem(all_R2s)
             r2_var = np.var(all_R2s)
+
             if math.isnan(r2):
                 # Recalculate based on r2 over folds (primarily for LOOCV)
                 r2 = r2_score(all_test_points, all_predictions)
@@ -375,6 +377,14 @@ def regress(
             result.cvRMSE_mean = rmse
             result.cvRMSE_var = rmse_var
             result.cvRMSE_stderr = rmse_se
+            result.cvMAE_mean = mean_absolute_error(y_true=all_test_points, y_pred=all_predictions, multioutput="uniform_average")
+            mae_all = mean_absolute_error(y_true=all_test_points, y_pred=all_predictions, multioutput="raw_values")
+            result.cvMAE_var = np.var(mae_all)
+            result.cvMAE_stderr = sem(mae_all)
+            result.cvMAPE_mean = mean_absolute_percentage_error(y_true=all_test_points, y_pred=all_predictions, multioutput="uniform_average")
+            mape_all = mean_absolute_percentage_error(y_true=all_test_points, y_pred=all_predictions, multioutput="raw_values")
+            result.cvMAPE_var = np.var(mape_all)
+            result.cvMAPE_stderr = sem(mape_all)
 
             battery.results.append(result)
 

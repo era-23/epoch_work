@@ -213,8 +213,8 @@
                 ///// Simulation parameters
                 "--outputFields",
                     "B0strength", 
-                    "pitch", 
-                    "backgroundDensity", 
+                    // "pitch", 
+                    // "backgroundDensity", 
                     "beamFraction",
                 "--logFields",
                     "backgroundDensity",
@@ -231,7 +231,7 @@
                     // "aeon.TimeSeriesForestRegressor",
                     // "aeon.FreshPRINCERegressor",
                     // "aeon.RocketRegressor",
-                    // "aeon.MiniRocketRegressor",
+                    "aeon.MiniRocketRegressor",
                     // "aeon.MultiRocketHydraRegressor",
                     // "aeon.RISTRegressor",
                     // "aeon.QUANTRegressor",
@@ -242,12 +242,12 @@
                     // "aeon.RandomIntervalRegressor",
                     // "aeon.MLPRegressor",
                 "--cvFolds",
-                    "10",
+                    "5",
                 "--cvRepeats",
-                    "1",
+                    "2",
                 "--cvStrategy",
-                    "LeaveOneOut",
-                    // "RepeatedKFolds",
+                    // "LeaveOneOut",
+                    "RepeatedKFolds",
                 "--resultsFilepath",
                     "/home/era536/Documents/Epoch/Data/2026_analysis/tsr_aeon/dummy.json",
                 // "--doIce",
@@ -799,7 +799,7 @@
             "args": [
                 "--file",
                 // "/home/era536/Documents/Epoch/Data/sept_25/JET_test/"
-                "/home/era536/Documents/Epoch/Data/sept_25/JET_test/jet_input.deck"
+                "/home/era536/Documents/Epoch/Data/sept_25/input_decks/JET_test/jet_input.deck"
             ]
         },
         {

@@ -125,6 +125,12 @@ class TSRResult:
     cvRMSE_mean : float = 0.0
     cvRMSE_var : float = 0.0
     cvRMSE_stderr : float = 0.0
+    cvMAE_mean : float = 0.0
+    cvMAE_var : float = 0.0
+    cvMAE_stderr : float = 0.0
+    cvMAPE_mean : float = 0.0
+    cvMAPE_var : float = 0.0
+    cvMAPE_stderr : float = 0.0
 
 @dataclass
 class TSRPrediction:

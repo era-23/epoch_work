@@ -15,8 +15,10 @@ from scipy.interpolate import make_smoothing_spline, BSpline
 from plasmapy.formulary import frequencies as ppf
 from plasmapy.formulary import lengths as ppl
 from plasmapy.formulary import speeds as pps
+from plasmapy.particles import Particle, alpha
 from dataclasses import dataclass
 
+from numpy.typing import ArrayLike
 from collections.abc import Sequence
 from warnings import warn
 from inference.pdf.hdi import sample_hdi
@@ -612,7 +614,17 @@ def calculate_simulation_metadata(
     outputNcRoot.backgroundDensity = background_density.value
     outputNcRoot.beamFraction = beam_frac
 
-    outputNcRoot.pitch = inputDeck["constant"]["pitch"]
+    pitch = inputDeck["constant"]["pitch"]
+    outputNcRoot.pitch = pitch
+    outputNcRoot.ringBeamEnergyInEv = inputDeck["constant"]["ring_beam_energy"]
+    fast_mass = alpha.mass if fastSpecies == 'He-4 2+' else Particle(fastSpecies).mass
+    p_ring_beam = np.sqrt(2.0 * fast_mass * constants.elementary_charge * inputDeck["constant"]["ring_beam_energy"])
+    outputNcRoot.ringBeamMomentum = p_ring_beam
+    outputNcRoot.beamMomentum = p_ring_beam * pitch
+    outputNcRoot.ringMomentum = p_ring_beam * np.sqrt(1.0 - pitch**2)
+    outputNcRoot.fastIonVelocity = p_ring_beam / fast_mass
+    outputNcRoot.fastIonVParallel = (p_ring_beam * pitch) / fast_mass
+    outputNcRoot.fastIonVPerp = (p_ring_beam * np.sqrt(1.0 - pitch**2)) / fast_mass
 
     outputNcRoot.debyeLength_m = debye_length.value
     sim_L_dl = sim_L / debye_length
@@ -1626,7 +1638,7 @@ def my_matrix_plot(
     reference: Sequence[float] = None,
     filename: str = None,
     plot_style: str = "contour",
-    colormap_list: list = ["Blues", "Greens"],
+    colormap_list: list = ["Blues", "Greens", "Reds"],
     show_ticks: bool = None,
     equalise_pdf_heights: bool = True,
     point_colors: Sequence[float] = None,
@@ -1825,13 +1837,21 @@ def my_matrix_plot(
             # are we on the diagonal?
             if i == j:
                 estimate = estimates[i]
-                ax.plot(
-                    axis_arrays[i],
-                    0.9 * (estimate / estimate.max()) if equalise_pdf_heights else 0.9 * (estimate / all_estimate_maxes[i]),
-                    lw=1,
-                    color=marginal_color,
-                    label = series_labels[n_series]
-                )
+                if len(series_labels) > 0:
+                    ax.plot(
+                        axis_arrays[i],
+                        0.9 * (estimate / estimate.max()) if equalise_pdf_heights else 0.9 * (estimate / all_estimate_maxes[i]),
+                        lw=1,
+                        color=marginal_color,
+                        label = series_labels[n_series]
+                    )
+                else:
+                    ax.plot(
+                        axis_arrays[i],
+                        0.9 * (estimate / estimate.max()) if equalise_pdf_heights else 0.9 * (estimate / all_estimate_maxes[i]),
+                        lw=1,
+                        color=marginal_color
+                    )
                 ax.fill_between(
                     axis_arrays[i],
                     0.9 * (estimate / estimate.max()) if equalise_pdf_heights else 0.9 * (estimate / all_estimate_maxes[i]),
@@ -1940,6 +1960,9 @@ def my_matrix_plot(
         plt.show()
 
     return fig
+
+def norm_values(a : ArrayLike):
+    return (a - a.min()) / (a.max() - a.min())
 
 def keV_to_Kelvin(value_in_keV : float) -> float :
     value_in_keV = value_in_keV * u.keV

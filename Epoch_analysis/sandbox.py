@@ -4,12 +4,18 @@ import matplotlib.pyplot as plt
 from plasmapy.formulary import frequencies as ppf
 from plasmapy.formulary import speeds as pps
 from plasmapy.formulary import lengths as ppl
+from plasmapy import particles as ppp
 from scipy import constants as constants
+from scipy.stats import linregress
 import astropy.units as u
 import dataclass_csv
 import csv
 import ml_utils
+import epoch_utils
 import copy
+import pandas as pd
+import epydeck
+import math
 
 def cold_plasma_dispersion_relation():
     # Constants
@@ -244,23 +250,215 @@ def verdon_et_al():
 
     # 2.2: plasma is warm but assumes wave is electrostatic/longitudinal
 
-def analyse_bad_predictions(csvPredictions : Path):
+def analyse_bad_predictions(csvPredictions : Path, inputDecks : Path):
     
+    newObs = []
     with open(csvPredictions, "r") as csvFile:
-
         csvr = csv.DictReader(csvFile)
-        header = csvr.fieldnames
         for row in csvr:
             newPredictionObject = copy.deepcopy(row)
-            # newPredictionObject[]
+            newPredictionObject["inputChannels"] = np.array(row["inputChannels"].removeprefix("[").removesuffix("]").replace("'", "").replace("\n", "").split(", "))
+            for k, v in row.items():
+                try:
+                    newPredictionObject[k] = float(v)
+                except Exception:
+                    pass
+            newObs.append(newPredictionObject)
         
-    # with open(csvPredictions.parent / "newCsv.csv", "w") as csvwf:
-    #     csvw = csv.writer(csvwf)
-    #     csvw.writerows(newRows)
+    preds_pd = pd.DataFrame(newObs)
+    preds_pd["error"] = preds_pd["predictedValue_normalised"] - preds_pd["trueValue_normalised"]
+    preds_pd["squaredError"] = preds_pd["error"]**2
 
-        # csvdclr = dataclass_csv.DataclassReader(csvFile, ml_utils.TSRPrediction)
-        # for row in csvdclr:
-        #     print(row)
+    # Select MRH only
+    mrh_preds_pd : pd.DataFrame = preds_pd[preds_pd["algorithm"] == "aeon.MultiRocketHydraRegressor"]
+
+    # For each output
+    squaredRanks = []
+    for outputField in list(dict.fromkeys(mrh_preds_pd["outputQuantity"].values).keys()): # Dict keys preserve order
+        fieldPredictions : pd.DataFrame = mrh_preds_pd[mrh_preds_pd["outputQuantity"] == outputField]
+        ranks = fieldPredictions["squaredError"].rank().tolist()
+        squaredRanks.extend(ranks)
+
+    mrh_preds_pd["squaredError_rank"] = squaredRanks
+
+    columns = [
+        "sim_ID", 
+        "alfvenSpeed",
+        "fastIonVelocity",
+        "fastIonVPerp",
+        "B0strength",
+        "B0strength_percentile",
+        "pitch",
+        "pitch_percentile",
+        "backgroundDensity",
+        "backgroundDensity_percentile",
+        "beamFraction",
+        "beamFraction_percentile",
+        "prediction_error_B0strength", 
+        "prediction_error_pitch", 
+        "prediction_error_backgroundDensity", 
+        "prediction_error_beamFraction",
+        "error_rank_B0strength",
+        "error_rank_pitch",
+        "error_rank_backgroundDensity",
+        "error_rank_beamFraction",
+        "mean_error_rank"]
+    
+    preds_by_all_sim = []
+    for sim_id in list(dict.fromkeys(mrh_preds_pd["datapoint_ID"].values).keys()):
+        preds_by_single_sim = dict.fromkeys(columns)
+        simData = mrh_preds_pd[mrh_preds_pd["datapoint_ID"] == sim_id]
+        preds_by_single_sim["sim_ID"] = int(sim_id)
+        ranks = []
+        norm_errors = []
+        for field in list(dict.fromkeys(mrh_preds_pd["outputQuantity"].values).keys()):
+            preds_by_single_sim[field] = simData[simData["outputQuantity"] == field]["trueValue_denormalised"].values[0]
+            preds_by_single_sim[f"prediction_error_{field}"] = simData[simData["outputQuantity"] == field]["squaredError"].values[0]
+            norm_errors.append(preds_by_single_sim[f"prediction_error_{field}"])
+            rank = simData[simData["outputQuantity"] == field]["squaredError_rank"].values[0]
+            preds_by_single_sim[f"error_rank_{field}"] = rank
+            ranks.append(rank)
+        preds_by_single_sim["mean_error_rank"] = np.mean(ranks)
+        preds_by_single_sim["mean_normed_error"] = np.mean(norm_errors)
+
+        with open(inputDecks / f"run_{int(sim_id)}/input.deck") as f:
+            inputDeck = epydeck.loads(f.read())["constant"]
+            assert np.isclose(inputDeck["b0_strength"], preds_by_single_sim["B0strength"])
+            assert np.isclose(inputDeck["background_density"], preds_by_single_sim["backgroundDensity"])
+            ring_beam_energy = inputDeck["ring_beam_energy"]
+            ring_beam_momentum = np.sqrt(2.0 * ppp.alpha.mass.value * ring_beam_energy * constants.elementary_charge)
+            preds_by_single_sim["alfvenSpeed"] = pps.Alfven_speed(
+                B = inputDeck["b0_strength"] * u.T, 
+                density = ((inputDeck["background_density"] - (inputDeck["frac_beam"] * inputDeck["background_density"] * ppp.alpha.charge_number)) / ppp.deuteron.charge_number) * u.m**-3,
+                ion = "D+"
+            ).value
+            preds_by_single_sim["fastIonVelocity"] = np.sqrt((2.0 * ring_beam_energy * constants.elementary_charge) / ppp.alpha.mass.value)
+            preds_by_single_sim["fastIonVPerp"] = (ring_beam_momentum * np.sqrt(1.0 - inputDeck["pitch"]**2)) / ppp.alpha.mass.value
+            preds_by_single_sim["vPerpToAlfvenRatio"] = preds_by_single_sim["fastIonVPerp"] / preds_by_single_sim["alfvenSpeed"]
+
+        preds_by_all_sim.append(preds_by_single_sim)
+    
+    preds_df = pd.DataFrame(preds_by_all_sim)
+    preds_df["B0strength_percentile"] = preds_df["B0strength"].rank(ascending=True, pct=True)
+    preds_df["pitch_percentile"] = preds_df["pitch"].rank(ascending=True, pct=True)
+    preds_df["backgroundDensity_percentile"] = preds_df["backgroundDensity"].rank(ascending=True, pct=True)
+    preds_df["beamFraction_percentile"] = preds_df["beamFraction"].rank(ascending=True, pct=True)
+    
+    centre_of_parameter_space = np.array([epoch_utils.norm_values(preds_df["B0strength"]).median(), epoch_utils.norm_values(preds_df["pitch"]).median(), epoch_utils.norm_values(preds_df["backgroundDensity"]).median(), epoch_utils.norm_values(preds_df["beamFraction"]).median()])
+    centre_of_parameter_space = np.tile(centre_of_parameter_space, (100, 1)).transpose()
+    data = np.array([epoch_utils.norm_values(preds_df["B0strength"]).values, epoch_utils.norm_values(preds_df["pitch"]).values, epoch_utils.norm_values(preds_df["backgroundDensity"]).values, epoch_utils.norm_values(preds_df["beamFraction"]).values])
+    dists = data - centre_of_parameter_space
+    squareDists = dists**2
+    sumSquareDists = np.sum(squareDists, axis=0)
+    sqrtSumSquareDists = np.sqrt(sumSquareDists)
+    euclidean_distance_to_centre_of_parameter_space = sqrtSumSquareDists
+    preds_df["normedEuDist_to_median_params"] = euclidean_distance_to_centre_of_parameter_space
+    preds_df["normedEuDist_to_median_params_rank"] = preds_df["normedEuDist_to_median_params"].rank()
+
+    preds_df.to_csv(csvPredictions.parent / "predictionRanks_bySim.csv")
+    mrh_preds_pd.to_csv(csvPredictions.parent / "predictionRanks_all.csv")
+
+    # preds_df.plot.scatter(x = "B0strength_percentile", y = "error_rank_B0strength")
+    # plt.show()
+
+    # preds_df.plot.scatter(x = "pitch_percentile", y = "error_rank_pitch")
+    # plt.show()
+
+    # preds_df.plot.scatter(x = "backgroundDensity_percentile", y = "error_rank_backgroundDensity")
+    # plt.show()
+
+    # preds_df.plot.scatter(x = "beamFraction_percentile", y = "error_rank_beamFraction")
+    # plt.show()
+
+    # preds_df["density percentile, absolute distance from 0.5"] = abs(0.5 - preds_df["backgroundDensity_percentile"])
+    # xv = preds_df["density percentile, absolute distance from 0.5"]
+    # preds_df.plot.scatter(x = "density percentile, absolute distance from 0.5", y = "error_rank_backgroundDensity")
+    # resultLR = linregress(xv.values, preds_df["error_rank_backgroundDensity"].values)
+    # plt.plot(xv.values, resultLR.slope * xv.values + resultLR.intercept, color="red")
+    # plt.title(f"r^2 = {resultLR.rvalue**2}")
+    # plt.show()
+
+    # mean_parameter_percentile = np.abs(0.5 - preds_df[["B0strength_percentile", "pitch_percentile", "backgroundDensity_percentile", "beamFraction_percentile"]].mean(axis=1).values)
+    # plt.scatter(x = mean_parameter_percentile, y = preds_df["mean_error_rank"].values)
+    # resultLR = linregress(mean_parameter_percentile, preds_df["mean_error_rank"].values)
+    # plt.plot(mean_parameter_percentile, resultLR.slope * mean_parameter_percentile + resultLR.intercept, color="red")
+    # plt.xlabel("mean parameter percentile, absolute distance from 0.5")
+    # plt.ylabel("mean error rank")
+    # plt.title(f"r^2 = {resultLR.rvalue**2}")
+    # plt.show()
+
+    # preds_df.plot.scatter(x = "B0strength_percentile", y = "mean_error_rank")
+    # plt.show()
+    # preds_df.plot.scatter(x = "pitch_percentile", y = "mean_error_rank")
+    # plt.show()
+    # preds_df.plot.scatter(x = "backgroundDensity_percentile", y = "mean_error_rank")
+    # plt.show()
+    # preds_df.plot.scatter(x = "beamFraction_percentile", y = "mean_error_rank")
+    # plt.show()
+
+    # preds_df["beamFraction percentile, absolute distance from 0.5"] = abs(0.5 - preds_df["beamFraction_percentile"])
+    # xv = preds_df["beamFraction percentile, absolute distance from 0.5"]
+    # preds_df.plot.scatter(x = "beamFraction percentile, absolute distance from 0.5", y = "mean_error_rank")
+    # resultLR = linregress(xv.values, preds_df["mean_error_rank"].values)
+    # plt.plot(xv.values, resultLR.slope * xv.values + resultLR.intercept, color="red")
+    # plt.title(f"r^2 = {resultLR.rvalue**2}")
+    # plt.show()
+
+    xv = preds_df["normedEuDist_to_median_params"]
+    preds_df.plot.scatter(x = "normedEuDist_to_median_params", y = "mean_normed_error")
+    resultLR = linregress(xv.values, preds_df["mean_normed_error"].values)
+    plt.plot(xv.values, resultLR.slope * xv.values + resultLR.intercept, color="red")
+    plt.title(f"r^2 = {resultLR.rvalue**2}")
+    # plt.xscale("log")
+    # plt.yscale("log")
+    plt.show()
+
+    epoch_utils.my_matrix_plot(
+        data_series=[[
+            preds_df["B0strength_percentile"], 
+            preds_df["pitch_percentile"], 
+            preds_df["backgroundDensity_percentile"], 
+            preds_df["beamFraction_percentile"], 
+            preds_df["prediction_error_B0strength"],
+            preds_df["prediction_error_pitch"],
+            preds_df["prediction_error_backgroundDensity"],
+            preds_df["prediction_error_beamFraction"],
+            preds_df["vPerpToAlfvenRatio"],
+            preds_df["normedEuDist_to_median_params"],
+            preds_df["mean_normed_error"],
+        ]],
+        parameter_labels=["B0 pct", "pitch pct", "density pct", "beam frac. pct", "B0 error", "pitch error", "density error", "beam frac. error", "vPerp/AS", "NEDTPSM", "mean error"],
+        show=True,
+        plot_style="contour"
+    )
+    epoch_utils.my_matrix_plot(
+        data_series=[[
+            preds_df["B0strength_percentile"], 
+            preds_df["pitch_percentile"], 
+            preds_df["backgroundDensity_percentile"], 
+            preds_df["beamFraction_percentile"], 
+            preds_df["vPerpToAlfvenRatio"],
+            preds_df["normedEuDist_to_median_params"],
+            preds_df["mean_normed_error"],
+        ]],
+        parameter_labels=["B0 pct", "pitch pct", "density pct", "beam frac. pct", "vPerp/AS", "NEDTPSM", "mean error"],
+        show=True,
+        plot_style="contour"
+    )
+    # epoch_utils.my_matrix_plot(
+    #     data_series=[[
+    #         preds_df["prediction_error_B0strength"],
+    #         preds_df["prediction_error_pitch"],
+    #         preds_df["prediction_error_backgroundDensity"],
+    #         preds_df["prediction_error_beamFraction"],
+    #         preds_df["normedEuDist_to_median_params"],
+    #         preds_df["mean_normed_error"]
+    #     ]],
+    #     parameter_labels=["B0 error", "pitch error", "density error", "beam frac. error", "NEDTPSM", "mean error"],
+    #     show=True,
+    #     plot_style="contour"
+    # )
+
 
 if __name__ == "__main__":
 
@@ -268,4 +466,7 @@ if __name__ == "__main__":
     #appleton_hartree()
     #trigonometry()
     #verdon_et_al()
-    analyse_bad_predictions(Path("/home/era536/Documents/Epoch/Data/2026_analysis/tsr_aeon_viking/LOOCV/aeon_combined_loocv_csvPredictions_predictions.csv"))
+    analyse_bad_predictions(
+        Path("/home/era536/Documents/Epoch/Data/2026_analysis/tsr_aeon_viking/LOOCV/aeon_combined_loocv_csvPredictions_predictions.csv"),
+        Path("/home/era536/Documents/Epoch/Data/2026_analysis/original_input_decks/run_0_100/")
+    )
