@@ -113,6 +113,14 @@ class TSRBattery:
     cvStrategy : str = None
     cvFolds : int = 0
     cvRepeats : int = 0
+    cvTimeTotal_CPUhours : float = 0.0
+    trainingTimeTotal_CPUns : int = 0
+    trainingTimeTotal_CPUhours : float = 0.0
+    trainingTimeMeanPerFold_CPUhours : float = 0.0
+    inferenceTimeMeanPerFold_CPUns : int = 0
+    inferenceTimeMeanPerFold_CPUms : float = 0.0
+    inferenceTimeMeanPerFold_ClockNs : int = 0
+    inferenceTimeMeanPerFold_ClockMs : float = 0.0
     results : ArrayLike = None
     
 @dataclass

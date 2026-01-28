@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import csv
 import math
+import time
 from scipy.stats import sem
 from sklearn.model_selection import RepeatedKFold, LeaveOneOut
 from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error, log_loss
@@ -251,9 +252,17 @@ def regress(
     battery.cvRepeats = cvRepeats
     battery.results = []
 
+    trainingTimeTotal_ns = 0
+    cvTimeTotal_ns = 0
+    fold_training_times_ns = []
+    fold_inference_times_cpu_ns = []
+    fold_inference_times_clock_ns = []
+
     # Dumb hack
     best_results = {"backgroundDensity" : 0.598, "beamFraction" : 0.312, "B0strength" : 0.505, "pitch" : 0.531}
 
+    clock_time_start = time.time()
+    cv_time_start = time.process_time_ns()
     for output_field, output_values in outputs.items():
         
         assert len(output_values) == inputSpectra.shape[0]
@@ -301,6 +310,7 @@ def regress(
             all_predictions_denormed = []
             
             for fold, (train, test) in tt_split:
+                fold_start_training_time = time.process_time_ns()
                 print(f"Fold: {fold} (test indices: {test})....")
                 # print(f"    Train indices: {train}")
                 # print(f"    Test indices:  {test}")
@@ -318,8 +328,28 @@ def regress(
                     print(f"1.0 in normalised RMSE units is {scaler.inverse_transform([[1.0]])} in original {output_field} units (may be logged).")
 
                 print("    Training model....")
+                # Fit
                 tsr.fit(train_x, train_y)
+                fold_end_training_time = time.process_time_ns()
+                
+                # Timing
+                fold_time_ns = fold_end_training_time - fold_start_training_time
+                fold_training_times_ns.append(fold_time_ns)
+                trainingTimeTotal_ns += fold_time_ns
+                print(f"Fold training time: {fold_time_ns / 1E9} s")
+
+                # Predict
+                fold_inf_time_clock_start = time.perf_counter_ns()
+                fold_inference_time_start = time.process_time_ns()
                 predictions = tsr.predict(test_x)
+                fold_inf_time_clock_end = time.perf_counter_ns()
+                fold_inference_time_end = time.process_time_ns()
+                fold_inference_time_ns = fold_inference_time_end - fold_inference_time_start
+                fold_inf_time_clock_ns = fold_inf_time_clock_end - fold_inf_time_clock_start
+                fold_inference_times_cpu_ns.append(fold_inference_time_ns)
+                fold_inference_times_clock_ns.append(fold_inf_time_clock_ns)
+                print(f"Fold inference time: {fold_inference_time_ns} CPU ns or {fold_inf_time_clock_ns} clock ns.")
+
                 preds_denormed = ml_utils.denormalise_data(predictions, scaler)
                 test_y_denormed = ml_utils.denormalise_data(test_y, scaler)
                 if output_field in logFields:
@@ -413,12 +443,28 @@ def regress(
                     noTitle = noTitle
                 )
     
+    clock_time_end = time.time()
+    cv_time_end = time.process_time_ns()
+    cvTimeTotal_ns = cv_time_end - cv_time_start
+    clock_time = clock_time_end - clock_time_start
+    print(f"Clock time: {clock_time / 60.0} min. Process time: {cvTimeTotal_ns / 6E10} min.")
+
+    battery.cvTimeTotal_CPUhours = float(cvTimeTotal_ns) / 3.6E12
+    battery.inferenceTimeMeanPerFold_CPUns = int(np.rint(np.mean(fold_inference_times_cpu_ns)))
+    battery.inferenceTimeMeanPerFold_CPUms = float(battery.inferenceTimeMeanPerFold_CPUns) / 1E6
+    battery.inferenceTimeMeanPerFold_ClockNs = int(np.rint(np.mean(fold_inference_times_clock_ns)))
+    battery.inferenceTimeMeanPerFold_ClockMs = float(battery.inferenceTimeMeanPerFold_ClockNs) / 1E6
+    battery.trainingTimeMeanPerFold_CPUhours = np.mean(fold_training_times_ns)  / 3.6E12
+    battery.trainingTimeTotal_CPUns = trainingTimeTotal_ns
+    battery.trainingTimeTotal_CPUhours = float(trainingTimeTotal_ns) / 3.6E12
+
     # Write results and all predictions
     ml_utils.write_ML_result_to_file(battery, resultsFilepath)
     if len(allPredictionsRecord) > 0:
         with open(resultsFilepath.parent / "predictions" / f"{resultsFilepath.name.replace('.json', '').replace('.', '')}_predictions.csv", "w") as f:
             w = DataclassWriter(f, allPredictionsRecord, ml_utils.TSRPrediction)
             w.write()
+
 
 if __name__ == "__main__":
     
