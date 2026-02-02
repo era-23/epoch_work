@@ -324,7 +324,7 @@ def get_algorithm(name, **kwargs):
         case "aeon.ResNetRegressor":
             return aeon_deep.ResNetRegressor()
         case "aeon.RocketRegressor":
-            return aeon_conv.RocketRegressor(n_jobs=-1)
+            return aeon_conv.RocketRegressor()
         case "aeon.SummaryRegressor":
             return aeon_feature.SummaryRegressor(n_jobs=-1)
         case "aeon.TSFreshRegressor":
