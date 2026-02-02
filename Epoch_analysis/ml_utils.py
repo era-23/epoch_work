@@ -126,6 +126,7 @@ class TSRBattery:
 @dataclass
 class TSRResult:
     algorithm : str = None
+    algorithmArgs : dict = None
     output : str = None
     cvR2_mean : float = 0.0
     cvR2_var : float = 0.0
@@ -294,7 +295,7 @@ def get_algorithm(name, **kwargs):
         case "aeon.FreshPRINCERegressor":
             return aeon_feature.FreshPRINCERegressor(n_jobs=-1)
         case "aeon.HydraRegressor":
-            return aeon_conv.HydraRegressor(n_jobs=-1)
+            return aeon_conv.HydraRegressor(n_jobs=-1, **kwargs)
         case "aeon.InceptionTimeRegressor":
             return aeon_deep.InceptionTimeRegressor()
         case "aeon.IndividualInceptionRegressor":
@@ -308,11 +309,11 @@ def get_algorithm(name, **kwargs):
         case "aeon.MLPRegressor":
             return aeon_deep.MLPRegressor()
         case "aeon.MiniRocketRegressor":
-            return aeon_conv.MiniRocketRegressor(n_jobs=-1)
+            return aeon_conv.MiniRocketRegressor(n_jobs=-1, **kwargs)
         case "aeon.MultiRocketHydraRegressor":
-            return aeon_conv.MultiRocketHydraRegressor(n_jobs=-1)
+            return aeon_conv.MultiRocketHydraRegressor(n_jobs=-1, **kwargs)
         case "aeon.MultiRocketRegressor":
-            return aeon_conv.MultiRocketRegressor(n_jobs=-1)
+            return aeon_conv.MultiRocketRegressor(n_jobs=-1, **kwargs)
         case "aeon.QUANTRegressor":
             return aeon_int.QUANTRegressor()
         case "aeon.RISTRegressor":
