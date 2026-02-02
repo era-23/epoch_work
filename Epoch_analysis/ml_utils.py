@@ -316,7 +316,7 @@ def get_algorithm(name, **kwargs):
         case "aeon.QUANTRegressor":
             return aeon_int.QUANTRegressor()
         case "aeon.RISTRegressor":
-            return aeon_hybrid.RISTRegressor(n_jobs=-1)
+            return aeon_hybrid.RISTRegressor()
         case "aeon.RandomIntervalRegressor":
             return aeon_int.RandomIntervalRegressor(n_jobs=-1)
         case "aeon.RandomIntervalSpectralEnsembleRegressor":
