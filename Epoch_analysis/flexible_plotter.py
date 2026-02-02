@@ -231,7 +231,7 @@ def compare_spectra(folder : Path, simNumbers : list, maxXcoord : float = 50.0, 
             ax.set_ylim(bottom=0)
             ax.grid()
             if field in axesToEquate:
-                ax.set_ylim(top=np.max(allData[field]))
+                ax.set_ylim(top=np.max(allData[field])*1.05)
             
     handles, labels = axBz1.get_legend_handles_labels()
     labels, handles = zip(*sorted(zip(labels, handles), key=lambda t: t[0]))

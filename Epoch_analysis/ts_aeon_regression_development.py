@@ -219,8 +219,6 @@ def regress(
     min_l = np.min(spec_lengths)
     print(f"Max spec length: {np.max(spec_lengths)} min spec length: {min_l}")
     max_common_coord = np.max([c[-1] for c in [inputs[f"{inputSpectrumName}_coords"] for inputSpectrumName in inputSpectraNames]])
-    if not os.path.exists(directory / "spectra_homogenisation/"):
-        os.mkdir(directory / "spectra_homogenisation/")
     
     inputData = []
     for field in inputSpectraNames:

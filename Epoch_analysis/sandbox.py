@@ -413,21 +413,22 @@ def analyse_bad_predictions(csvPredictions : Path, inputDecks : Path):
     # plt.yscale("log")
     plt.show()
 
+    print(preds_df["vPerpToAlfvenRatio"].to_string())
+    print(f"vPerp/Alfven speed ranges from {preds_df['vPerpToAlfvenRatio'].min()} to {preds_df['vPerpToAlfvenRatio'].max()}, median = {preds_df['vPerpToAlfvenRatio'].median()}, mean = {preds_df['vPerpToAlfvenRatio'].mean()}, SD = {preds_df['vPerpToAlfvenRatio'].std()}")
+
     epoch_utils.my_matrix_plot(
         data_series=[[
-            preds_df["B0strength_percentile"], 
-            preds_df["pitch_percentile"], 
+            # preds_df["B0strength_percentile"], 
+            # preds_df["pitch_percentile"], 
             preds_df["backgroundDensity_percentile"], 
             preds_df["beamFraction_percentile"], 
-            preds_df["prediction_error_B0strength"],
-            preds_df["prediction_error_pitch"],
-            preds_df["prediction_error_backgroundDensity"],
-            preds_df["prediction_error_beamFraction"],
+            # np.log(preds_df["prediction_error_B0strength"]),
+            # np.log(preds_df["prediction_error_pitch"]),
+            np.log(preds_df["prediction_error_backgroundDensity"]),
+            np.log(preds_df["prediction_error_beamFraction"]),
             preds_df["vPerpToAlfvenRatio"],
-            preds_df["normedEuDist_to_median_params"],
-            preds_df["mean_normed_error"],
         ]],
-        parameter_labels=["B0 pct", "pitch pct", "density pct", "beam frac. pct", "B0 error", "pitch error", "density error", "beam frac. error", "vPerp/AS", "NEDTPSM", "mean error"],
+        parameter_labels=["density pct", "BF pct", "ln dens error", "ln BF error", "vPerp/AS"],
         show=True,
         plot_style="contour"
     )
@@ -445,19 +446,20 @@ def analyse_bad_predictions(csvPredictions : Path, inputDecks : Path):
         show=True,
         plot_style="contour"
     )
-    # epoch_utils.my_matrix_plot(
-    #     data_series=[[
-    #         preds_df["prediction_error_B0strength"],
-    #         preds_df["prediction_error_pitch"],
-    #         preds_df["prediction_error_backgroundDensity"],
-    #         preds_df["prediction_error_beamFraction"],
-    #         preds_df["normedEuDist_to_median_params"],
-    #         preds_df["mean_normed_error"]
-    #     ]],
-    #     parameter_labels=["B0 error", "pitch error", "density error", "beam frac. error", "NEDTPSM", "mean error"],
-    #     show=True,
-    #     plot_style="contour"
-    # )
+    epoch_utils.my_matrix_plot(
+        data_series=[[
+            np.log(preds_df["prediction_error_B0strength"]),
+            np.log(preds_df["prediction_error_pitch"]),
+            np.log(preds_df["prediction_error_backgroundDensity"]),
+            np.log(preds_df["prediction_error_beamFraction"]),
+            preds_df["vPerpToAlfvenRatio"],
+            preds_df["normedEuDist_to_median_params"]
+        ]],
+        # parameter_labels=["B0 pct", "pitch pct", "density pct", "beam frac. pct", "B0 error", "pitch error", "density error", "beam frac. error", "vPerp/AS", "NEDTPSM", "mean error"],
+        parameter_labels=["ln B0 error", "ln pitch error", "ln dens error", "ln BF error", "vPerp/AS", "NEDTPSM"],
+        show=True,
+        plot_style="contour"
+    )
 
 
 if __name__ == "__main__":
