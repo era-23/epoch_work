@@ -277,24 +277,24 @@ def get_algorithm(name, **kwargs):
     # AEON
     # Unequal length data series
         case "aeon.Catch22Regressor":
-            return aeon_feature.Catch22Regressor()
+            return aeon_feature.Catch22Regressor(n_jobs=-1)
         case "aeon.DummyRegressor":
             return aeon_reg.DummyRegressor()
         case "aeon.KNeighborsTimeSeriesRegressor":
-            return aeon_dist.KNeighborsTimeSeriesRegressor()
+            return aeon_dist.KNeighborsTimeSeriesRegressor(n_jobs=-1)
         case "aeon.RDSTRegressor":
-            return aeon_shapelet.RDSTRegressor()
+            return aeon_shapelet.RDSTRegressor(n_jobs=-1)
     # Multivariate
         case "aeon.CanonicalIntervalForestRegressor":
-            return aeon_int.CanonicalIntervalForestRegressor()
+            return aeon_int.CanonicalIntervalForestRegressor(n_jobs=-1)
         case "aeon.DrCIFRegressor":
-            return aeon_int.DrCIFRegressor()
+            return aeon_int.DrCIFRegressor(n_jobs=-1)
         case "aeon.FCNRegressor":
             return aeon_deep.FCNRegressor()
         case "aeon.FreshPRINCERegressor":
-            return aeon_feature.FreshPRINCERegressor()
+            return aeon_feature.FreshPRINCERegressor(n_jobs=-1)
         case "aeon.HydraRegressor":
-            return aeon_conv.HydraRegressor()
+            return aeon_conv.HydraRegressor(n_jobs=-1)
         case "aeon.InceptionTimeRegressor":
             return aeon_deep.InceptionTimeRegressor()
         case "aeon.IndividualInceptionRegressor":
@@ -302,37 +302,37 @@ def get_algorithm(name, **kwargs):
         case "aeon.IndividualLITERegressor":
             return aeon_deep.IndividualLITERegressor()
         case "aeon.IntervalForestRegressor":
-            return aeon_int.IntervalForestRegressor()
+            return aeon_int.IntervalForestRegressor(n_jobs=-1)
         case "aeon.LITETimeRegressor":
             return aeon_deep.LITETimeRegressor()
         case "aeon.MLPRegressor":
             return aeon_deep.MLPRegressor()
         case "aeon.MiniRocketRegressor":
-            return aeon_conv.MiniRocketRegressor()
+            return aeon_conv.MiniRocketRegressor(n_jobs=-1)
         case "aeon.MultiRocketHydraRegressor":
-            return aeon_conv.MultiRocketHydraRegressor()
+            return aeon_conv.MultiRocketHydraRegressor(n_jobs=-1)
         case "aeon.MultiRocketRegressor":
-            return aeon_conv.MultiRocketRegressor()
+            return aeon_conv.MultiRocketRegressor(n_jobs=-1)
         case "aeon.QUANTRegressor":
             return aeon_int.QUANTRegressor()
         case "aeon.RISTRegressor":
-            return aeon_hybrid.RISTRegressor()
+            return aeon_hybrid.RISTRegressor(n_jobs=-1)
         case "aeon.RandomIntervalRegressor":
-            return aeon_int.RandomIntervalRegressor()
+            return aeon_int.RandomIntervalRegressor(n_jobs=-1)
         case "aeon.RandomIntervalSpectralEnsembleRegressor":
-            return aeon_int.RandomIntervalSpectralEnsembleRegressor()
+            return aeon_int.RandomIntervalSpectralEnsembleRegressor(n_jobs=-1)
         case "aeon.ResNetRegressor":
             return aeon_deep.ResNetRegressor()
         case "aeon.RocketRegressor":
-            return aeon_conv.RocketRegressor()
+            return aeon_conv.RocketRegressor(n_jobs=-1)
         case "aeon.SummaryRegressor":
-            return aeon_feature.SummaryRegressor()
+            return aeon_feature.SummaryRegressor(n_jobs=-1)
         case "aeon.TSFreshRegressor":
-            return aeon_feature.TSFreshRegressor()
+            return aeon_feature.TSFreshRegressor(n_jobs=-1)
         case "aeon.TimeCNNRegressor":
             return aeon_deep.TimeCNNRegressor()
         case "aeon.TimeSeriesForestRegressor":
-            return aeon_int.TimeSeriesForestRegressor()
+            return aeon_int.TimeSeriesForestRegressor(n_jobs=-1)
     # Univariate
         case "aeon.DisjointCNNRegressor":
             return aeon_deep.DisjointCNNRegressor()
