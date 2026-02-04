@@ -88,7 +88,8 @@ def regress(
         doPlot : bool = True,
         noTitle : bool = False,
         hydraTypeArgs : list = [{"n_kernels" : 8, "n_groups" : 64}],
-        mRocketTypeArgs : list = [{"n_kernels" : 10000, "max_dilations_per_kernel" : 32}]
+        mRocketTypeArgs : list = [{"n_kernels" : 10000, "max_dilations_per_kernel" : 32}],
+        nThreads : int = 1
 ):
     # Initialise results objects
     battery = ml_utils.TSRBattery()
@@ -206,7 +207,7 @@ def regress(
                 result.algorithm = algorithm
                 result.algorithmArgs = argSet
                 
-                tsr = ml_utils.get_algorithm(algorithm, **argSet)
+                tsr = ml_utils.get_algorithm(algorithm, nThreads, **argSet)
 
                 # CV Folds
                 all_test_indices = []
@@ -365,6 +366,14 @@ if __name__ == "__main__":
         required = False,
         type=Path
     )
+    parser.add_argument(
+        "--nThreads",
+        action="store",
+        help="Number of threads to use for training and prediction.",
+        required = False,
+        type=int,
+        default=1
+    )
 
     args = parser.parse_args()
 
@@ -413,4 +422,5 @@ if __name__ == "__main__":
         doPlot=True,
         noTitle=True,
         hydraTypeArgs = hydra_type_nkernels_nGroups,
-        mRocketTypeArgs = mRocket_type_nKernels_maxDilations)
+        mRocketTypeArgs = mRocket_type_nKernels_maxDilations,
+        nThreads = args.nThreads)

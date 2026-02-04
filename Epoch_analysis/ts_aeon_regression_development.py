@@ -168,7 +168,8 @@ def regress(
         iceMetricsToUse : list = None,
         resultsFilepath : Path = None,
         doPlot : bool = True,
-        noTitle : bool = False
+        noTitle : bool = False,
+        nThreads : int = 1
 ):
     logging.basicConfig(filename='aeon_tsc.log', level=logging.INFO)
 
@@ -297,7 +298,7 @@ def regress(
             result.output = output_field
             result.algorithm = algorithm
             
-            tsr = ml_utils.get_algorithm(algorithm)
+            tsr = ml_utils.get_algorithm(algorithm, nThreads)
 
             # CV Folds
             all_test_indices = []
@@ -562,6 +563,14 @@ if __name__ == "__main__":
         type=str,
         nargs="*"
     )
+    parser.add_argument(
+        "--nThreads",
+        action="store",
+        help="Number of threads to use for training and prediction.",
+        required = False,
+        type=int,
+        default=1
+    )
 
     args = parser.parse_args()
 
@@ -581,5 +590,6 @@ if __name__ == "__main__":
         iceMetricsToUse=args.iceMetrics,
         resultsFilepath=args.resultsFilepath,
         doPlot=args.doPlot,
-        noTitle=args.noTitle)
+        noTitle=args.noTitle,
+        nThreads =args.nThreads)
     # demo()
