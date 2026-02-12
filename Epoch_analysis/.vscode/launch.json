@@ -205,7 +205,7 @@
             "justMyCode": false,
             "args": [
                 "--dir", 
-                    "/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra/data/",
+                    "/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_cottrell/data/",
                 "--inputSpectra", 
                     "Magnetic_Field_Bz/power/powerByFrequency",
                     "Electric_Field_Ex/power/powerByFrequency",
@@ -213,8 +213,8 @@
                 ///// Simulation parameters
                 "--outputFields",
                     "B0strength", 
-                    // "pitch", 
-                    // "backgroundDensity", 
+                    "pitch", 
+                    "backgroundDensity", 
                     "beamFraction",
                 "--logFields",
                     "backgroundDensity",
@@ -230,8 +230,9 @@
                     // "aeon.DrCIFRegressor",
                     // "aeon.TimeSeriesForestRegressor",
                     // "aeon.FreshPRINCERegressor",
-                    "aeon.RocketRegressor",
+                    // "aeon.RocketRegressor",
                     // "aeon.MiniRocketRegressor",
+                    "aeon.MultiRocketRegressor",
                     // "aeon.MultiRocketHydraRegressor",
                     // "aeon.RISTRegressor",
                     // "aeon.QUANTRegressor",
@@ -249,7 +250,7 @@
                     "LeaveOneOut",
                     //"RepeatedKFolds",
                 "--resultsFilepath",
-                    "/home/era536/Documents/Epoch/Data/2026_analysis/tsr_aeon/dummy.json",
+                    "/home/era536/Documents/Epoch/Data/2026_analysis/tsr_aeon/equalFs.json",
                 // "--doIce",
                 // "--iceMetrics",
                 //     "ICEmetric_c22HighFluct",
@@ -262,7 +263,7 @@
                 // "--doPlot",
                 // "--noTitle"
                 "--nThreads",
-                    "2"
+                    "4"
             ]
         },
         {
@@ -916,6 +917,17 @@
                 "--noTitle",
                 // "--noLegend",
                 "--debug",
+            ]
+        },
+        {
+            "name": "Python Debugger: Error Analysis",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "error_analysis.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+
             ]
         },
         {
