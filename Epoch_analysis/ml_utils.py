@@ -11,7 +11,7 @@ from scipy.signal import find_peaks, resample
 import xarray as xr
 from inference.plotting import matrix_plot
 from sklearn.gaussian_process import GaussianProcessRegressor, GaussianProcessClassifier
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
 import json
 import dataclasses as dc
 from dataclasses import dataclass
@@ -465,7 +465,7 @@ def normalise_dataset(data: ArrayLike):
     return np.array(normed_data), orig_mean, orig_sd
 
 # Normalise data using an sklearn standard scaler
-def normalise_data(data: ArrayLike, scaler : StandardScaler = None) -> tuple[np.ndarray, StandardScaler]:
+def normalise_data(data: ArrayLike, scaler = None) -> tuple[np.ndarray, StandardScaler]:
     if isinstance(data, list):
         data = np.array(data)
     if len(data.shape) == 1:
@@ -478,7 +478,7 @@ def normalise_data(data: ArrayLike, scaler : StandardScaler = None) -> tuple[np.
     return data_normed, scaler
 
 # Denormalise data using a previously fit sklearn standard scaler.
-def denormalise_data(data: ArrayLike, scaler : StandardScaler) -> np.ndarray:
+def denormalise_data(data: ArrayLike, scaler) -> np.ndarray:
     if len(data.shape) == 1:
         data = data.reshape(-1, 1)
     denormed_data = scaler.inverse_transform(data)

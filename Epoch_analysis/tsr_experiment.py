@@ -2,15 +2,18 @@ import argparse
 import glob
 import os
 from pathlib import Path
+
+from matplotlib import ticker
 import ml_utils
 import matplotlib.pyplot as plt
 import numpy as np
-import math
+import pandas as pd
 import time
 from scipy.stats import sem
 from sklearn.model_selection import RepeatedKFold, LeaveOneOut
 from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error, root_mean_squared_error, r2_score
-
+from sklearn.preprocessing import MinMaxScaler
+import random
 import epoch_utils
 
 from dataclass_csv import DataclassWriter
@@ -76,7 +79,218 @@ def plot_predictions(
     plt.legend(by_label.values(), by_label.keys())
     plt.savefig(saveFolder / f"{algorithm_name}_{field}_prediction_error.png", bbox_inches="tight")
 
-def regress(
+def regress_cottrell(
+        dataDirectory : Path,
+        inputSpectraNames : list,
+        outputFields : list,
+        logFields : list,
+        algorithms : list,
+        cottrellDatapath : Path = Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_cottrell/cottrell_93_experimental_data.csv"),
+        normalise : bool = True,
+        resultsFilepath : Path = None,
+        doPlot : bool = True,
+        noTitle : bool = False,
+        nThreads : int = 1
+):
+    
+    SMALL_SIZE = 10
+    MEDIUM_SIZE = 16
+    BIGGER_SIZE = 20
+
+    plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
+    plt.rc('axes', titlesize=BIGGER_SIZE)     # fontsize of the axes title
+    plt.rc('axes', labelsize=BIGGER_SIZE)    # fontsize of the x and y labels
+    plt.rc('xtick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
+    plt.rc('ytick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
+    plt.rc('legend', fontsize=12)    # legend fontsize
+    plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
+
+    # Initialise results objects
+    battery = ml_utils.TSRBattery()
+    battery.package = "Aeon"
+
+    if not ("data" in dataDirectory.name):
+        data_dir = dataDirectory / "data"
+    else:
+        data_dir = dataDirectory
+    data_files = glob.glob(str(data_dir / "*.nc")) 
+    battery.directory = str(dataDirectory.resolve())
+    battery.algorithms = algorithms
+    battery.normalised = normalise
+
+    # Input data
+    inputs = {name : [] for name in inputSpectraNames}
+    inputs = ml_utils.read_data(data_files, inputs, with_names = True, with_coords = True, with_iciness = False)
+    battery.inputSpectra = np.array(inputSpectraNames)
+
+    # Output data
+    outputs = {outputField : [] for outputField in outputFields}
+    outputs = ml_utils.read_data(data_files, outputs, with_names = False, with_coords = False)
+    battery.outputFields = np.array(outputFields)
+    battery.numOutputs = len(outputs.keys())
+
+    if "B0angle" in outputs:
+        transf = np.array(outputs["B0angle"])
+        outputs["B0angle"] = np.abs(transf - 90.0) 
+
+    spec_lengths = []
+    for field in inputSpectraNames:
+        spec_lengths.extend([len(s) for s in inputs[field]])
+    min_l = np.min(spec_lengths)
+    print(f"Max spec length: {np.max(spec_lengths)} min spec length: {min_l}")
+    max_common_coord = np.max([c[-1] for c in [inputs[f"{inputSpectrumName}_coords"] for inputSpectrumName in inputSpectraNames]])
+    
+    inputData = []
+    for field in inputSpectraNames:
+        specs = inputs[field]
+        for i in range(len(specs)):
+            if len(specs[i]) > min_l:
+                truncd_series, truncd_coords = ml_utils.truncate_series(specs[i], inputs[f"{field}_coords"][i], max_common_coord)
+                resamp_series, _ = ml_utils.downsample_series(truncd_series, truncd_coords, min_l, f"{field.split('/')[0]}_run_{inputs['sim_ids'][i]}", dataDirectory / "spectra_homogenisation/")
+                specs[i] = resamp_series
+        inputData.append(specs) 
+
+    # Reshape into 3D numpy array of shape (n_cases, n_channels, n_timepoints)
+    inputSpectra = np.swapaxes(np.array(inputData), 0, 1)
+    # outputs = np.array(list(outputs.values()))
+
+    logFields = np.intersect1d(outputFields, logFields)
+    battery.logFields = np.array(logFields)
+    battery.original_output_means = dict.fromkeys(outputFields)
+    battery.original_output_stdevs = dict.fromkeys(outputFields)
+
+    battery.equalLengthTimeseries = True
+    battery.numObservations = inputSpectra.shape[0]
+    battery.numInputDimensions = inputSpectra.shape[1]
+    battery.numTimepointsIfEqual = inputSpectra.shape[2]
+    battery.multivariate = battery.numInputDimensions > 1
+
+    battery.results = []
+
+    # Get Cottrell data
+    cottrell_data = pd.read_csv(cottrellDatapath)
+
+    sort_indices = np.argsort(cottrell_data["Frequency (MHz)"])
+    equally_spaced_freqs = np.linspace(cottrell_data["Frequency (MHz)"].min(), cottrell_data["Frequency (MHz)"].max(), inputSpectra.shape[2])
+    test_x = np.interp(equally_spaced_freqs, np.sort(cottrell_data["Frequency (MHz)"]), cottrell_data["ICE Intensity (dB)"][sort_indices])
+    all_true_y = {"B0strength" : 2.8, "backgroundDensity" : 3.6E19, "beamFraction" : 6.5E-4}
+    # There is no test_y as we're not scoring predictions yet
+    # B = 2.8T, background density = 3.6E19, beamFraction = 6.5E-4 (TRANSP), pitch = ???
+
+    # Normalise train_x, train_y and test_x
+    # Need to normalise the training spectra independently because we don't know the scale for the cottrell data
+    # scaler_train = MinMaxScaler(feature_range=(0, 1))
+    # for observation in train_x:
+    #     for i in range(len(observation)):
+    #         observation[i] = scaler_train.fit_transform(observation[i].reshape(-1, 1)).flatten()
+
+    train_x = inputSpectra
+    test_x = MinMaxScaler(feature_range=(0, 1)).fit_transform(test_x.reshape(-1, 1)).T
+
+    all_abs_normalised_errors = {a : [] for a in algorithms}
+    all_predictions = {a : [] for a in algorithms}
+
+    for output_field, output_values in outputs.items():
+
+        assert len(output_values) == inputSpectra.shape[0]
+        output_values = np.array(output_values)
+        true_y = all_true_y[output_field]
+        
+        if output_field in logFields:
+            output_values = np.log10(output_values)
+            true_y = np.log10(true_y)
+        
+        train_y, scaler_y = ml_utils.normalise_data(output_values)
+        true_y_norm, _ = ml_utils.normalise_data([true_y], scaler_y)
+        print(f"True output value: {all_true_y[output_field]} ({true_y_norm} normalised)")
+
+        # Record denormalisation parameters
+        # print(f"Original data mean: {np.mean(output_values)}, original data SD: {np.std(output_values)}")
+
+        for algorithm in algorithms:
+
+            # print(f"Building {algorithm} model for {output_field} from {inputSpectraNames}....")
+            
+            # Results
+            result = ml_utils.TSRResult()
+            result.output = output_field
+            result.algorithm = algorithm
+            
+            tsr = ml_utils.get_algorithm(algorithm, nThreads)
+
+            # print(f"Testing algorithm {algorithm} on Cottrell data....")
+            # print("Training model....")
+            
+            # Fit
+            tsr.fit(train_x, train_y)
+
+            # Predict
+            # print("Predicting Cottrell parameters based on model....")
+            prediction = tsr.predict(test_x)
+            # prediction = np.array([random.random()]) # Debugging
+            # print(f"Fold inference time: {fold_inference_time_ns} CPU ns or {fold_inf_time_clock_ns} clock ns.")
+
+            pred_denormed = ml_utils.denormalise_data(prediction, scaler_y)
+            if output_field in logFields:
+                pred_denormed = 10.0**pred_denormed
+                true_y_denorm = 10.0**true_y
+            err_norm = prediction[0]-true_y_norm[0]
+            print(f"{algorithm} Prediction of {output_field}:  {prediction[0]} (normalised), {pred_denormed[0]} (original) -- {err_norm} normalised error")
+            all_abs_normalised_errors[algorithm].append(abs(err_norm))
+            all_predictions[algorithm].append(abs(pred_denormed[0]))
+
+    plt.subplots(figsize=(8.5, 8))
+    for algo, results in all_abs_normalised_errors.items():
+        plt.scatter(outputFields, results, label = algo, s = 50, marker="s")
+    plt.ylim(-0.1, 1.5)
+    plt.axhline(y = 1.0, linestyle = "--", color="black")
+    plt.xlabel("Output")
+    plt.ylabel("Absolute normalised error [a.u.]")
+    plt.legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, 1.2))
+    plt.tight_layout()
+    plt.grid()
+    plt.show()
+
+    fig, axs = plt.subplots(len(outputFields), 1, figsize=(12,8))
+    for i in range(len(outputFields)):
+        for algo, results in all_predictions.items():
+            axs[i].scatter(all_predictions[algo][i], outputFields[i], label = algo, s = 50, marker="s")
+        axs[i].scatter(all_true_y[outputFields[i]], outputFields[i], label = "Experimental value", marker = "x", color="black", s = 50)
+        # box = axs[i].get_position()
+        # axs[i].set_position([box.x0, box.y0, box.width, box.height * 0.6])
+    axs[1].legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, 3.2))
+    axs[1].set_ylabel("Output")
+    axs[1].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
+    axs[2].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
+    axs[2].set_xlabel("Value")
+    axs[2].axvline(x = 0.01, color = "black", linestyle=":")
+    plt.tight_layout()
+    for ax in axs:
+        ax.grid()
+    plt.show()
+
+    fig, axs = plt.subplots(len(outputFields), 1, figsize=(12,8))
+    for i in range(len(outputFields)):
+        for algo, results in all_predictions.items():
+            axs[i].scatter(all_predictions[algo][i], outputFields[i], label = algo, s = 50, marker="s")
+        axs[i].scatter(all_true_y[outputFields[i]], outputFields[i], label = "Experimental value", marker = "x", color="black", s = 50)
+        # box = axs[i].get_position()
+        # axs[i].set_position([box.x0, box.y0, box.width, box.height * 0.6])
+    axs[1].legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, 3.2))
+    axs[1].set_ylabel("Output")
+    axs[1].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
+    axs[2].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
+    axs[2].set_xlabel("Value")
+    axs[2].axvline(x = 0.01, color = "black", linestyle=":")
+    axs[0].set_xlim(1.0, 5.0)
+    axs[1].set_xlim(1E19, 1E20)
+    axs[2].set_xlim(1E-4, 1E-2)
+    plt.tight_layout()
+    for ax in axs:
+        ax.grid()
+    plt.show()
+
+def regress_scanArgs(
         directory : Path,
         inputSpectraNames : list,
         outputFields : list,
@@ -377,39 +591,62 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    hydra_type_nkernels_nGroups = [
-        {"n_kernels" : 8, "n_groups" : 64},
-        {"n_kernels" : 4, "n_groups" : 64},
-        {"n_kernels" : 12, "n_groups" : 64},
-        {"n_kernels" : 16, "n_groups" : 64},
-        {"n_kernels" : 32, "n_groups" : 64},
-        {"n_kernels" : 8, "n_groups" : 16},
-        {"n_kernels" : 8, "n_groups" : 32},
-        {"n_kernels" : 8, "n_groups" : 96},
-        {"n_kernels" : 8, "n_groups" : 128},
-    ]
-    mRocket_type_nKernels_maxDilations = [
-        {"n_kernels" : 10000, "max_dilations_per_kernel" : 32},
-        {"n_kernels" : 5000, "max_dilations_per_kernel" : 32},
-        {"n_kernels" : 1000, "max_dilations_per_kernel" : 32},
-        {"n_kernels" : 15000, "max_dilations_per_kernel" : 32},
-        {"n_kernels" : 20000, "max_dilations_per_kernel" : 32},
-        {"n_kernels" : 10000, "max_dilations_per_kernel" : 8},
-        {"n_kernels" : 10000, "max_dilations_per_kernel" : 16},
-        {"n_kernels" : 10000, "max_dilations_per_kernel" : 64},
-        {"n_kernels" : 10000, "max_dilations_per_kernel" : 96},
-    ]
+    # hydra_type_nkernels_nGroups = [
+    #     {"n_kernels" : 8, "n_groups" : 64},
+    #     {"n_kernels" : 4, "n_groups" : 64},
+    #     {"n_kernels" : 12, "n_groups" : 64},
+    #     {"n_kernels" : 16, "n_groups" : 64},
+    #     {"n_kernels" : 32, "n_groups" : 64},
+    #     {"n_kernels" : 8, "n_groups" : 16},
+    #     {"n_kernels" : 8, "n_groups" : 32},
+    #     {"n_kernels" : 8, "n_groups" : 96},
+    #     {"n_kernels" : 8, "n_groups" : 128},
+    # ]
+    # mRocket_type_nKernels_maxDilations = [
+    #     {"n_kernels" : 10000, "max_dilations_per_kernel" : 32},
+    #     {"n_kernels" : 5000, "max_dilations_per_kernel" : 32},
+    #     {"n_kernels" : 1000, "max_dilations_per_kernel" : 32},
+    #     {"n_kernels" : 15000, "max_dilations_per_kernel" : 32},
+    #     {"n_kernels" : 20000, "max_dilations_per_kernel" : 32},
+    #     {"n_kernels" : 10000, "max_dilations_per_kernel" : 8},
+    #     {"n_kernels" : 10000, "max_dilations_per_kernel" : 16},
+    #     {"n_kernels" : 10000, "max_dilations_per_kernel" : 64},
+    #     {"n_kernels" : 10000, "max_dilations_per_kernel" : 96},
+    # ]
 
-    regress(
-        directory = args.dir, 
+    # regress_scanArgs(
+    #     directory = args.dir, 
+    #     inputSpectraNames = [
+    #         "Magnetic_Field_Bz/power/powerByFrequency",
+    #         "Electric_Field_Ex/power/powerByFrequency",
+    #         "Electric_Field_Ey/power/powerByFrequency"
+    #     ], 
+    #     outputFields = [
+    #         "B0strength", 
+    #         "pitch", 
+    #         "backgroundDensity", 
+    #         "beamFraction"
+    #     ], 
+    #     logFields = [
+    #         "backgroundDensity", 
+    #         "beamFraction"
+    #     ], 
+    #     algorithms = ["aeon.HydraRegressor", "aeon.RocketRegressor", "aeon.MiniRocketRegressor", "aeon.MultiRocketRegressor", "aeon.MultiRocketHydraRegressor"], 
+    #     resultsFilepath=args.resultsFilepath,
+    #     doPlot=True,
+    #     noTitle=True,
+    #     hydraTypeArgs = hydra_type_nkernels_nGroups,
+    #     mRocketTypeArgs = mRocket_type_nKernels_maxDilations,
+    #     nThreads = args.nThreads)
+    
+    regress_cottrell(
+        dataDirectory = Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_cottrell/data/"), 
         inputSpectraNames = [
             "Magnetic_Field_Bz/power/powerByFrequency",
-            "Electric_Field_Ex/power/powerByFrequency",
-            "Electric_Field_Ey/power/powerByFrequency"
         ], 
         outputFields = [
             "B0strength", 
-            "pitch", 
+            # "pitch", 
             "backgroundDensity", 
             "beamFraction"
         ], 
@@ -417,10 +654,21 @@ if __name__ == "__main__":
             "backgroundDensity", 
             "beamFraction"
         ], 
-        algorithms = ["aeon.HydraRegressor", "aeon.RocketRegressor", "aeon.MiniRocketRegressor", "aeon.MultiRocketRegressor", "aeon.MultiRocketHydraRegressor"], 
+        algorithms = [
+            "aeon.HydraRegressor", 
+            "aeon.RocketRegressor", 
+            "aeon.MiniRocketRegressor", 
+            "aeon.MultiRocketRegressor", 
+            "aeon.MultiRocketHydraRegressor", 
+            "aeon.QUANTRegressor", 
+            "aeon.KNeighborsTimeSeriesRegressor",
+            "aeon.RDSTRegressor",
+            "aeon.TimeSeriesForestRegressor",
+            # "aeon.Catch22Regressor",
+            # "aeon.TSFreshRegressor"
+        ], 
+        cottrellDatapath = Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_cottrell/cottrell_93_experimental_data.csv"),
         resultsFilepath=args.resultsFilepath,
         doPlot=True,
         noTitle=True,
-        hydraTypeArgs = hydra_type_nkernels_nGroups,
-        mRocketTypeArgs = mRocket_type_nKernels_maxDilations,
         nThreads = args.nThreads)

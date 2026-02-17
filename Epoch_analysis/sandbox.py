@@ -8,6 +8,7 @@ from plasmapy.formulary import lengths as ppl
 from plasmapy import particles as ppp
 from scipy import constants as constants
 from scipy.stats import linregress
+from sklearn.preprocessing import MinMaxScaler
 import xarray as xr
 import astropy.units as u
 import dataclass_csv
@@ -509,6 +510,9 @@ def analyse_real_frequencies(combined_stats_folder : Path):
     equal_f_folder = Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_equal_freqs/data/")
     cottrell_folder = Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_cottrell/data/")
 
+    # 0-1 scaler for Cottrell data
+    scaler_cottrell = MinMaxScaler(feature_range=(0, 1))
+
     for sim_name, data in all_simulation_data.items():
         newData : xr.DataTree = copy.deepcopy(data)
         print(f"Equal Real F: Truncating {sim_name} to a maximum frequency of {(lowest_max_freq * u.Hz).to(u.MHz)}....")
@@ -531,7 +535,7 @@ def analyse_real_frequencies(combined_stats_folder : Path):
 
             new_freq_points = np.linspace(float(new_time_points_start), lowest_max_freq, dataset_len)
             newPowerSpectra = newPowerSpectra.interp(frequency = new_freq_points, kwargs={"fill_value": "extrapolate"})
-
+            
             newData[f"/{spectra}/power/powerByFrequency"].data = newPowerSpectra.data
             newData[f"/{spectra}/power/frequency"] = new_freq_points
             newData[f"/{spectra}/power/powerByFrequency"] = newData[f"/{spectra}/power/powerByFrequency"].assign_coords(frequency = new_freq_points)
@@ -550,7 +554,7 @@ def analyse_real_frequencies(combined_stats_folder : Path):
         # Correll frequency
         lowest_max_freq = (186.6285833 * u.MHz).to(u.Hz).value
         newData : xr.DataTree = copy.deepcopy(data)
-        print(f"Cottrell F: Truncating {sim_name} to a maximum frequency of {(lowest_max_freq * u.Hz).to(u.MHz)}....")
+        print(f"Cottrell F: Truncating {sim_name} to a maximum frequency of {(lowest_max_freq * u.Hz).to(u.MHz)} and normalising....")
         for spectra in spectraTypes:
 
             # All series should be the same length (will need to be interpolated onto new coordinates)
@@ -570,7 +574,8 @@ def analyse_real_frequencies(combined_stats_folder : Path):
             new_freq_points = np.linspace(float(new_time_points_start), lowest_max_freq, dataset_len)
             newPowerSpectra = newPowerSpectra.interp(frequency = new_freq_points, kwargs={"fill_value": "extrapolate"})
 
-            newData[f"/{spectra}/power/powerByFrequency"].data = newPowerSpectra.data
+            # Log, scale and write
+            newData[f"/{spectra}/power/powerByFrequency"].data = scaler_cottrell.fit_transform(np.log10(newPowerSpectra.data).reshape(-1, 1)).flatten()
             newData[f"/{spectra}/power/frequency"] = new_freq_points
             newData[f"/{spectra}/power/powerByFrequency"] = newData[f"/{spectra}/power/powerByFrequency"].assign_coords(frequency = new_freq_points)
             newData[f"/{spectra}/power"] = newData[f"/{spectra}/power"].assign(frequency_gyro = xr.DataArray((new_freq_points * (2.0 * np.pi)) / newData.ionGyrofrequency_radPs))
@@ -586,7 +591,6 @@ def analyse_real_frequencies(combined_stats_folder : Path):
             print(f"New len: {newData[f'/{spectra}/power/powerByFrequency'].size}, Max frequency: {(float(newData[f'/{spectra}/power/powerByFrequency'].coords['frequency'][-1]) * u.Hz).to(u.MHz)} ({float(newData[f'/{spectra}/power/frequency_gyro'][-1])} gyrofrequencies).")
 
         newData.to_netcdf(cottrell_folder / sim_name.replace("stats.nc", "cottrellRange_stats.nc"))
-
 
 
 if __name__ == "__main__":
