@@ -111,7 +111,7 @@ def plotScatter(resultsDict : dict, metric : str = "cvR2"):
 
     plt.show()
 
-def plotBar(resultsDict : dict, metric : str = "cvR2", dropAlgorithms : list = []): 
+def plotBar(resultsDict : dict, metric : str = "cvR2", errors : str = "rmseSE", dropAlgorithms : list = []): 
 
     patterns = [ "/" , ".", "\\" , "|" , "-" , "+" , "x",  "o", "O", "*" ]
     
@@ -130,7 +130,12 @@ def plotBar(resultsDict : dict, metric : str = "cvR2", dropAlgorithms : list = [
         fieldResults = [r for r in results if r["output"] == field]
         for res in fieldResults:
             barVals[res["algorithm"]].append(np.round(res[f"{metric}_mean"], 3))
-            barErrs[res["algorithm"]].append(res[f"{metric}_stderr"])
+            if errors == "rmseSD":
+                barErrs[res["algorithm"]].append(np.sqrt(res[f"cvRMSE_var"]))
+            elif errors == "rmseSE":
+                barErrs[res["algorithm"]].append(res[f"cvRMSE_stderr"])
+            else:
+                barErrs[res["algorithm"]].append(res[f"{metric}_stderr"])
     
     x = np.arange(len(xLabels))
     
@@ -142,13 +147,14 @@ def plotBar(resultsDict : dict, metric : str = "cvR2", dropAlgorithms : list = [
     for algorithm, value in barVals.items():
         offset = width * multiplier
         rects = ax.bar(x + offset, value, width, label=algorithm, yerr=barErrs[algorithm], edgecolor='black')
-        #ax.errorbar(x + offset, value, yerr=barErrs[algorithm], fmt=",", color = "k")
+        if list(barErrs.values())[0]:
+            ax.errorbar(x + offset, value, yerr=barErrs[algorithm], fmt=",", color = "k")
         ax.bar_label(rects, padding=3, fontsize = 12)
         multiplier += 1
 
     # Add some text for labels, title and custom x-axis tick labels, etc.
     if metric == "cvR2":
-        ax.set_ylabel(r'Mean $R^2$')
+        ax.set_ylabel(r'$R^2$')
     elif metric == "cvRMSE":
         ax.set_ylabel('Mean RMSE')
     if resultsDict["cvStrategy"] == "RepeatedKFolds":
@@ -167,10 +173,10 @@ def plotBar(resultsDict : dict, metric : str = "cvR2", dropAlgorithms : list = [
 
     plt.show()
 
-def plotResults(resultsFile : Path, metric : str = "cvR2", dropAlgorithms : list = []):
+def plotResults(resultsFile : Path, metric : str = "cvR2", errors : str = "rmseSE", dropAlgorithms : list = []):
     with open(resultsFile, "r") as f:
         parser = json.load(f)
-        plotBar(parser, metric, dropAlgorithms)
+        plotBar(parser, metric, errors, dropAlgorithms)
         # plotScatter(parser, metric)
 
 if __name__ == "__main__":
@@ -193,6 +199,13 @@ if __name__ == "__main__":
         "--metric",
         action="store",
         help="Scoring metric: \'cvR2\' or \'cvRMSE\'.",
+        required = False,
+        type = str
+    )
+    parser.add_argument(
+        "--errors",
+        action="store",
+        help="Error metric: \'rmseSD\'.",
         required = False,
         type = str
     )
@@ -225,4 +238,4 @@ if __name__ == "__main__":
         plotAeResultsByPcaComponents(args.folder, args.filePattern)
     else:
         dropAlgorithms = [] if args.dropAlgorithms is None else args.dropAlgorithms
-        plotResults(args.file, args.metric, dropAlgorithms)
+        plotResults(args.file, args.metric, args.errors if args.errors is not None else "rmseSE", dropAlgorithms)

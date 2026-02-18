@@ -190,9 +190,11 @@
             "args": [
                 "--file", "/home/era536/Documents/Epoch/Data/2026_analysis/tsr_aeon_viking/LOOCV/unified_output.json",
                 "--plot",
-                "--metric", "cvRMSE",
+                "--metric", "cvR2",
+                // "--errors", "rmseSE",
                 // "--folder", "/home/era536/Documents/Epoch/Data/sept_25/analysis/tsr_viking/",
                 // "--filePattern", "AE_results_catch24_gpu_pca_*.json",
+                // "--dropAlgorithms", "aeon.DummyRegressor", "aeon.MultiRocketRegressor", "aeon.KNeighborsTimeSeriesRegressor", "aeon.QUANTRegressor", "aeon.RandomIntervalRegressor", "aeon.TimeSeriesForestRegressor",
                 "--dropAlgorithms", "aeon.DummyRegressor", "aeon.TSFreshRegressor", "aeon.SummaryRegressor", "aeon.RDSTRegressor", "aeon.MiniRocketRegressor"
             ]
         },
@@ -850,7 +852,7 @@
             "args": [
                 "--unify",
                 "--source",
-                    "/home/era536/Documents/Epoch/Data/2026_analysis/tsr_aeon_viking/LOOCV/",
+                    "/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_equal_freqs/results/",
                 "--file_pattern",
                     "*.json",
                 // "--search_text",
