@@ -2,7 +2,7 @@ import argparse
 import glob
 import os
 from pathlib import Path
-
+import csv
 from matplotlib import ticker
 import ml_utils
 import matplotlib.pyplot as plt
@@ -106,28 +106,20 @@ def regress_cottrell(
     plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
 
     # Initialise results objects
-    battery = ml_utils.TSRBattery()
-    battery.package = "Aeon"
 
     if not ("data" in dataDirectory.name):
         data_dir = dataDirectory / "data"
     else:
         data_dir = dataDirectory
     data_files = glob.glob(str(data_dir / "*.nc")) 
-    battery.directory = str(dataDirectory.resolve())
-    battery.algorithms = algorithms
-    battery.normalised = normalise
 
     # Input data
     inputs = {name : [] for name in inputSpectraNames}
     inputs = ml_utils.read_data(data_files, inputs, with_names = True, with_coords = True, with_iciness = False)
-    battery.inputSpectra = np.array(inputSpectraNames)
 
     # Output data
     outputs = {outputField : [] for outputField in outputFields}
     outputs = ml_utils.read_data(data_files, outputs, with_names = False, with_coords = False)
-    battery.outputFields = np.array(outputFields)
-    battery.numOutputs = len(outputs.keys())
 
     if "B0angle" in outputs:
         transf = np.array(outputs["B0angle"])
@@ -155,17 +147,6 @@ def regress_cottrell(
     # outputs = np.array(list(outputs.values()))
 
     logFields = np.intersect1d(outputFields, logFields)
-    battery.logFields = np.array(logFields)
-    battery.original_output_means = dict.fromkeys(outputFields)
-    battery.original_output_stdevs = dict.fromkeys(outputFields)
-
-    battery.equalLengthTimeseries = True
-    battery.numObservations = inputSpectra.shape[0]
-    battery.numInputDimensions = inputSpectra.shape[1]
-    battery.numTimepointsIfEqual = inputSpectra.shape[2]
-    battery.multivariate = battery.numInputDimensions > 1
-
-    battery.results = []
 
     # Get Cottrell data
     cottrell_data = pd.read_csv(cottrellDatapath)
@@ -173,7 +154,8 @@ def regress_cottrell(
     sort_indices = np.argsort(cottrell_data["Frequency (MHz)"])
     equally_spaced_freqs = np.linspace(cottrell_data["Frequency (MHz)"].min(), cottrell_data["Frequency (MHz)"].max(), inputSpectra.shape[2])
     test_x = np.interp(equally_spaced_freqs, np.sort(cottrell_data["Frequency (MHz)"]), cottrell_data["ICE Intensity (dB)"][sort_indices])
-    all_true_y = {"B0strength" : 2.8, "backgroundDensity" : 3.6E19, "beamFraction" : 6.5E-4}
+    # True values (edge JET values )
+    all_true_y = {"B0strength" : 2.21, "backgroundDensity" : 1.7E19, "beamFraction" : 1.5E-4, "pitch" : 0.5}
     # There is no test_y as we're not scoring predictions yet
     # B = 2.8T, background density = 3.6E19, beamFraction = 6.5E-4 (TRANSP), pitch = ???
 
@@ -189,6 +171,11 @@ def regress_cottrell(
 
     all_abs_normalised_errors = {a : [] for a in algorithms}
     all_predictions = {a : [] for a in algorithms}
+    all_prediction_sems = {a : [] for a in algorithms}
+    all_prediction_sds = {a : [] for a in algorithms}
+
+    n_repeats = 10
+    all_results = []
 
     for output_field, output_values in outputs.items():
 
@@ -222,69 +209,116 @@ def regress_cottrell(
             # print("Training model....")
             
             # Fit
-            tsr.fit(train_x, train_y)
+            predictions = []
+            for _ in range(n_repeats):
+                tsr.fit(train_x, train_y)
 
-            # Predict
-            # print("Predicting Cottrell parameters based on model....")
-            prediction = tsr.predict(test_x)
+                # Predict
+                # print("Predicting Cottrell parameters based on model....")
+                predictions.append(tsr.predict(test_x))
+            prediction = np.mean(predictions)
+            pred_var = np.var(predictions)
+            pred_sd = np.std(predictions)
+            pred_se = sem(predictions)
+
             # prediction = np.array([random.random()]) # Debugging
             # print(f"Fold inference time: {fold_inference_time_ns} CPU ns or {fold_inf_time_clock_ns} clock ns.")
 
-            pred_denormed = ml_utils.denormalise_data(prediction, scaler_y)
+            pred_denormed = ml_utils.denormalise_data(np.array([prediction]), scaler_y)
+            pred_se_denormed = ml_utils.denormalise_data(np.array([pred_se]), scaler_y)
+            pred_sd_denormed = ml_utils.denormalise_data(np.array([pred_sd]), scaler_y)
             if output_field in logFields:
                 pred_denormed = 10.0**pred_denormed
-                true_y_denorm = 10.0**true_y
-            err_norm = prediction[0]-true_y_norm[0]
-            print(f"{algorithm} Prediction of {output_field}:  {prediction[0]} (normalised), {pred_denormed[0]} (original) -- {err_norm} normalised error")
+                pred_se_denormed = 10.0**pred_se_denormed[0] - 10.0**scaler_y.mean_
+                pred_sd_denormed = 10.0**pred_sd_denormed[0] - 10.0**scaler_y.mean_
+            else:
+                pred_se_denormed = pred_se_denormed[0] - scaler_y.mean_
+                pred_sd_denormed = pred_sd_denormed[0] - scaler_y.mean_
+            err_norm = prediction-true_y_norm[0]
+            print(f"{algorithm} Mean prediction of {output_field}:  {prediction} (normalised) {pred_sd} (S.D.) {pred_se} (S.E.), {pred_denormed[0]}+-{pred_se_denormed} (original) -- {err_norm} normalised error")
             all_abs_normalised_errors[algorithm].append(abs(err_norm))
             all_predictions[algorithm].append(abs(pred_denormed[0]))
+            all_prediction_sems[algorithm].append(pred_se_denormed)
+            all_prediction_sds[algorithm].append(pred_sd_denormed)
 
-    plt.subplots(figsize=(8.5, 8))
-    for algo, results in all_abs_normalised_errors.items():
-        plt.scatter(outputFields, results, label = algo, s = 50, marker="s")
-    plt.ylim(-0.1, 1.5)
-    plt.axhline(y = 1.0, linestyle = "--", color="black")
-    plt.xlabel("Output")
-    plt.ylabel("Absolute normalised error [a.u.]")
-    plt.legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, 1.2))
-    plt.tight_layout()
-    plt.grid()
-    plt.show()
+            true_y_prelog = true_y if output_field not in logFields else 10.0**true_y
+            results_dict = {
+                "algorithm" : algorithm, 
+                "field" : output_field, 
+                "true_value" : true_y, 
+                "true_value_before_log" : true_y_prelog, 
+                "true_value_norm" : true_y_norm[0],
+                "mean_norm_prediction" : prediction, 
+                "mean_norm_error" : err_norm, 
+                "var" : pred_var, 
+                "std" : pred_sd, 
+                "stderr" : pred_se[0], 
+                "mean_denormed_prediction" : pred_denormed[0][0], 
+                "mean_denormed_error" : pred_denormed[0][0] - true_y_prelog,
+                "denormed_std" : pred_sd_denormed[0], 
+                "denormed_stderr" : pred_se_denormed[0]
+            }
+            print(results_dict)
+            all_results.append(results_dict)
 
-    fig, axs = plt.subplots(len(outputFields), 1, figsize=(12,8))
+    # plt.subplots(figsize=(8.5, 8))
+    # for algo, results in all_abs_normalised_errors.items():
+    #     plt.scatter(outputFields, results, label = algo, s = 50, marker="s")
+    # plt.ylim(-0.1, 1.5)
+    # plt.axhline(y = 1.0, linestyle = "--", color="black")
+    # plt.xlabel("Output")
+    # plt.ylabel("Absolute normalised error [a.u.]")
+    # plt.legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, 1.2))
+    # plt.tight_layout()
+    # plt.grid()
+    # plt.show()
+
+    with open(Path(cottrellDatapath).parent / "cottrell_regression_results.csv", "w") as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=all_results[0].keys())
+        writer.writeheader()
+        writer.writerows(all_results)
+
+    fig, axs = plt.subplots(len(outputFields), 1, figsize=(12,10))
     for i in range(len(outputFields)):
         for algo, results in all_predictions.items():
-            axs[i].scatter(all_predictions[algo][i], outputFields[i], label = algo, s = 50, marker="s")
-        axs[i].scatter(all_true_y[outputFields[i]], outputFields[i], label = "Experimental value", marker = "x", color="black", s = 50)
-        # box = axs[i].get_position()
-        # axs[i].set_position([box.x0, box.y0, box.width, box.height * 0.6])
-    axs[1].legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, 3.2))
-    axs[1].set_ylabel("Output")
-    axs[1].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
+            axs[i].errorbar(all_predictions[algo][i], epoch_utils.fieldNameToText(outputFields[i]), xerr=all_prediction_sds[algo][i], label = algo, ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
+        
+        if outputFields[i] == "B0strength":
+            axs[i].axvline(x = all_true_y["B0strength"], color = "black", linestyle=":", lw = 2.0, label="Experimental value")
+            axs[i].fill_between(x = [all_true_y["B0strength"] - 0.07, all_true_y["B0strength"] + 0.07], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
+        elif not (outputFields[i] == "pitch"):
+            axs[i].axvline(x = all_true_y[outputFields[i]], color = "black", linestyle=":", lw = 2.0, label="Experimental value")
+
+    axs[0].legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, 2.0))
+    fig.supylabel("Output field", fontsize = 20)
+    fig.supxlabel("Prediction", fontsize = 20)
     axs[2].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
-    axs[2].set_xlabel("Value")
-    axs[2].axvline(x = 0.01, color = "black", linestyle=":")
+    axs[3].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
     plt.tight_layout()
     for ax in axs:
         ax.grid()
     plt.show()
 
-    fig, axs = plt.subplots(len(outputFields), 1, figsize=(12,8))
+    fig, axs = plt.subplots(len(outputFields), 1, figsize=(12,10))
     for i in range(len(outputFields)):
         for algo, results in all_predictions.items():
-            axs[i].scatter(all_predictions[algo][i], outputFields[i], label = algo, s = 50, marker="s")
-        axs[i].scatter(all_true_y[outputFields[i]], outputFields[i], label = "Experimental value", marker = "x", color="black", s = 50)
-        # box = axs[i].get_position()
-        # axs[i].set_position([box.x0, box.y0, box.width, box.height * 0.6])
-    axs[1].legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, 3.2))
-    axs[1].set_ylabel("Output")
-    axs[1].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
+            axs[i].errorbar(all_predictions[algo][i], epoch_utils.fieldNameToText(outputFields[i]), xerr=all_prediction_sds[algo][i], label = algo, ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
+
+        if outputFields[i] == "B0strength":
+            axs[i].axvline(x = all_true_y["B0strength"], color = "black", linestyle=":", lw = 2.0, label="Experimental value")
+            axs[i].fill_between(x = [all_true_y["B0strength"] - 0.07, all_true_y["B0strength"] + 0.07], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
+        elif not (outputFields[i] == "pitch"):
+            axs[i].axvline(x = all_true_y[outputFields[i]], color = "black", linestyle=":", lw = 2.0, label="Experimental value")
+
+    axs[0].legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, 2.0))
     axs[2].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
-    axs[2].set_xlabel("Value")
-    axs[2].axvline(x = 0.01, color = "black", linestyle=":")
+    axs[3].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
+    fig.supxlabel("Prediction", fontsize = 20)
+    fig.supylabel("Output field", fontsize = 20)
     axs[0].set_xlim(1.0, 5.0)
-    axs[1].set_xlim(1E19, 1E20)
-    axs[2].set_xlim(1E-4, 1E-2)
+    axs[1].set_xlim(0.0, 1.0)
+    axs[2].set_xlim(1E19, 1E20)
+    axs[3].set_xlim(1E-4, 1E-2)
     plt.tight_layout()
     for ax in axs:
         ax.grid()
@@ -646,7 +680,7 @@ if __name__ == "__main__":
         ], 
         outputFields = [
             "B0strength", 
-            # "pitch", 
+            "pitch", 
             "backgroundDensity", 
             "beamFraction"
         ], 
@@ -664,8 +698,10 @@ if __name__ == "__main__":
             "aeon.KNeighborsTimeSeriesRegressor",
             "aeon.RDSTRegressor",
             "aeon.TimeSeriesForestRegressor",
-            # "aeon.Catch22Regressor",
-            # "aeon.TSFreshRegressor"
+            "aeon.Catch22Regressor",
+            "aeon.RandomIntervalRegressor",
+            "aeon.SummaryRegressor",
+            "aeon.TSFreshRegressor"
         ], 
         cottrellDatapath = Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_cottrell/cottrell_93_experimental_data.csv"),
         resultsFilepath=args.resultsFilepath,

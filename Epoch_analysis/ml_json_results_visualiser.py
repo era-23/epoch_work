@@ -2,10 +2,10 @@ import argparse
 import glob
 from pathlib import Path
 import json
-
+import pandas as pd
 from matplotlib import pyplot as plt
 import numpy as np
-
+from latextable import texttable
 import ml_utils
 import epoch_utils
 
@@ -163,7 +163,7 @@ def plotBar(resultsDict : dict, metric : str = "cvR2", errors : str = "rmseSE", 
     xLabels = [epoch_utils.fieldNameToText(lab) for lab in xLabels]
     ax.set_xticks(x + (0.5 * (len(algorithms) -1) * width), xLabels)
     if len(resultsDict["algorithms"]) > 5:
-        ax.legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, 1.1))
+        ax.legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, 1.12))
     else:
         ax.legend(loc='upper left' if metric == "cvR2" else 'lower left', ncols = 1)
     ax.set_ylim(top= 1.0 if metric == "cvR2" else np.round(np.max([v for v in barVals.values()]) + 0.2, 1))
@@ -178,6 +178,40 @@ def plotResults(resultsFile : Path, metric : str = "cvR2", errors : str = "rmseS
         parser = json.load(f)
         plotBar(parser, metric, errors, dropAlgorithms)
         # plotScatter(parser, metric)
+
+def latexTable(resultsFile : Path, experimentName : str):
+    with open(resultsFile, "r") as f:
+        parser = json.load(f)
+
+        results = parser["results"]
+        results_df = pd.DataFrame(results)
+        fields = parser["outputFields"]
+        algorithms = parser["algorithms"]
+        metrics_displayNames = {
+            "cvR2_mean" : "$R^2$", 
+            "cvRMSE_mean" : "RMSE", 
+            "cvRMSE_var" : "RMSE var", 
+            "cvRMSE_stderr" : "RMSE S.E.", 
+            "cvMAE_mean" : "MAE", 
+            "cvMAPE_mean" : "MAPE"
+        }
+        num_metrics = len(metrics_displayNames.keys())
+        
+        # Metrics on top, algorithms down side
+        table = texttable.Texttable()
+        table.set_cols_align(["l"] + (["r"] * num_metrics))
+        # Header
+        table.add_row(["Algorithm"] + [v for v in metrics_displayNames.values()])
+        for field in fields:
+            table.add_row([field] + ([""] * num_metrics))
+            for algo in algorithms:
+                result = results_df[(results_df["output"] == field) & (results_df["algorithm"] == algo)]
+                assert len(result) == 1
+                table.add_row([algo] + [float(result[m].iloc[0]) for m in metrics_displayNames.keys()])
+                break
+            break
+
+        print(table.draw())
 
 if __name__ == "__main__":
     
@@ -196,9 +230,22 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
+        "--latex",
+        action="store_true",
+        help="Print a latex table of results.",
+        required = False
+    )
+    parser.add_argument(
         "--metric",
         action="store",
         help="Scoring metric: \'cvR2\' or \'cvRMSE\'.",
+        required = False,
+        type = str
+    )
+    parser.add_argument(
+        "--experimentName",
+        action="store",
+        help="Name of the experiment.",
         required = False,
         type = str
     )
@@ -234,8 +281,10 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    if args.folder is not None:
-        plotAeResultsByPcaComponents(args.folder, args.filePattern)
-    else:
+    if args.plot:
+        if args.folder is not None:
+            plotAeResultsByPcaComponents(args.folder, args.filePattern)
         dropAlgorithms = [] if args.dropAlgorithms is None else args.dropAlgorithms
         plotResults(args.file, args.metric, args.errors if args.errors is not None else "rmseSE", dropAlgorithms)
+    if args.latex:
+        latexTable(args.file, args.experimentName)

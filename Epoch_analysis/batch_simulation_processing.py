@@ -586,25 +586,24 @@ def process_simulation_batch(
             del(delta)
             del(squared_delta)
 
-            if growthRates or bispectra:
-                # Take FFT
-                original_spec : xr.DataArray = xrft.xrft.fft(ds[field], true_amplitude=True, true_phase=True, window=None)
-                original_spec = original_spec.rename(freq_time="frequency", freq_x_space="wavenumber")
-                # Remove zero-frequency component
-                original_spec = original_spec.where(original_spec.wavenumber!=0.0, None)
+            # Take FFT
+            original_spec : xr.DataArray = xrft.xrft.fft(ds[field], true_amplitude=True, true_phase=True, window=None)
+            original_spec = original_spec.rename(freq_time="frequency", freq_x_space="wavenumber")
+            # Remove zero-frequency component
+            original_spec = original_spec.where(original_spec.wavenumber!=0.0, None)
 
-                tk_spec = e_utils.create_t_k_spectrum(original_spec, fieldStats, maxK, load=True, debug=debug)
+            tk_spec = e_utils.create_t_k_spectrum(original_spec, fieldStats, maxK, load=True, debug=debug)
 
-                # Dispersion relations
-                wavenumberToFrequencyTable = e_utils.create_omega_k_plots(original_spec, fieldStats, field, field_unit, plotFieldFolder, simFolder.name, inputDeck, bkgdSpecies, fastSpecies, maxK=maxK, maxW=maxW, display=displayPlots, debug=debug)
-                e_utils.create_t_k_plot(tk_spec, field, field_unit, plotFieldFolder, simFolder.name, maxK, displayPlots)
+            # Dispersion relations
+            wavenumberToFrequencyTable = e_utils.create_omega_k_plots(original_spec, fieldStats, field, field_unit, plotFieldFolder, simFolder.name, inputDeck, bkgdSpecies, fastSpecies, maxK=maxK, maxW=maxW, display=displayPlots, debug=debug)
+            e_utils.create_t_k_plot(tk_spec, field, field_unit, plotFieldFolder, simFolder.name, maxK, displayPlots)
 
-                if bispectra:
-                    e_utils.bispectral_analysis(tk_spec, simFolder.name, field, displayPlots, plotFieldFolder, maxK = maxK)
+            if bispectra:
+                e_utils.bispectral_analysis(tk_spec, simFolder.name, field, displayPlots, plotFieldFolder, maxK = maxK)
 
-                # Linear growth rates
-                if growthRates:
-                    e_utils.process_growth_rates(tk_spec, fieldStats, plotFieldFolder, simFolder, field, gammaWindowPctMin, gammaWindowPctMax, saveGrowthRatePlots, numGrowthRatesToPlot, wavenumberToFrequencyTable, displayPlots, noTitle, debug)
+            # Linear growth rates
+            if growthRates:
+                e_utils.process_growth_rates(tk_spec, fieldStats, plotFieldFolder, simFolder, field, gammaWindowPctMin, gammaWindowPctMax, saveGrowthRatePlots, numGrowthRatesToPlot, wavenumberToFrequencyTable, displayPlots, noTitle, debug)
     
         statsRoot.close()
         ds.close()

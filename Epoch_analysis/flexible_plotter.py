@@ -1,12 +1,15 @@
 import argparse
+import csv
 import glob
 from pathlib import Path
 import epydeck
+from matplotlib import ticker
 import matplotlib.pyplot as plt
 from matplotlib.ticker import ScalarFormatter
 from sdf_xarray import SDFPreprocess
 import numpy as np
 import xarray as xr
+import pandas as pd
 import xrft
 import epoch_utils
 import ml_utils
@@ -417,6 +420,92 @@ def energy_plots_for_papers(
             plt.show()
         plt.close("all")
 
+def plot_cottrell_regression(csvResultsPath : Path):
+
+    # Schema
+    # results_dict = {
+    #     "algorithm" : algorithm, 
+    #     "field" : output_field, 
+    #     "true_value" : true_y, 
+    #     "true_value_before_log" : true_y_prelog, 
+    #     "true_value_norm" : true_y_norm[0],
+    #     "mean_norm_prediction" : prediction, 
+    #     "mean_norm_error" : err_norm, 
+    #     "var" : pred_var, 
+    #     "std" : pred_sd, 
+    #     "stderr" : pred_se[0], 
+    #     "mean_denormed_prediction" : pred_denormed[0][0], 
+    #     "mean_denormed_error" : pred_denormed[0][0] - true_y_prelog,
+    #     "denormed_std" : pred_sd_denormed[0], 
+    #     "denormed_stderr" : pred_se_denormed[0]
+    # }
+    
+    results = pd.read_csv(csvResultsPath)
+    outputFields = results["field"].unique()
+    exclude_algos = ["aeon.TSFreshRegressor", "aeon.RandomIntervalRegressor", "aeon.KNeighborsTimeSeriesRegressor", "aeon.MiniRocketRegressor"]
+
+    fig, axs = plt.subplots(len(outputFields), 1, figsize=(12,10))
+    for i in range(len(outputFields)):
+        field = outputFields[i]
+        field_results = results[results["field"] == field]
+
+        for index, result in field_results.iterrows():
+            if result["algorithm"] not in exclude_algos:
+                axs[i].errorbar(result["mean_denormed_prediction"], epoch_utils.fieldNameToText(field), xerr=result["denormed_std"], label = result["algorithm"], ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
+        
+        if field == "B0strength":
+            axs[i].fill_between(x = [result["true_value_before_log"] - 0.07, result["true_value_before_log"] + 0.07], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
+        if not (field == "pitch"):
+            axs[i].axvline(x = result["true_value_before_log"], color = "black", linestyle=":", lw = 2.0, label="Experimental value")
+
+        best = field_results[abs(field_results["mean_denormed_error"]) == abs(field_results["mean_denormed_error"]).min()]
+        mrh = field_results[field_results["algorithm"] == "aeon.MultiRocketHydraRegressor"]
+        print(f"Best algorithm for {field}: {best['algorithm'].values[0]}, Prediction: {best['mean_denormed_prediction'].values[0]}, S.D. {best['denormed_std'].values[0]}, MRH Prediction: {mrh['mean_denormed_prediction'].values[0]}, MRH S.D. {mrh['denormed_std'].values[0]}")
+
+    axs[0].legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, 2.0))
+    fig.supylabel("Output field", fontsize = 20)
+    fig.supxlabel("Prediction", fontsize = 20)
+    axs[2].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
+    axs[3].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
+    plt.tight_layout()
+    for ax in axs:
+        ax.grid()
+    plt.show()
+
+    fig, axs = plt.subplots(len(outputFields), 1, figsize=(12,10))
+    for i in range(len(outputFields)):
+        field = outputFields[i]
+        field_results = results[results["field"] == field]
+
+        for index, result in field_results.iterrows():
+            if result["algorithm"] not in exclude_algos:
+                if field == "backgroundDensity":
+                    axs[i].errorbar(result["mean_denormed_prediction"] / 10**20, epoch_utils.fieldNameToText(field), xerr=result["denormed_std"] / 10**20, label = result["algorithm"], ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
+                else:
+                    axs[i].errorbar(result["mean_denormed_prediction"], epoch_utils.fieldNameToText(field), xerr=result["denormed_std"], label = result["algorithm"], ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
+        
+        if field == "B0strength":
+            axs[i].fill_between(x = [result["true_value_before_log"] - 0.07, result["true_value_before_log"] + 0.07], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
+        if field == "backgroundDensity":
+            axs[i].axvline(x = result["true_value_before_log"] / 10**20, color = "black", linestyle=":", lw = 2.0, label="Experimental value")
+        if not (field == "pitch"):
+            axs[i].axvline(x = result["true_value_before_log"], color = "black", linestyle=":", lw = 2.0, label="Experimental value")
+
+    axs[0].legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, 2.0))
+    axs[2].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
+    axs[3].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
+    fig.supxlabel("Prediction", fontsize = 20)
+    fig.supylabel("Output field", fontsize = 20)
+    axs[0].set_xlim(1.0, 5.0)
+    axs[1].set_xlim(0.0, 1.0)
+    axs[2].set_xlim(0.1, 1.0)
+    axs[3].set_xlim(1E-4, 1E-2)
+    plt.tight_layout()
+    for ax in axs:
+        ax.grid()
+    plt.show()
+        
+
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser("parser")
@@ -449,6 +538,12 @@ if __name__ == "__main__":
         "--energy",
         action="store_true",
         help="Plot energy traces in paper-friendly way.",
+        required = False
+    )
+    parser.add_argument(
+        "--cottrell",
+        action="store_true",
+        help="Plot TSER of Cottrell 1993 experimental data.",
         required = False
     )
     parser.add_argument(
@@ -524,4 +619,6 @@ if __name__ == "__main__":
         dispersion_relations_for_papers(args.dataFolder, args.outputFolder, args.sims[0], field=args.fields[0], maxK=args.maxK, maxW=args.maxW)
     if args.energy:
         energy_plots_for_papers(args.dataFolder)
+    if args.cottrell:
+        plot_cottrell_regression(args.dataFolder)
 

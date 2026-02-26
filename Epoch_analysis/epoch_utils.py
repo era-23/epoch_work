@@ -270,10 +270,11 @@ fieldNameToText_dict = {
     "Electric_Field_Ey" : r"$E_y$",
     "/Electric_Field_Ey" : r"$E_y$",
 
-    "B0strength" : "B0", 
+    "B0strength" : "B0 [T]", 
     "B0angle" : "B0 angle", 
-    "backgroundDensity" : "density (log)", 
-    "beamFraction" : "fast ion fraction (log)",
+    # "backgroundDensity" : r"density [$10^{20}m^{-3}$]", 
+    "backgroundDensity" : r"density [$m^{-3}$]", 
+    "beamFraction" : "fast alpha fraction",
     "pitch" : "pitch"
 }
 
@@ -780,7 +781,7 @@ def create_omega_k_plots(
 
     # Create fields for recording powers by frequency and wavenumber
     if "power" not in statsFile.groups.keys():
-        powerStats = statsFile.createGroup("power")#
+        powerStats = statsFile.createGroup("power")
         powerStats.createDimension("wavenumber", spec.coords['wavenumber'].size)
         powerStats.createDimension("frequency", spec.coords['frequency'].size)
         k_var = powerStats.createVariable("wavenumber", datatype="f4", dimensions=("wavenumber",))
