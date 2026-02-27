@@ -6,6 +6,7 @@ from sdf_xarray import SDFPreprocess
 from scipy import constants
 from scipy.interpolate import make_smoothing_spline
 from scipy.signal import find_peaks
+from scipy.spatial.distance import pdist
 from plasmapy.formulary import frequencies as ppf
 from plasmapy.formulary import speeds as pps
 from plasmapy.formulary import lengths as ppl
@@ -564,8 +565,10 @@ def process_simulation_batch(
             fieldStats.baseUnit = field_unit
             field_mag = float(np.abs(ds[field].sum()))
             fieldStats.totalMagnitude = field_mag
-            dx = ds.coords['x_space'].spacing
-            dy = ds.coords['time'].spacing
+            assert np.allclose([float(ds.coords['x_space'][2] - ds.coords['x_space'][1])], [float(ds.coords['x_space'][-2] - ds.coords['x_space'][-3])])
+            assert np.allclose([float(ds.coords['time'][2] - ds.coords['time'][1])], [float(ds.coords['time'][-2] - ds.coords['time'][-3])])
+            dx = float(ds.coords['x_space'][2] - ds.coords['x_space'][1])
+            dy = float(ds.coords['time'][2] - ds.coords['time'][1])
             parseval_field = float((np.abs(ds[field])**2).sum()) * dx * dy
             fieldStats.parsevalField = parseval_field
             if debug:
@@ -587,6 +590,7 @@ def process_simulation_batch(
             del(squared_delta)
 
             # Take FFT
+            ds = ds.load()
             original_spec : xr.DataArray = xrft.xrft.fft(ds[field], true_amplitude=True, true_phase=True, window=None)
             original_spec = original_spec.rename(freq_time="frequency", freq_x_space="wavenumber")
             # Remove zero-frequency component
