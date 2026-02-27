@@ -564,8 +564,8 @@ def process_simulation_batch(
             fieldStats.baseUnit = field_unit
             field_mag = float(np.abs(ds[field].sum()))
             fieldStats.totalMagnitude = field_mag
-            dx = float(ds.coords['x_space'][2] - ds.coords['x_space'][1])
-            dy = float(ds.coords['time'][2] - ds.coords['time'][1])
+            dx = ds.coords['x_space'].spacing
+            dy = ds.coords['time'].spacing
             parseval_field = float((np.abs(ds[field])**2).sum()) * dx * dy
             fieldStats.parsevalField = parseval_field
             if debug:

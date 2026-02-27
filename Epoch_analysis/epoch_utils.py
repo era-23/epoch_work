@@ -775,7 +775,7 @@ def create_omega_k_plots(
     statsFile.meanWkSpectralPower = spec_mean
     
     if debug:
-        print(f"Sum of omega-k sqared * dw * dk: {parseval_wk}")
+        print(f"Sum of omega-k squared * dw * dk: {parseval_wk}")
         print(f"Max peak in omega-k: {spec_peak}")
         print(f"Mean of omega-k: {spec_mean}")
 
@@ -813,8 +813,10 @@ def create_omega_k_plots(
 
     # Power in omega over all k
     fig, axs = plt.subplots(figsize=(15, 10))
-    power_trace = spec.sum(dim = "wavenumber")
+    power_trace = np.sqrt((spec**2).sum(dim = "wavenumber"))
     powerByOmega[:] = power_trace.data
+    parsevalWpower = 2.0 * ((power_trace**2).sum() * power_trace.coords["frequency"].spacing * spec.coords["wavenumber"].spacing)
+    statsFile.parsevalWpower = parsevalWpower
     power_trace.plot(ax=axs)
     axs.set_xticks(ticks=np.arange(np.floor(power_trace.coords['frequency'][0]), np.ceil(power_trace.coords['frequency'][-1])+1.0, 1.0), minor=True)
     axs.grid(which='both', axis='x')
@@ -827,6 +829,10 @@ def create_omega_k_plots(
     if display:
         plt.show()
         plt.close("all")
+
+    if debug:
+        print(f"Sum of omega-power squared * dw * dk: {parsevalWpower}")
+        print(f"Max frequency power: {float(np.nanmax(power_trace))} at f = {float(power_trace[np.nanargmax(power_trace)])}")
 
     # Power in omega over all k (log proportion)
     fig, axs = plt.subplots(figsize=(15, 10))
