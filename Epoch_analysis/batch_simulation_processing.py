@@ -584,8 +584,6 @@ def process_simulation_batch(
                 print(f"Sum of squared {field} delta * dx * dy: {parseval_fieldDelta}")
             field_dMean = float(delta.mean())
             fieldStats.meanDelta = field_dMean
-            if debug:
-                print(f"Mean(field - mean): {field_dMean}")
             del(delta)
             del(squared_delta)
 

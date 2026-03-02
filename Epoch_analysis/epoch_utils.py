@@ -769,8 +769,6 @@ def create_omega_k_plots(
     
     squared_sum = float((np.abs(spec)**2).sum()) # (Absolute squared) sum
     parseval_wk = squared_sum * spec.coords['frequency'].spacing * spec.coords['wavenumber'].spacing * 2.0 # Double because half the energy is outside the range we care about 
-    print(f"Abs, square, sum = {parseval_wk}")
-    
     statsFile.parsevalWk = parseval_wk
     spec_peak = float(np.abs(np.nanmax(spec)))
     statsFile.peakWkSpectralPower = spec_peak
@@ -816,7 +814,7 @@ def create_omega_k_plots(
 
     # Power in omega over all k
     fig, axs = plt.subplots(figsize=(15, 10))
-    power_trace = np.abs(np.sqrt((spec**2).sum(dim = "wavenumber"))) # Square, then sum, then sqrt, then abs
+    power_trace = np.sqrt((np.abs(spec)**2).sum(dim = "wavenumber")) # Square, then sum, then sqrt, then abs
     powerByOmega[:] = power_trace.data
     parsevalWpower = float(2.0 * ((power_trace**2).sum() * power_trace.coords["frequency"].spacing * spec.coords["wavenumber"].spacing))
     statsFile.parsevalWpower = parsevalWpower
