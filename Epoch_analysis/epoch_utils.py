@@ -751,7 +751,7 @@ def create_omega_k_plots(
 
     print("Generating w-k plots....")
     field = fieldNameToText(field)
-    spec = abs(fftSpectrum.load())
+    spec = fftSpectrum.load() # Load complex data
 
     # Select positive temporal frequencies
     spec = spec.sel(frequency=spec.frequency>=0.0)
@@ -764,14 +764,14 @@ def create_omega_k_plots(
         spec = spec.sel(frequency=spec.frequency<=maxW)
 
     # Log stats on spectrum
-    spec_sum = float(spec.sum())
+    spec_sum = float(np.abs(spec).sum()) # Absolute sum
     statsFile.totalWkSpectralPower = spec_sum 
-    squared_sum = float((np.abs(spec)**2).sum())
+    squared_sum = float(np.abs((spec**2).sum())) # Absolute (squared sum)
     parseval_wk = squared_sum * spec.coords['frequency'].spacing * spec.coords['wavenumber'].spacing * 2.0 # Double because half the energy is outside the range we care about 
     statsFile.parsevalWk = parseval_wk
-    spec_peak = float(np.nanmax(spec))
+    spec_peak = float(np.abs(np.nanmax(spec)))
     statsFile.peakWkSpectralPower = spec_peak
-    spec_mean = float(spec.mean())
+    spec_mean = float(np.abs(spec.mean()))
     statsFile.meanWkSpectralPower = spec_mean
     
     if debug:
@@ -813,7 +813,7 @@ def create_omega_k_plots(
 
     # Power in omega over all k
     fig, axs = plt.subplots(figsize=(15, 10))
-    power_trace = np.sqrt((spec**2).sum(dim = "wavenumber"))
+    power_trace = np.abs(np.sqrt((spec**2).sum(dim = "wavenumber"))) # Square, then sum, then sqrt, then abs
     powerByOmega[:] = power_trace.data
     parsevalWpower = 2.0 * ((power_trace**2).sum() * power_trace.coords["frequency"].spacing * spec.coords["wavenumber"].spacing)
     statsFile.parsevalWpower = parsevalWpower
@@ -911,11 +911,11 @@ def create_omega_k_plots(
 
     # Power in k over all omega
     fig, axs = plt.subplots(figsize=(15, 10))
-    power_trace = spec.sum(dim = "frequency")
+    power_trace = np.abs(spec.sum(dim = "frequency"))
     powerByK[:] = power_trace.data
     power_trace.plot(ax=axs)
     axs.set_xticks(ticks=np.arange(np.floor(power_trace.coords['wavenumber'][0]), np.ceil(power_trace.coords['wavenumber'][-1])+1.0, 1.0), minor=True)
-    axs.set_xticks(ticks=np.arange(np.floor(power_trace.coords['frequency'][0]), np.ceil(power_trace.coords['frequency'][-1])+1.0, 10.0))
+    axs.set_xticks(ticks=np.arange(np.floor(power_trace.coords['wavenumber'][0]), np.ceil(power_trace.coords['wavenumber'][-1])+1.0, 25.0))
     axs.grid(which='both', axis='both')
     axs.grid(which='major', axis="both")
     axs.set_xlabel(r"Wavenumber [$\frac{\Omega_{c,\alpha}}{v_A}$]")
@@ -931,7 +931,7 @@ def create_omega_k_plots(
 
     # Full dispersion relation for positive omega
     fig, axs = plt.subplots(figsize=(15, 10))
-    spec.plot(ax=axs, cbar_kwargs={'label': f'{field} power [{field_unit}]'}, cmap='plasma')
+    np.abs(spec).plot(ax=axs, cbar_kwargs={'label': f'{field} power [{field_unit}]'}, cmap='plasma')
     axs.set_ylabel(r"Frequency [$\Omega_{c,\alpha}$]")
     axs.set_xlabel(r"Wavenumber [$\frac{\Omega_{c,\alpha}}{v_A}$]")
     axs.grid()
@@ -942,13 +942,13 @@ def create_omega_k_plots(
         plt.show()
         plt.close("all")
 
-    log_spec = np.log10(spec)
+    log_spec = np.log10(np.abs(spec))
 
     # Full dispersion relation for positive omega (log)
     fig, axs = plt.subplots(figsize=(15, 10))
     log_spec.plot(ax=axs, cbar_kwargs={'label': f'{field} power [{r"log$_{10}$"}]'}, cmap='plasma')
-    axs.set_ylabel(r"Frequency [$\Omega_{c,\alpha}$]")
-    axs.set_xlabel(r"Wavenumber [$\frac{\Omega_{c,\alpha}}{v_A}$]")
+    axs.set_ylabel(r"Frequency, $\omega$ [$\Omega_{c,\alpha}$]")
+    axs.set_xlabel(r"Wavenumber, k [$\frac{\Omega_{c,\alpha}}{v_A}$]")
     axs.grid()
     fig.tight_layout()
     filename = Path(f'{runName}_{field.replace("_", "").replace("$", "")}_wk_log_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
@@ -960,14 +960,14 @@ def create_omega_k_plots(
     # Positive omega/positive k with vA and lower hybrid frequency
     fig, axs = plt.subplots(figsize=(15, 10))
     spec = spec.sel(wavenumber=spec.wavenumber>0.0)
-    spec.plot(ax=axs, cbar_kwargs={'label': f'{field} power [{field_unit}]'}, cmap='plasma')
-    axs.plot(spec.coords['wavenumber'].data, spec.coords['wavenumber'].data, 'w--', linewidth = 3.0, label=r'$v_A$ branch')
+    np.abs(spec).plot(ax=axs, cbar_kwargs={'label': f'{field} power [{field_unit}]'}, cmap='plasma')
+    axs.plot(spec.coords['wavenumber'].data, spec.coords['wavenumber'].data, 'w--', linewidth = 3.0, label=r'Alfven branch')
     bkgd_number_density = float(inputDeck['constant']['background_density'])
     wLH_cyclo = ppf.lower_hybrid_frequency(B0 * u.T, bkgd_number_density * u.m**-3, bkgdSpecies) / ppf.gyrofrequency(B0 * u.T, fastSpecies)
     axs.axhline(y = wLH_cyclo, color='white', linestyle=':', linewidth = 3.0, label=r'lower hybrid frequency')
     axs.legend(loc='upper left')
-    axs.set_ylabel(r"Frequency [$\Omega_{c,\alpha}$]")
-    axs.set_xlabel(r"Wavenumber [$\frac{\Omega_{c,\alpha}}{v_A}$]")
+    axs.set_ylabel(r"Frequency, $\omega$ [$\Omega_{c,\alpha}$]")
+    axs.set_xlabel(r"Wavenumber, k [$\frac{\Omega_{c,\alpha}}{v_A}$]")
     axs.grid()
     fig.tight_layout()
     filename = Path(f'{runName}_{field.replace("_", "").replace("$", "")}_wk_positiveK_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
@@ -980,11 +980,11 @@ def create_omega_k_plots(
     fig, axs = plt.subplots(figsize=(15, 10))
     log_spec = log_spec.sel(wavenumber=log_spec.wavenumber>0.0)
     log_spec.plot(ax=axs, cbar_kwargs={'label': f'{field} power [{r"log$_{10}$"}]'}, cmap='plasma')
-    axs.plot(log_spec.coords['wavenumber'].data, log_spec.coords['wavenumber'].data, 'k--', linewidth = 3.0, label=r'$v_A$ branch')
+    axs.plot(log_spec.coords['wavenumber'].data, log_spec.coords['wavenumber'].data, 'k--', linewidth = 3.0, label=r'Alfven branch')
     axs.axhline(y = wLH_cyclo, color='black', linestyle=':', linewidth = 3.0, label=r'lower hybrid frequency')
     axs.legend(loc='upper left')
-    axs.set_ylabel(r"Frequency [$\Omega_{c,\alpha}$]")
-    axs.set_xlabel(r"Wavenumber [$\frac{\Omega_{c,\alpha}}{v_A}$]")
+    axs.set_ylabel(r"Frequency, $\omega$ [$\Omega_{c,\alpha}$]")
+    axs.set_xlabel(r"Wavenumber, k [$\frac{\Omega_{c,\alpha}}{v_A}$]")
     axs.grid()
     fig.tight_layout()
     filename = Path(f'{runName}_{field.replace("_", "").replace("$", "")}_wk_positiveK_log_maxK-{maxK if maxK is not None else "all"}_maxW-{maxW if maxW is not None else "all"}.png')
@@ -1013,13 +1013,12 @@ def create_t_k_spectrum(
     tk_spec.loc[dict(wavenumber=0.0)] = original_zero_freq_amplitude # Restore original 0-freq amplitude
     tk_spec = xrft.xrft.ifft(tk_spec, dim="frequency")
     tk_spec = tk_spec.rename(freq_frequency="time")
-    abs_spec = np.abs(tk_spec)
     
-    tk_sum = float(abs_spec.sum())
-    tk_squared = float((abs_spec**2).sum())
-    parseval_tk = tk_squared  * abs_spec.coords['wavenumber'].spacing * abs_spec.coords['time'].spacing
-    tk_peak = float(np.nanmax(abs_spec))
-    tk_mean = float(abs_spec.mean())
+    tk_sum = float(np.abs(tk_spec.sum()))
+    tk_squared = float(np.abs((tk_spec**2).sum()))
+    parseval_tk = tk_squared  * tk_spec.coords['wavenumber'].spacing * tk_spec.coords['time'].spacing
+    tk_peak = float(np.abs(np.nanmax(tk_spec)))
+    tk_mean = float(np.abs(tk_spec.mean()))
 
     if statsFile is not None:
         # Log stats on spectrum
@@ -1066,8 +1065,8 @@ def create_t_k_plot(
     field_name = fieldNameToText(field)
     tkSpec_plot.plot(ax=axs, x = "wavenumber", y = "time", cbar_kwargs={'label': f'{field_name} power [{field_unit}]'}, cmap='plasma')
     axs.grid()
-    axs.set_xlabel(r"Wavenumber [$\frac{\Omega_{c,\alpha}}{v_A}$]")
-    axs.set_ylabel(r"Time [$\tau_{c,\alpha}$]")
+    axs.set_xlabel(r"Wavenumber, k [$\frac{\Omega_{c,\alpha}}{v_A}$]")
+    axs.set_ylabel(r"Time, t [$\tau_{c,\alpha}$]")
     fig.tight_layout()
     if saveDirectory is not None:
         filename = Path(f'{runName}_{field.replace("_", "")}_tk_maxK-{maxK if maxK is not None else "all"}.png')
@@ -1081,8 +1080,8 @@ def create_t_k_plot(
     field_name = fieldNameToText(field)
     tkSpec_plot.sel(wavenumber=tkSpec_plot.wavenumber>=0.0).plot(ax=axs, x = "wavenumber", y = "time", cbar_kwargs={'label': f'{field_name} power [{field_unit}]'}, cmap='plasma')
     axs.grid()
-    axs.set_xlabel(r"Wavenumber [$\frac{\Omega_{c,\alpha}}{v_A}$]")
-    axs.set_ylabel(r"Time [$\tau_{c,\alpha}$]")
+    axs.set_xlabel(r"Wavenumber, k [$\frac{\Omega_{c,\alpha}}{v_A}$]")
+    axs.set_ylabel(r"Time, t [$\tau_{c,\alpha}$]")
     fig.tight_layout()
     if saveDirectory is not None:
         filename = Path(f'{runName}_{field.replace("_", "")}_tk_maxK-{maxK if maxK is not None else "all"}_pos.png')
@@ -1095,8 +1094,8 @@ def create_t_k_plot(
     fig, axs = plt.subplots(figsize=(15, 10))
     tkSpec_plot_log.plot(ax=axs, x = "wavenumber", y = "time", cbar_kwargs={'label': f'{field_name} power [{r"log$_{10}$"}]'}, cmap='plasma')
     axs.grid()
-    axs.set_xlabel(r"Wavenumber [$\frac{\Omega_{c,\alpha}}{v_A}$]")
-    axs.set_ylabel(r"Time [$\tau_{c,\alpha}$]")
+    axs.set_xlabel(r"Wavenumber, k [$\frac{\Omega_{c,\alpha}}{v_A}$]")
+    axs.set_ylabel(r"Time, t [$\tau_{c,\alpha}$]")
     fig.tight_layout()
     if saveDirectory is not None:
         filename = Path(f'{runName}_{field.replace("_", "")}_tk_log_maxK-{maxK if maxK is not None else "all"}.png')
@@ -1109,8 +1108,8 @@ def create_t_k_plot(
     fig, axs = plt.subplots(figsize=(15, 10))
     tkSpec_plot_log.sel(wavenumber=tkSpec_plot_log.wavenumber>=0.0).plot(ax=axs, x = "wavenumber", y = "time", cbar_kwargs={'label': f'{field_name} power [{r"log$_{10}$"}]'}, cmap='plasma')
     axs.grid()
-    axs.set_xlabel(r"Wavenumber [$\frac{\Omega_{c,\alpha}}{v_A}$]")
-    axs.set_ylabel(r"Time [$\tau_{c,\alpha}$]")
+    axs.set_xlabel(r"Wavenumber, k [$\frac{\Omega_{c,\alpha}}{v_A}$]")
+    axs.set_ylabel(r"Time, t [$\tau_{c,\alpha}$]")
     fig.tight_layout()
     if saveDirectory is not None:
         filename = Path(f'{runName}_{field.replace("_", "")}_tk_log_maxK-{maxK if maxK is not None else "all"}_pos.png')
