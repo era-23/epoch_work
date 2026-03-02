@@ -766,8 +766,11 @@ def create_omega_k_plots(
     # Log stats on spectrum
     spec_sum = float(np.abs(spec).sum()) # Absolute sum
     statsFile.totalWkSpectralPower = spec_sum 
-    squared_sum = float(np.abs((spec**2).sum())) # Absolute (squared sum)
+    
+    squared_sum = float((np.abs(spec)**2).sum()) # (Absolute squared) sum
     parseval_wk = squared_sum * spec.coords['frequency'].spacing * spec.coords['wavenumber'].spacing * 2.0 # Double because half the energy is outside the range we care about 
+    print(f"Abs, square, sum = {parseval_wk}")
+    
     statsFile.parsevalWk = parseval_wk
     spec_peak = float(np.abs(np.nanmax(spec)))
     statsFile.peakWkSpectralPower = spec_peak
@@ -815,7 +818,7 @@ def create_omega_k_plots(
     fig, axs = plt.subplots(figsize=(15, 10))
     power_trace = np.abs(np.sqrt((spec**2).sum(dim = "wavenumber"))) # Square, then sum, then sqrt, then abs
     powerByOmega[:] = power_trace.data
-    parsevalWpower = 2.0 * ((power_trace**2).sum() * power_trace.coords["frequency"].spacing * spec.coords["wavenumber"].spacing)
+    parsevalWpower = float(2.0 * ((power_trace**2).sum() * power_trace.coords["frequency"].spacing * spec.coords["wavenumber"].spacing))
     statsFile.parsevalWpower = parsevalWpower
     power_trace.plot(ax=axs)
     axs.set_xticks(ticks=np.arange(np.floor(power_trace.coords['frequency'][0]), np.ceil(power_trace.coords['frequency'][-1])+1.0, 1.0), minor = True)
@@ -911,7 +914,7 @@ def create_omega_k_plots(
 
     # Power in k over all omega
     fig, axs = plt.subplots(figsize=(15, 10))
-    power_trace = np.abs(spec.sum(dim = "frequency"))
+    power_trace = np.abs(np.sqrt((spec**2).sum(dim = "frequency"))) # Square, then sum, then sqrt, then abs
     powerByK[:] = power_trace.data
     power_trace.plot(ax=axs)
     axs.set_xticks(ticks=np.arange(np.floor(power_trace.coords['wavenumber'][0]), np.ceil(power_trace.coords['wavenumber'][-1])+1.0, 1.0), minor=True)
@@ -1011,11 +1014,11 @@ def create_t_k_spectrum(
     # Double spectrum to conserve E
     tk_spec = np.sqrt(2.0) * tk_spec # <---- Should this be sqrt(2)?
     tk_spec.loc[dict(wavenumber=0.0)] = original_zero_freq_amplitude # Restore original 0-freq amplitude
-    tk_spec = xrft.xrft.ifft(tk_spec, dim="frequency")
+    tk_spec = xrft.xrft.ifft(tk_spec, dim="frequency", true_phase=True, true_amplitude=True)
     tk_spec = tk_spec.rename(freq_frequency="time")
     
-    tk_sum = float(np.abs(tk_spec.sum()))
-    tk_squared = float(np.abs((tk_spec**2).sum()))
+    tk_sum = float(np.abs(tk_spec).sum())
+    tk_squared = float((np.abs(tk_spec)**2).sum())
     parseval_tk = tk_squared  * tk_spec.coords['wavenumber'].spacing * tk_spec.coords['time'].spacing
     tk_peak = float(np.abs(np.nanmax(tk_spec)))
     tk_mean = float(np.abs(tk_spec.mean()))
@@ -1058,6 +1061,7 @@ def create_t_k_plot(
         tkSpec_plot = tkSpectrum.sel(wavenumber=tkSpectrum.wavenumber<=maxK)
         tkSpec_plot = tkSpec_plot.sel(wavenumber=tkSpec_plot.wavenumber>=-maxK)
     tkSpec_plot : xr.DataArray = np.abs(tkSpec_plot) # Returns DataArray somehow (xarray magic)
+    print(f"tk_plot squared * dx * dy = {float((tkSpec_plot**2).sum() * tkSpec_plot.coords['time'].spacing * tkSpec_plot.coords['wavenumber'].spacing)}")
     tkSpec_plot_log : xr.DataArray = np.log10(tkSpec_plot) # Returns DataArray somehow (xarray magic)
     
     # Time-wavenumber
