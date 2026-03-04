@@ -85,7 +85,7 @@ def regress_cottrell(
         outputFields : list,
         logFields : list,
         algorithms : list,
-        cottrellDatapath : Path = Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_cottrell/cottrell_93_experimental_data.csv"),
+        cottrellDatapath : Path,
         normalise : bool = True,
         resultsFilepath : Path = None,
         doPlot : bool = True,
@@ -273,7 +273,8 @@ def regress_cottrell(
     # plt.grid()
     # plt.show()
 
-    with open(Path(cottrellDatapath).parent / "cottrell_regression_results.csv", "w") as csvfile:
+    resultsFilepath = resultsFilepath if str(resultsFilepath).endswith(".csv") else resultsFilepath / "cottrell_regression_results.csv"
+    with open(resultsFilepath, "w") as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=all_results[0].keys())
         writer.writeheader()
         writer.writerows(all_results)
@@ -601,7 +602,7 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser("parser")
     parser.add_argument(
-        "--dir",
+        "--dataDir",
         action="store",
         help="Directory containing netCDF files of simulation output.",
         required = True,
@@ -612,6 +613,19 @@ if __name__ == "__main__":
         action="store",
         help="Filepath of csv to which to write results.",
         required = False,
+        type=Path
+    )
+    parser.add_argument(
+        "--cottrell",
+        action="store_true",
+        help="Run Cottrell experiment.",
+        required = False
+    )
+    parser.add_argument(
+        "--cottrellFilepath",
+        action="store",
+        help="Filepath of Cottrell 93 data to regress against.",
+        required = True,
         type=Path
     )
     parser.add_argument(
@@ -673,38 +687,40 @@ if __name__ == "__main__":
     #     mRocketTypeArgs = mRocket_type_nKernels_maxDilations,
     #     nThreads = args.nThreads)
     
-    regress_cottrell(
-        dataDirectory = Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_cottrell/data/"), 
-        inputSpectraNames = [
-            "Magnetic_Field_Bz/power/powerByFrequency",
-        ], 
-        outputFields = [
-            "B0strength", 
-            "pitch", 
-            "backgroundDensity", 
-            "beamFraction"
-        ], 
-        logFields = [
-            "backgroundDensity", 
-            "beamFraction"
-        ], 
-        algorithms = [
-            "aeon.HydraRegressor", 
-            "aeon.RocketRegressor", 
-            "aeon.MiniRocketRegressor", 
-            "aeon.MultiRocketRegressor", 
-            "aeon.MultiRocketHydraRegressor", 
-            "aeon.QUANTRegressor", 
-            "aeon.KNeighborsTimeSeriesRegressor",
-            "aeon.RDSTRegressor",
-            "aeon.TimeSeriesForestRegressor",
-            "aeon.Catch22Regressor",
-            "aeon.RandomIntervalRegressor",
-            "aeon.SummaryRegressor",
-            "aeon.TSFreshRegressor"
-        ], 
-        cottrellDatapath = Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_cottrell/cottrell_93_experimental_data.csv"),
-        resultsFilepath=args.resultsFilepath,
-        doPlot=True,
-        noTitle=True,
-        nThreads = args.nThreads)
+    if args.cottrell:
+        regress_cottrell(
+            dataDirectory = args.dataDir, 
+            inputSpectraNames = [
+                "Magnetic_Field_Bz/power/powerByFrequency",
+            ], 
+            outputFields = [
+                "B0strength", 
+                "pitch", 
+                "backgroundDensity", 
+                "beamFraction"
+            ], 
+            logFields = [
+                "backgroundDensity", 
+                "beamFraction"
+            ], 
+            algorithms = [
+                "aeon.HydraRegressor", 
+                "aeon.RocketRegressor", 
+                "aeon.MiniRocketRegressor", 
+                "aeon.MultiRocketRegressor", 
+                "aeon.MultiRocketHydraRegressor", 
+                "aeon.QUANTRegressor", 
+                "aeon.KNeighborsTimeSeriesRegressor",
+                "aeon.RDSTRegressor",
+                "aeon.TimeSeriesForestRegressor",
+                "aeon.Catch22Regressor",
+                "aeon.RandomIntervalRegressor",
+                "aeon.SummaryRegressor",
+                "aeon.TSFreshRegressor",
+                "aeon.FreshPRINCERegressor"
+            ], 
+            cottrellDatapath = args.cottrellFilepath,
+            resultsFilepath=args.resultsFilepath,
+            doPlot=True,
+            noTitle=True,
+            nThreads = args.nThreads)

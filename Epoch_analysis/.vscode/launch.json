@@ -208,7 +208,7 @@
             "justMyCode": false,
             "args": [
                 "--dir", 
-                    "/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_cottrell/data/",
+                    "/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_2/data/",
                 "--inputSpectra", 
                     "Magnetic_Field_Bz/power/powerByFrequency",
                     "Electric_Field_Ex/power/powerByFrequency",
@@ -233,8 +233,8 @@
                     // "aeon.TimeSeriesForestRegressor",
                     // "aeon.FreshPRINCERegressor",
                     // "aeon.RocketRegressor",
-                    // "aeon.MiniRocketRegressor",
-                    "aeon.MultiRocketRegressor",
+                    "aeon.MiniRocketRegressor",
+                    // "aeon.MultiRocketRegressor",
                     // "aeon.MultiRocketHydraRegressor",
                     // "aeon.RISTRegressor",
                     // "aeon.QUANTRegressor",
@@ -265,7 +265,7 @@
                 // "--doPlot",
                 // "--noTitle"
                 "--nThreads",
-                    "4"
+                    "12"
             ]
         },
         {
@@ -276,13 +276,15 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "args": [
-                "--dir", 
-                    "/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra/data/",
-                ///// Simulation parameters
+                "--cottrell",
+                "--dataDir", 
+                    "/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_cottrell_2/data/",
+                "cottrellFilepath",
+                    "/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_cottrell_2/cottrell_93_experimental_data.csv",
                 "--resultsFilepath",
-                    "/home/era536/Documents/Epoch/Data/2026_analysis/tsr_aeon/aeon_args_experiment.json",
+                    "/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_cottrell_2/",
                 "--nThreads",
-                    "12"
+                    "12",
             ]
         },
         {
@@ -873,24 +875,24 @@
             "justMyCode": false,
             "args": [
                 "--dir",
-                    "/home/era536/Documents/Epoch/Data/2026_analysis/all_angles/",
+                    "/home/era536/Documents/Epoch/Data/2026_analysis/all_angles_2/",
                 "--outputDir",
-                    "/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra/",
-                // "--combineSpectra",
+                    "/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_2/",
+                "--combineSpectra",
                 // "--calculateIciness",
                 // "--plotIciness",
-                "--recoverB0",
+                // "--recoverB0",
                 "--fields", 
                     "Magnetic_Field_Bz/power/powerByFrequency", 
                     "Electric_Field_Ex/power/powerByFrequency", 
                     "Electric_Field_Ey/power/powerByFrequency",
-                "--iceMetrics",
-                    "ICEmetric_c22HighFluct",
-                    "ICEmetric_fundamentalPower",
-                    "ICEmetric_fundamentalPower_pct",
-                    "ICEmetric_fundamentalPeakMeanRatio",
-                    "ICEmetric_harmonicPower",
-                    "ICEmetric_energyTransfer",
+                // "--iceMetrics",
+                //     "ICEmetric_c22HighFluct",
+                //     "ICEmetric_fundamentalPower",
+                //     "ICEmetric_fundamentalPower_pct",
+                //     "ICEmetric_fundamentalPeakMeanRatio",
+                //     "ICEmetric_harmonicPower",
+                //     "ICEmetric_energyTransfer",
             ]
         },
         {

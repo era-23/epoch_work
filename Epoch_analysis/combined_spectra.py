@@ -393,12 +393,12 @@ def combine_spectra(dataDirectory : Path, outputDirectory : Path):
         fig, (axBz, axEx, axEy) = plt.subplots(3, sharex=True, figsize=(16, 16))
         fig.suptitle(filename)
         axBz.set_title("Magnetic_Field_Bz")
-        axBz.set_ylabel(r"Spectral power [$T \cdot \Omega_{c, \alpha}$]")
+        axBz.set_ylabel(r"Spectral power [$T$]")
         axEx.set_title("Electric_Field_Ex")
-        axEx.set_ylabel(r"Spectral power [$\frac{V}{m} \cdot \Omega_{c, \alpha}$]")
+        axEx.set_ylabel(r"Spectral power [$\frac{V}{m}$]")
         axEy.set_title("Electric_Field_Ey")
-        axEy.set_ylabel(r"Spectral power [$\frac{V}{m} \cdot \Omega_{c, \alpha}$]")
-        axEy.set_xlabel(r"Frequency/$\Omega_{c, \alpha}$")
+        axEy.set_ylabel(r"Spectral power [$\frac{V}{m}$]")
+        axEy.set_xlabel(r"Frequency, \omega [$\Omega_{c,\alpha}]$")
         for angle_sim_path in all_sim_angle_datapaths:
 
             print(f"Processing {sim_id} -- {angle_sim_path.absolute()}...")
