@@ -1,3 +1,4 @@
+import argparse
 import glob
 from pathlib import Path
 import numpy as np
@@ -9,6 +10,7 @@ from plasmapy import particles as ppp
 from scipy import constants as constants
 from scipy.stats import linregress
 from sklearn.preprocessing import MinMaxScaler
+from sdf_xarray import SDFPreprocess
 import xarray as xr
 import astropy.units as u
 import dataclass_csv
@@ -21,6 +23,7 @@ import epydeck
 import math
 import copy
 import netCDF4 as nc
+import xrft
 
 def cold_plasma_dispersion_relation():
     # Constants
@@ -593,8 +596,288 @@ def analyse_real_frequencies(combined_stats_folder : Path):
 
         newData.to_netcdf(cottrell_folder / sim_name.replace("stats.nc", "cottrellRange_stats.nc"))
 
+def fourier_power(simulation_dataPath : Path):
+
+    ##### Known synthetic signal
+    print("Evaluating synthetic signal....")
+    # Generate signal
+    num_time_points = 1024
+    num_space_points = 1024
+    max_t = 5.0
+    max_x = 5.0
+    omega = 0.7 * 2.0 * np.pi
+    omega_2 = 1.9 * 2.0 * np.pi
+    k = 4.0 * 2.0 * np.pi
+    k_2 = 0.2 * 2.0 * np.pi
+    x_flat, dx = np.linspace(0.0, max_x, num_space_points, endpoint=False, retstep=True)
+    t_flat, dt = np.linspace(0.0, max_t, num_time_points, endpoint=False, retstep=True)
+    # generate 2 2d grids for the x & y bounds
+    t, x = np.meshgrid(t_flat, x_flat)
+    y = 2.7 * (np.sin((k * x) - (omega * t)) + np.sin((k_2 * x) - (omega_2 * t)))
+    max_range = 5
+
+    print(f"Input ")
+    print(f"Parseval: Original Signal: sum(abs(signal)**2) * dx * dt = {np.sum(np.abs(y)**2) * dx * dt}")
+    plt.title("Original signal")
+    plt.pcolormesh(x, t, y, cmap="plasma")
+    plt.xlabel("space")
+    plt.ylabel("time")
+    plt.grid()
+    plt.show()
+    
+    signal = xr.DataArray(y, coords={"space" : x_flat, "time" : t_flat}, dims=["space", "time"])
+    fft = xrft.fft(signal, true_phase=True, true_amplitude=True)
+    print(f"Parseval: Fourier Transform: sum(abs(fft)**2) * dk * dw = {float(np.sum(np.abs(fft)**2) * fft.coords['freq_space'].spacing * fft.coords['freq_time'].spacing)}")
+    plt.title("FFT")
+    np.abs(fft).plot()
+    plt.xlim(-max_range,max_range)
+    plt.ylim(-max_range,max_range)
+    plt.grid()
+    plt.show()
+
+    spec = fft.sel(freq_time=fft.freq_time>0.0)
+    freq_power_spectra = spec.sum(dim = "freq_space")
+    naive_freq_sum = float(2.0 * np.sum(np.abs(freq_power_spectra)**2) * fft.coords['freq_space'].spacing * freq_power_spectra.coords['freq_time'].spacing)
+    naive_freq_sum += float(np.abs(fft.sel(freq_time=fft.freq_time==0.0)).sum(dim = "freq_space") * fft.coords['freq_space'].spacing * freq_power_spectra.coords['freq_time'].spacing) # Add 0-freq component
+    print(f"Parseval: Freq spectrum (naive sum, y = sum(fft)): 2 * sum(abs(y)**2) * dk * dw = {naive_freq_sum}")
+    np.abs(freq_power_spectra).plot()
+    plt.title("Naive sum of FFT over all k")
+    plt.xlim((-0.5, max_range))
+    plt.grid()
+    plt.show()
+
+    freq_power_spectra_better = np.sqrt((np.abs(spec)**2).sum(dim = "freq_space"))
+    better_freq_sum = float(2.0 * np.sum(np.abs(freq_power_spectra_better)**2) * fft.coords['freq_space'].spacing * freq_power_spectra_better.coords['freq_time'].spacing)
+    better_freq_sum += float(np.sqrt((np.abs(fft.sel(freq_time=fft.freq_time==0.0))**2).sum()) * fft.coords['freq_space'].spacing * freq_power_spectra_better.coords['freq_time'].spacing) # Add 0-freq component
+    print(f"Parseval: Freq spectrum (better sum, y = sum(sqrt(abs(fft)**2))) 2 * sum(abs(y)**2) * dk * dw =  {better_freq_sum}")
+    np.abs(freq_power_spectra_better).plot()
+    plt.title("Sqrt of Squared sum of FFT over all k")
+    plt.xlim((-0.5, max_range))
+    plt.grid()
+    plt.show()
+
+    # Power spectrum
+    ps = xrft.power_spectrum(signal, scaling = "spectrum")
+    print(f"Parseval: PS: sum(PS) / (dk * dw) = {float(np.sum(ps) / (ps.coords['freq_space'].spacing * ps.coords['freq_time'].spacing))}")
+    np.abs(ps).plot()
+    plt.title("Power spectrum")
+    plt.xlim(-max_range,max_range)
+    plt.ylim(-max_range,max_range)
+    plt.grid()
+    plt.show()
+
+    spec = ps.sel(freq_time=ps.freq_time>0.0)
+    freq_power_spectra = spec.sum(dim = "freq_space")
+    ps_freq_sum = float(2.0 * np.sum(freq_power_spectra) / (ps.coords['freq_space'].spacing * freq_power_spectra.coords['freq_time'].spacing))
+    ps_freq_sum += float(np.sum(ps.sel(freq_time=ps.freq_time==0.0)) / (ps.coords['freq_space'].spacing * freq_power_spectra.coords['freq_time'].spacing))
+    print(f"Parseval: Freq PS (naive sum, y = sum(PS)): 2 * sum(y) / (dk * dw) = {ps_freq_sum}")
+    np.abs(freq_power_spectra).plot()
+    plt.title("Naive sum of Power spectrum over all k")
+    plt.xlim((-0.5, max_range))
+    plt.grid()
+    plt.show()
+
+    # Power spectral density
+    psd = xrft.power_spectrum(signal, scaling = "density")
+    print(f"Parseval: PSD: sum(PSD) = {float(np.sum(psd))}")
+    np.abs(psd).plot()
+    plt.title("Power spectral density")
+    plt.xlim(-max_range,max_range)
+    plt.ylim(-max_range,max_range)
+    plt.grid()
+    plt.show()
+
+    spec = psd.sel(freq_time=psd.freq_time>0.0)
+    freq_power_spectra = spec.sum(dim = "freq_space")
+    psd_freq_sum = float(2.0 * np.sum(freq_power_spectra))
+    psd_freq_sum += float(np.sum(psd.sel(freq_time=psd.freq_time==0.0)))
+    print(f"Parseval: Freq PSD spectrum (naive sum, y = sum(PSD)): 2 * sum(y) = {psd_freq_sum}")
+    np.abs(freq_power_spectra).plot()
+    plt.title("Naive sum of PSD over all k")
+    plt.xlim((-0.5, max_range))
+    plt.grid()
+    plt.show()
+
+def test_simulation_power_spectra(dataDirectory : Path, outputFolder : Path):
+    
+    print(f"Analyzing simulation in '{dataDirectory.name}'")
+
+    # Read dataset
+    print(f"Reading simulation data....")
+    ds = xr.open_mfdataset(
+        str(dataDirectory / "*.sdf"),
+        data_vars='minimal', 
+        coords='minimal', 
+        compat='override', 
+        preprocess=SDFPreprocess()
+    )
+
+    # Drop initial conditions because they may not represent a solution
+    ds = ds.sel(time=ds.coords["time"]>ds.coords["time"][0])
+
+    # Read input deck
+    inputDeck = {}
+    with open(str(dataDirectory / "input.deck")) as id:
+        inputDeck = epydeck.loads(id.read())
+    
+    statsRoot = nc.Dataset(dataDirectory / "stats.nc", "a", format="NETCDF4")
+
+    print(f"Calculating metadata....")
+    ion_gyroperiod, alfven_velocity = epoch_utils.calculate_simulation_metadata(inputDeck, ds, statsRoot)
+
+    print(f"Normalising data....")
+    ds : xr.Dataset = epoch_utils.normalise_data(ds, ion_gyroperiod, alfven_velocity)
+    ds = ds.load()
+
+    bz = ds["Magnetic_Field_Bz"]
+
+    # FFT method
+    fft_spec : xr.DataArray = xrft.xrft.fft(bz, true_amplitude=True, true_phase=True, window=None)
+    fft_spec = fft_spec.rename(freq_time="frequency", freq_x_space="wavenumber")
+    fft_spec = fft_spec.where(fft_spec.wavenumber!=0.0, None)
+    np.log10(np.abs(fft_spec)).plot(cmap="plasma")
+    plt.title("Basic FFT")
+    plt.xlim(-100,100)
+    # plt.ylim(-100,100)
+    plt.grid()
+    plt.savefig(outputFolder / f"{dataDirectory.name}_fft_spectrum.png")
+    plt.close("all")
+
+    # Spacings
+    a = []
+    b = []
+    assert len(bz.coords['time']) == len(fft_spec.coords['frequency'])
+    for i in range(len(bz.coords['time'])-1):
+        a.append(bz.coords['time'][i+1] - bz.coords['time'][i])
+        b.append(fft_spec.coords['frequency'][i+1] - fft_spec.coords['frequency'][i])
+    assert np.std(a) < 0.0001*np.mean(a)
+    time_spacing = np.mean(a)
+    assert np.std(b) < 0.0001*np.mean(b)
+    frequency_spacing = np.mean(b)
+    a = []
+    b = []
+    assert len(bz.coords['x_space']) == len(fft_spec.coords['wavenumber'])
+    for i in range(len(bz.coords['x_space'])-1):
+        a.append(bz.coords['x_space'][i+1] - bz.coords['x_space'][i])
+        b.append(fft_spec.coords['wavenumber'][i+1] - fft_spec.coords['wavenumber'][i])
+    assert np.std(a) < 0.0001*np.mean(a)
+    cell_spacing = np.mean(a)
+    assert np.std(b) < 0.0001*np.mean(b)
+    wavenumber_spacing = np.mean(b)
+
+    print(f"Parseval: Original Signal: sum(abs(signal - mean)**2) * dx * dt = {float((np.abs(bz - bz.mean())**2).sum() * time_spacing * cell_spacing)}")
+    print(f"Parseval: Fourier Transform: sum(abs(fft)**2) * dk * dw = {float((np.abs(fft_spec)**2).sum() * frequency_spacing * wavenumber_spacing)}")
+
+    fft_pos = fft_spec.sel(frequency=fft_spec.frequency>0.0)
+    freq_naive_fft = fft_pos.sum(dim = "wavenumber")
+    naive_freq_sum = float(2.0 * (np.abs(freq_naive_fft)**2).sum() * wavenumber_spacing * frequency_spacing)
+    naive_freq_sum += float((np.abs(fft_spec.sel(frequency=0.0))**2).sum() * wavenumber_spacing * frequency_spacing) # Add 0-freq component
+    print(f"Parseval: Freq spectrum (naive sum, y = sum(fft)): 2 * sum(abs(y)**2) * dk * dw = {naive_freq_sum}")
+    np.abs(freq_naive_fft).plot()
+    plt.title("Naive FFT spectrum over all k")
+    plt.grid()
+    plt.savefig(outputFolder / f"{dataDirectory.name}_fft_naive_sum.png")
+    plt.close("all")
+
+    freq_squared_fft = np.sqrt((np.abs(fft_pos)**2).sum(dim = "wavenumber"))
+    squared_freq_sum = float(2.0 * (np.abs(freq_squared_fft)**2).sum() * wavenumber_spacing * frequency_spacing)
+    squared_freq_sum += float((np.abs(fft_spec.sel(frequency=0.0))**2).sum() * wavenumber_spacing * frequency_spacing) # Add 0-freq component
+    print(f"Parseval: Freq spectrum (better sum, y = sqrt(sum(abs(fft)**2))) 2 * sum(abs(y)**2) * dk * dw =  {squared_freq_sum}")
+    np.abs(freq_squared_fft).plot()
+    plt.title("Energy conserved FFT spectrum over all k")
+    plt.grid()
+    plt.savefig(outputFolder / f"{dataDirectory.name}_fft_better_sum.png")
+    plt.close("all")
+
+    # Power spectrum
+    ps = xrft.power_spectrum(bz, scaling = "spectrum")
+    ps = ps.where(ps.freq_x_space!=0.0, None)
+    print(f"Parseval: PS: sum(PS) / (dk * dw) = {float(np.sum(ps) / (wavenumber_spacing * frequency_spacing))}")
+    np.abs(ps).plot()
+    plt.title("Power spectrum")
+    plt.xlim(-100,100)
+    plt.grid()
+    plt.savefig(outputFolder / f"{dataDirectory.name}_ps.png")
+    plt.close("all")
+
+    ps_pos = ps.sel(freq_time=ps.freq_time>0.0)
+    freq_ps = ps_pos.sum(dim = "freq_x_space")
+    ps_freq_sum = float(2.0 * np.sum(freq_ps) / (wavenumber_spacing * frequency_spacing))
+    ps_freq_sum += float(np.sum(ps.sel(freq_time=0.0)) / (wavenumber_spacing * frequency_spacing))
+    print(f"Parseval: Freq PS (naive sum, y = sum(PS)): 2 * sum(y) / (dk * dw) = {ps_freq_sum}")
+    np.abs(freq_ps).plot()
+    plt.title("Naive sum of power spectrum over all k")
+    plt.grid()
+    plt.savefig(outputFolder / f"{dataDirectory.name}_ps_sum.png")
+    plt.close("all")
+
+    # Power spectral density
+    psd = xrft.power_spectrum(bz, scaling = "density")
+    psd = psd.where(psd.freq_x_space!=0.0, None)
+    print(f"Parseval: PSD: sum(PSD) = {float(np.sum(psd))}")
+    np.abs(psd).plot()
+    plt.title("Power spectral density")
+    plt.grid()
+    plt.xlim(-100,100)
+    plt.savefig(outputFolder / f"{dataDirectory.name}_psd.png")
+    plt.close("all")
+
+    psd_pos = psd.sel(freq_time=psd.freq_time>0.0)
+    freq_psd = psd_pos.sum(dim = "freq_x_space")
+    psd_freq_sum = float(2.0 * np.sum(freq_psd))
+    psd_freq_sum += float(np.sum(psd.sel(freq_time=0.0)))
+    print(f"Parseval: Freq PSD spectrum (naive sum, y = sum(PSD)): 2 * sum(y) = {psd_freq_sum}")
+    np.abs(freq_psd).plot()
+    plt.title("Naive sum of PSD over all k")
+    plt.grid()
+    plt.savefig(outputFolder / f"{dataDirectory.name}_psd_sum.png")
+    plt.close("all")
+
+    # one_ds = ds.sel(x_space = 2.1, method="nearest")
+    # two_ds = ds.sel(x_space = 3.75, method="nearest")
+    # three_ds = ds.sel(x_space = 7.5, method="nearest")
+
+    # # Take FFT
+    # one_ds = one_ds.load()
+    # spec_one : xr.DataArray = xrft.xrft.fft(one_ds["Magnetic_Field_Bz"], true_amplitude=True, true_phase=True, window=None)
+    # spec_one = spec_one.rename(freq_time="frequency")
+    # spec_one = spec_one.sel(frequency=spec_one.frequency>0.0)
+    # np.abs(spec_one).plot(label = "1.0")
+
+    # two_ds = two_ds.load()
+    # spec_two : xr.DataArray = xrft.xrft.fft(two_ds["Magnetic_Field_Bz"], true_amplitude=True, true_phase=True, window=None)
+    # spec_two = spec_two.rename(freq_time="frequency")
+    # spec_two = spec_two.sel(frequency=spec_two.frequency>0.0)
+    # np.abs(spec_two).plot(label = "3.75")
+
+    # three_ds = three_ds.load()
+    # spec_three : xr.DataArray = xrft.xrft.fft(three_ds["Magnetic_Field_Bz"], true_amplitude=True, true_phase=True, window=None)
+    # spec_three = spec_three.rename(freq_time="frequency")
+    # spec_three = spec_three.sel(frequency=spec_three.frequency>0.0)
+    # np.abs(spec_three).plot(label = "7.5")
+    # plt.yscale("log")
+    # plt.show()
+
 
 if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser("parser")
+    parser.add_argument(
+        "--dataDir",
+        action="store",
+        help="Directory containing sdf files of simulation output.",
+        required = False,
+        type=Path
+    )
+    parser.add_argument(
+        "--outputDir",
+        action="store",
+        help="Filepath to which to write plots.",
+        required = False,
+        type=Path
+    )
+
+    args = parser.parse_args()
 
     #cold_plasma_dispersion_relation()
     #appleton_hartree()
@@ -605,4 +888,8 @@ if __name__ == "__main__":
     #     Path("/home/era536/Documents/Epoch/Data/2026_analysis/original_input_decks/run_0_100/")
     # )
 
-    analyse_real_frequencies(Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_2/data/"))
+    # analyse_real_frequencies(Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_2/data/"))
+
+    # fourier_power(Path("/home/era536/Documents/Epoch/Data/batch_testing_4/total_run_43/"))
+
+    test_simulation_power_spectra(args.dataDir, args.outputDir)

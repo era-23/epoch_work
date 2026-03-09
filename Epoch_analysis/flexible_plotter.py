@@ -442,7 +442,7 @@ def plot_cottrell_regression(csvResultsPath : Path):
     
     results = pd.read_csv(csvResultsPath)
     outputFields = results["field"].unique()
-    exclude_algos = ["aeon.TSFreshRegressor", "aeon.RandomIntervalRegressor", "aeon.KNeighborsTimeSeriesRegressor", "aeon.MiniRocketRegressor"]
+    exclude_algos = ["aeon.RandomIntervalRegressor", "aeon.KNeighborsTimeSeriesRegressor", "aeon.MiniRocketRegressor", "aeon.MultiRocketHydraRegressor", "aeon.FreshPRINCERegressor"]
 
     fig, axs = plt.subplots(len(outputFields), 1, figsize=(12,10))
     for i in range(len(outputFields)):
@@ -455,7 +455,9 @@ def plot_cottrell_regression(csvResultsPath : Path):
         
         if field == "B0strength":
             axs[i].fill_between(x = [result["true_value_before_log"] - 0.07, result["true_value_before_log"] + 0.07], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
-        if not (field == "pitch"):
+        if field == "pitch":
+            axs[i].fill_between(x = [result["true_value_before_log"] - 0.05, result["true_value_before_log"] + 0.04], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
+        else:
             axs[i].axvline(x = result["true_value_before_log"], color = "black", linestyle=":", lw = 2.0, label="Experimental value")
 
         best = field_results[abs(field_results["mean_denormed_error"]) == abs(field_results["mean_denormed_error"]).min()]
@@ -465,8 +467,10 @@ def plot_cottrell_regression(csvResultsPath : Path):
     axs[0].legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, 2.0))
     fig.supylabel("Output field", fontsize = 20)
     fig.supxlabel("Prediction", fontsize = 20)
-    axs[2].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
+    axs[2].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=False))
+    axs[2].set_xscale("log")
     axs[3].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
+    axs[3].set_xscale("log")
     plt.tight_layout()
     for ax in axs:
         ax.grid()
@@ -488,18 +492,24 @@ def plot_cottrell_regression(csvResultsPath : Path):
             axs[i].fill_between(x = [result["true_value_before_log"] - 0.07, result["true_value_before_log"] + 0.07], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
         if field == "backgroundDensity":
             axs[i].axvline(x = result["true_value_before_log"] / 10**20, color = "black", linestyle=":", lw = 2.0, label="Experimental value")
-        if not (field == "pitch"):
+        if field == "pitch":
+            axs[i].fill_between(x = [result["true_value_before_log"] - 0.05, result["true_value_before_log"] + 0.04], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
+        else:
             axs[i].axvline(x = result["true_value_before_log"], color = "black", linestyle=":", lw = 2.0, label="Experimental value")
 
     axs[0].legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, 2.0))
-    axs[2].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
-    axs[3].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
     fig.supxlabel("Prediction", fontsize = 20)
     fig.supylabel("Output field", fontsize = 20)
     axs[0].set_xlim(1.0, 5.0)
     axs[1].set_xlim(0.0, 1.0)
     axs[2].set_xlim(0.1, 1.0)
     axs[3].set_xlim(1E-4, 1E-2)
+    axs[2].set_xscale("log")
+    axs[2].xaxis.set_major_formatter(ticker.FormatStrFormatter("%.1f"))
+    axs[2].xaxis.set_minor_formatter(ticker.FormatStrFormatter("%.1f"))
+    axs[3].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
+    axs[3].set_xscale("log")
+
     plt.tight_layout()
     for ax in axs:
         ax.grid()

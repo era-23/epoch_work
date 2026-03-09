@@ -155,7 +155,7 @@ def regress_cottrell(
     equally_spaced_freqs = np.linspace(cottrell_data["Frequency (MHz)"].min(), cottrell_data["Frequency (MHz)"].max(), inputSpectra.shape[2])
     test_x = np.interp(equally_spaced_freqs, np.sort(cottrell_data["Frequency (MHz)"]), cottrell_data["ICE Intensity (dB)"][sort_indices])
     # True values (edge JET values )
-    all_true_y = {"B0strength" : 2.21, "backgroundDensity" : 1.7E19, "beamFraction" : 1.5E-4, "pitch" : 0.5}
+    all_true_y = {"B0strength" : 2.21, "backgroundDensity" : 1.7E19, "beamFraction" : 1.5E-4, "pitch" : 0.4}
     # There is no test_y as we're not scoring predictions yet
     # B = 2.8T, background density = 3.6E19, beamFraction = 6.5E-4 (TRANSP), pitch = ???
 
@@ -282,18 +282,27 @@ def regress_cottrell(
     fig, axs = plt.subplots(len(outputFields), 1, figsize=(12,10))
     for i in range(len(outputFields)):
         for algo, results in all_predictions.items():
-            axs[i].errorbar(all_predictions[algo][i], epoch_utils.fieldNameToText(outputFields[i]), xerr=all_prediction_sds[algo][i], label = algo, ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
+            if outputFields[i] == "backgroundDensity":
+                axs[i].errorbar(all_predictions[algo][i] / 10**20, epoch_utils.fieldNameToText(outputFields[i]), xerr=all_prediction_sds[algo][i] / 10**20, label = algo, ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
+            else:
+                axs[i].errorbar(all_predictions[algo][i], epoch_utils.fieldNameToText(outputFields[i]), xerr=all_prediction_sds[algo][i], label = algo, ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
         
         if outputFields[i] == "B0strength":
             axs[i].axvline(x = all_true_y["B0strength"], color = "black", linestyle=":", lw = 2.0, label="Experimental value")
             axs[i].fill_between(x = [all_true_y["B0strength"] - 0.07, all_true_y["B0strength"] + 0.07], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
-        elif not (outputFields[i] == "pitch"):
+        elif outputFields[i] == "pitch":
+            axs[i].fill_between(x = [all_true_y["pitch"] - 0.05, all_true_y["pitch"] + 0.04], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
+        elif outputFields[i] == "backgroundDensity":
+            axs[i].axvline(x = all_true_y["backgroundDensity"] / 10**20, color = "black", linestyle=":", lw = 2.0, label="Experimental value")
+        else:
             axs[i].axvline(x = all_true_y[outputFields[i]], color = "black", linestyle=":", lw = 2.0, label="Experimental value")
 
     axs[0].legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, 2.0))
     fig.supylabel("Output field", fontsize = 20)
     fig.supxlabel("Prediction", fontsize = 20)
-    axs[2].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
+    axs[2].set_xscale("log")
+    axs[3].set_xscale("log")
+    axs[2].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=False))
     axs[3].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
     plt.tight_layout()
     for ax in axs:
@@ -302,23 +311,33 @@ def regress_cottrell(
 
     fig, axs = plt.subplots(len(outputFields), 1, figsize=(12,10))
     for i in range(len(outputFields)):
-        for algo, results in all_predictions.items():
-            axs[i].errorbar(all_predictions[algo][i], epoch_utils.fieldNameToText(outputFields[i]), xerr=all_prediction_sds[algo][i], label = algo, ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
+        for algo, _ in all_predictions.items():
+            if outputFields[i] == "backgroundDensity":
+                axs[i].errorbar(all_predictions[algo][i] / 10**20, epoch_utils.fieldNameToText(outputFields[i]), xerr=all_prediction_sds[algo][i] / 10**20, label = algo, ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
+            else:
+                axs[i].errorbar(all_predictions[algo][i], epoch_utils.fieldNameToText(outputFields[i]), xerr=all_prediction_sds[algo][i], label = algo, ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
 
         if outputFields[i] == "B0strength":
             axs[i].axvline(x = all_true_y["B0strength"], color = "black", linestyle=":", lw = 2.0, label="Experimental value")
             axs[i].fill_between(x = [all_true_y["B0strength"] - 0.07, all_true_y["B0strength"] + 0.07], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
-        elif not (outputFields[i] == "pitch"):
+        elif outputFields[i] == "pitch":
+            axs[i].fill_between(x = [all_true_y["pitch"] - 0.05, all_true_y["pitch"] + 0.04], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
+        elif outputFields[i] == "backgroundDensity":
+            axs[i].axvline(x = all_true_y["backgroundDensity"] / 10**20, color = "black", linestyle=":", lw = 2.0, label="Experimental value")
+        else:
             axs[i].axvline(x = all_true_y[outputFields[i]], color = "black", linestyle=":", lw = 2.0, label="Experimental value")
 
     axs[0].legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, 2.0))
-    axs[2].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
+    axs[2].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=False))
     axs[3].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
     fig.supxlabel("Prediction", fontsize = 20)
     fig.supylabel("Output field", fontsize = 20)
+    axs[2].set_xscale("log")
+    axs[3].set_xscale("log")
     axs[0].set_xlim(1.0, 5.0)
     axs[1].set_xlim(0.0, 1.0)
-    axs[2].set_xlim(1E19, 1E20)
+    # axs[2].set_xlim(1E19, 1E20)
+    axs[2].set_xlim(0.1, 1.0)
     axs[3].set_xlim(1E-4, 1E-2)
     plt.tight_layout()
     for ax in axs:
@@ -625,7 +644,7 @@ if __name__ == "__main__":
         "--cottrellFilepath",
         action="store",
         help="Filepath of Cottrell 93 data to regress against.",
-        required = True,
+        required = False,
         type=Path
     )
     parser.add_argument(

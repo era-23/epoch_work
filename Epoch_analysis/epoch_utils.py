@@ -272,8 +272,8 @@ fieldNameToText_dict = {
 
     "B0strength" : "B0 [T]", 
     "B0angle" : "B0 angle", 
-    # "backgroundDensity" : r"density [$10^{20}m^{-3}$]", 
-    "backgroundDensity" : r"density [$m^{-3}$]", 
+    "backgroundDensity" : r"density [$10^{20}m^{-3}$]", 
+    # "backgroundDensity" : r"density [$m^{-3}$]", 
     "beamFraction" : "fast alpha fraction",
     "pitch" : "pitch"
 }
@@ -814,7 +814,7 @@ def create_omega_k_plots(
 
     # Power in omega over all k
     fig, axs = plt.subplots(figsize=(15, 10))
-    power_trace = np.sqrt((np.abs(spec)**2).sum(dim = "wavenumber")) # Square, then sum, then sqrt, then abs
+    power_trace = np.sqrt((np.abs(spec)**2).sum(dim = "wavenumber")) # Square, then sum
     powerByOmega[:] = power_trace.data
     parsevalWpower = float(2.0 * ((power_trace**2).sum() * power_trace.coords["frequency"].spacing * spec.coords["wavenumber"].spacing))
     statsFile.parsevalWpower = parsevalWpower
