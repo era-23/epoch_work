@@ -84,7 +84,13 @@ def estimate_B0_from_spectra(combined_directory : Path, fields : list, particle 
         data_xr.close()
         data_nc.close()
 
+    plt.figure(figsize=(8.5,8.5))
+    
     for field in fields:
+
+        colour = "red" if "Bz" in field else "green" if "Ex" in field else "blue"
+        mk = "o" if "Bz" in field else "x" if "Ex" in field else "+"
+
         ogs = originalB0s[field]
         recs = recoveredB0s[field]
         absErrors = np.abs(np.array(recs) - np.array(ogs))
@@ -94,19 +100,20 @@ def estimate_B0_from_spectra(combined_directory : Path, fields : list, particle 
         result = linregress(ogs, recs)
         print(f"Plotting predictions vs true values for {field}")
         print(f"{field}: B0 r2 = {result.rvalue**2:.3f}, S.E. = {result.stderr:.3f}, rmse = {root_mean_squared_error(ogs, recs)}")
-        threshold = 0.2
+        threshold = 0.25
         print(f"{field}: {sum(v > threshold for v in absErrors)}/{len(absErrors)} predictions are outside of {threshold}T.")
-        plt.figure(figsize=(8.5,8.5))
+        
         # plt.title(f"{field}: B0\n(r2 = {result.rvalue**2:.3f}, S.E. = {result.stderr:.3f})")
-        plt.scatter(ogs, recs, marker = "x", color = "red")
+        plt.scatter(ogs, recs, color = colour, alpha = 0.9, marker = mk, s = 100, label = f"{eu.fieldNameToText(field)}")
         sortB0 = sorted(ogs)
-        plt.plot(sortB0, sortB0, color = "blue", alpha = 0.9, linestyle = "dashed", label = "ideal prediction")
-        plt.xlabel("Original B0 [T]")
-        plt.ylabel("Recovered B0 [T]")
-        plt.grid()
-        plt.legend()
-        plt.tight_layout()
-        plt.show()
+        
+    plt.plot(sortB0, sortB0, color = "black", alpha = 0.9, linestyle = "dashed", label = "ideal prediction")
+    plt.xlabel("Original B0 [T]")
+    plt.ylabel("Recovered B0 [T]")
+    plt.grid()
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
 
         # Plot errors with other varied quantities
         # for param, values in variedParams.items():

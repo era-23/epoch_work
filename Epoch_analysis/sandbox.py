@@ -603,11 +603,11 @@ def fourier_power(simulation_dataPath : Path):
     # Generate signal
     num_time_points = 1024
     num_space_points = 1024
-    max_t = 5.0
-    max_x = 5.0
-    omega = 0.7 * 2.0 * np.pi
-    omega_2 = 1.9 * 2.0 * np.pi
-    k = 4.0 * 2.0 * np.pi
+    max_t = 4.0
+    max_x = 4.0
+    omega = 0.8 * 2.0 * np.pi
+    omega_2 = 3.7 * 2.0 * np.pi
+    k = 2.0 * 2.0 * np.pi
     k_2 = 0.2 * 2.0 * np.pi
     x_flat, dx = np.linspace(0.0, max_x, num_space_points, endpoint=False, retstep=True)
     t_flat, dt = np.linspace(0.0, max_t, num_time_points, endpoint=False, retstep=True)
@@ -617,11 +617,13 @@ def fourier_power(simulation_dataPath : Path):
     max_range = 5
 
     print(f"Input ")
+    print(f"Max y: {np.max(y)}, Min y: {np.min(y)}, RMS: {np.sqrt(np.mean(y**2))}, RMS^2: {np.mean(y**2)}, V_RMS: {(1/np.sqrt(2))*np.max(y)}, V_RMS^2: {((1/np.sqrt(2))*np.max(y))**2}")
     print(f"Parseval: Original Signal: sum(abs(signal)**2) * dx * dt = {np.sum(np.abs(y)**2) * dx * dt}")
     plt.title("Original signal")
-    plt.pcolormesh(x, t, y, cmap="plasma")
-    plt.xlabel("space")
-    plt.ylabel("time")
+    qm = plt.pcolormesh(x, t, y, cmap="plasma")
+    plt.colorbar(qm, label = "Field [T]")
+    plt.xlabel("space [m]")
+    plt.ylabel("time [s]")
     plt.grid()
     plt.show()
     
@@ -629,7 +631,9 @@ def fourier_power(simulation_dataPath : Path):
     fft = xrft.fft(signal, true_phase=True, true_amplitude=True)
     print(f"Parseval: Fourier Transform: sum(abs(fft)**2) * dk * dw = {float(np.sum(np.abs(fft)**2) * fft.coords['freq_space'].spacing * fft.coords['freq_time'].spacing)}")
     plt.title("FFT")
-    np.abs(fft).plot()
+    np.abs(fft).plot(cbar_kwargs={'label': "Power [Tm/Hz]"})
+    plt.xlabel("Frequency [Hz]")
+    plt.ylabel("Wavenumber [m^-1]")
     plt.xlim(-max_range,max_range)
     plt.ylim(-max_range,max_range)
     plt.grid()
@@ -641,6 +645,8 @@ def fourier_power(simulation_dataPath : Path):
     naive_freq_sum += float(np.abs(fft.sel(freq_time=fft.freq_time==0.0)).sum(dim = "freq_space") * fft.coords['freq_space'].spacing * freq_power_spectra.coords['freq_time'].spacing) # Add 0-freq component
     print(f"Parseval: Freq spectrum (naive sum, y = sum(fft)): 2 * sum(abs(y)**2) * dk * dw = {naive_freq_sum}")
     np.abs(freq_power_spectra).plot()
+    plt.xlabel("Frequency [Hz]")
+    plt.ylabel("Power [Tm/Hz]")
     plt.title("Naive sum of FFT over all k")
     plt.xlim((-0.5, max_range))
     plt.grid()
@@ -652,6 +658,8 @@ def fourier_power(simulation_dataPath : Path):
     print(f"Parseval: Freq spectrum (better sum, y = sum(sqrt(abs(fft)**2))) 2 * sum(abs(y)**2) * dk * dw =  {better_freq_sum}")
     np.abs(freq_power_spectra_better).plot()
     plt.title("Sqrt of Squared sum of FFT over all k")
+    plt.xlabel("Frequency [Hz]")
+    plt.ylabel("Power [Tm/Hz]")
     plt.xlim((-0.5, max_range))
     plt.grid()
     plt.show()
@@ -659,8 +667,10 @@ def fourier_power(simulation_dataPath : Path):
     # Power spectrum
     ps = xrft.power_spectrum(signal, scaling = "spectrum")
     print(f"Parseval: PS: sum(PS) / (dk * dw) = {float(np.sum(ps) / (ps.coords['freq_space'].spacing * ps.coords['freq_time'].spacing))}")
-    np.abs(ps).plot()
+    ps.plot(cbar_kwargs={'label': "Power [T^2]"})
     plt.title("Power spectrum")
+    plt.xlabel("Frequency [Hz]")
+    plt.ylabel("Wavenumber [m^-1]")
     plt.xlim(-max_range,max_range)
     plt.ylim(-max_range,max_range)
     plt.grid()
@@ -671,7 +681,9 @@ def fourier_power(simulation_dataPath : Path):
     ps_freq_sum = float(2.0 * np.sum(freq_power_spectra) / (ps.coords['freq_space'].spacing * freq_power_spectra.coords['freq_time'].spacing))
     ps_freq_sum += float(np.sum(ps.sel(freq_time=ps.freq_time==0.0)) / (ps.coords['freq_space'].spacing * freq_power_spectra.coords['freq_time'].spacing))
     print(f"Parseval: Freq PS (naive sum, y = sum(PS)): 2 * sum(y) / (dk * dw) = {ps_freq_sum}")
-    np.abs(freq_power_spectra).plot()
+    freq_power_spectra.plot()
+    plt.xlabel("Frequency [Hz]")
+    plt.ylabel("Power [T^2]")
     plt.title("Naive sum of Power spectrum over all k")
     plt.xlim((-0.5, max_range))
     plt.grid()
@@ -680,8 +692,10 @@ def fourier_power(simulation_dataPath : Path):
     # Power spectral density
     psd = xrft.power_spectrum(signal, scaling = "density")
     print(f"Parseval: PSD: sum(PSD) = {float(np.sum(psd))}")
-    np.abs(psd).plot()
+    psd.plot(cbar_kwargs={'label': "Power [T^2 m/Hz]"})
     plt.title("Power spectral density")
+    plt.xlabel("Frequency [Hz]")
+    plt.ylabel("Wavenumber [m^-1]")
     plt.xlim(-max_range,max_range)
     plt.ylim(-max_range,max_range)
     plt.grid()
@@ -692,7 +706,9 @@ def fourier_power(simulation_dataPath : Path):
     psd_freq_sum = float(2.0 * np.sum(freq_power_spectra))
     psd_freq_sum += float(np.sum(psd.sel(freq_time=psd.freq_time==0.0)))
     print(f"Parseval: Freq PSD spectrum (naive sum, y = sum(PSD)): 2 * sum(y) = {psd_freq_sum}")
-    np.abs(freq_power_spectra).plot()
+    freq_power_spectra.plot()
+    plt.xlabel("Frequency [Hz]")
+    plt.ylabel("Power Density [T^2 m/Hz]")
     plt.title("Naive sum of PSD over all k")
     plt.xlim((-0.5, max_range))
     plt.grid()
@@ -890,6 +906,6 @@ if __name__ == "__main__":
 
     # analyse_real_frequencies(Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_2/data/"))
 
-    # fourier_power(Path("/home/era536/Documents/Epoch/Data/batch_testing_4/total_run_43/"))
+    fourier_power(Path("/home/era536/Documents/Epoch/Data/batch_testing_4/total_run_43/"))
 
-    test_simulation_power_spectra(args.dataDir, args.outputDir)
+    # test_simulation_power_spectra(args.dataDir, args.outputDir)

@@ -1,0 +1,61 @@
+[
+    {
+        "job_name": "1-conv",
+        "filename": "aeon_main_battery.sh",
+        "ntasks": 1,
+        "cpus": 16,
+        "mem": "128G",
+        "time": "00-23:59:00",
+        "output": "/home/era536/Documents/Epoch/Data/2026_analysis/tsr_aeon/logs/",
+        "script": "/users/era536/scratch/repos/epoch_work/Epoch_analysis/ts_aeon_regression_development.py",
+        "script_args": [
+            "--dir", 
+                "/users/era536/scratch/epoch/ml_feb26/combined_data_full/",
+            "--inputSpectra",
+                "Magnetic_Field_Bz/power/powerByFrequency",
+                "Electric_Field_Ex/power/powerByFrequency",
+                "Electric_Field_Ey/power/powerByFrequency", 
+            "--outputFields", 
+                "B0strength", "pitch", "backgroundDensity", "beamFraction",
+            "--logFields",
+                "backgroundDensity", "beamFraction", 
+            "--algorithms", 
+                "aeon.DummyRegressor",
+                "aeon.HydraRegressor",
+                "aeon.RocketRegressor",
+                "aeon.MiniRocketRegressor",
+                "aeon.MultiRocketRegressor",
+                "aeon.MultiRocketHydraRegressor", 
+                "aeon.RandomIntervalSpectralEnsembleRegressor",
+                "aeon.TimeSeriesForestRegressor",
+                "aeon.QUANTRegressor",
+                "aeon.KNeighborsTimeSeriesRegressor",
+                "aeon.RDSTRegressor",
+            "--cvStrategy",
+                "LeaveOneOut", 
+            "--resultsFilepath", 
+                "/users/era536/scratch/epoch/publications/modelling_nl_spectra/tsr_2/full_spectra/aeon_main_battery.json",
+            "--doPlot", 
+            "--noTitle",
+            "--nThreads", 
+                "$SLURM_CPUS_PER_TASK"
+        ]
+    },
+    {
+        "job_name": "long_train",
+        "script": "train.py",
+        "script_args": ["--epochs", "100"],
+        "time": "02-00:00:00",
+        "mem": "64G",
+        "filename": "train_long.sh"
+    },
+    {
+        "job_name": "gpu_train",
+        "script": "train.py",
+        "script_args": ["--epochs", "100"],
+        "time": "02-00:00:00",
+        "mem": "64G",
+        "gpu" : 1,
+        "filename": "train_gpu.sh"
+    }
+]

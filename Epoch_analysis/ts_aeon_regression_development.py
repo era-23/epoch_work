@@ -165,6 +165,7 @@ def regress(
         cvStrategy : str = "RepeatedKFolds",
         normalise : bool = True,
         doIce : bool = False,
+        includeFreqs : bool = False,
         iceMetricsToUse : list = None,
         resultsFilepath : Path = None,
         doPlot : bool = True,
@@ -189,7 +190,7 @@ def regress(
 
     # Input data
     inputs = {name : [] for name in inputSpectraNames}
-    inputs = ml_utils.read_data(data_files, inputs, with_names = True, with_coords = True, with_iciness = doIce)
+    inputs = ml_utils.read_data(data_files, inputs, with_names = True, with_coords = True, with_iciness = doIce, denorm_coords = True)
     battery.inputSpectra = np.array(inputSpectraNames)
 
     if doIce:
@@ -224,12 +225,16 @@ def regress(
     inputData = []
     for field in inputSpectraNames:
         specs = inputs[field]
+        coords = inputs[f"{field}_coords"]
         for i in range(len(specs)):
             if len(specs[i]) > min_l:
                 truncd_series, truncd_coords = ml_utils.truncate_series(specs[i], inputs[f"{field}_coords"][i], max_common_coord)
-                resamp_series, _ = ml_utils.downsample_series(truncd_series, truncd_coords, min_l, f"{field.split('/')[0]}_run_{inputs['sim_ids'][i]}", directory / "spectra_homogenisation/")
+                resamp_series, resamp_coords = ml_utils.downsample_series(truncd_series, truncd_coords, min_l, f"{field.split('/')[0]}_run_{inputs['sim_ids'][i]}", directory / "spectra_homogenisation/")
                 specs[i] = resamp_series
-        inputData.append(specs) 
+                coords[i] = resamp_coords
+        inputData.append(specs)
+    if includeFreqs:
+        inputData.append(coords) # Append only the last set of coordinates (they should be the same for all fields)
 
     # Reshape into 3D numpy array of shape (n_cases, n_channels, n_timepoints)
     inputSpectra = np.swapaxes(np.array(inputData), 0, 1)
@@ -549,6 +554,12 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
+        "--betaIncludeFreqs",
+        action="store_true",
+        help="Beta test: include frequencies in Hz (not gyrofrequency) as a channel.",
+        required = False
+    )
+    parser.add_argument(
         "--resultsFilepath",
         action="store",
         help="Filepath of csv to which to write results.",
@@ -587,6 +598,7 @@ if __name__ == "__main__":
         args.cvRepeats, 
         args.cvStrategy,
         doIce=args.doIce,
+        includeFreqs=args.betaIncludeFreqs,
         iceMetricsToUse=args.iceMetrics,
         resultsFilepath=args.resultsFilepath,
         doPlot=args.doPlot,

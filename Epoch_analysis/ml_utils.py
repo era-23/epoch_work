@@ -20,6 +20,9 @@ from numpy.typing import ArrayLike
 from SALib import ProblemSpec
 import SALib.sample as salsamp
 
+import astropy.units as u
+from plasmapy.formulary import frequencies as ppf
+
 # Sktime algorithms
 # import sktime.clustering.dbscan as skt_dbscan
 # import sktime.clustering.k_means  as skt_kmeans
@@ -338,7 +341,14 @@ def get_algorithm(name, nThreads = 1, **kwargs):
         case "aeon.DisjointCNNRegressor":
             return aeon_deep.DisjointCNNRegressor()
 
-def read_data(dataFiles, data_dict : dict, with_names : bool = False, with_coords : bool = False, with_iciness : bool = False) -> dict:
+def read_data(
+        dataFiles, 
+        data_dict : dict, 
+        with_names : bool = False, 
+        with_coords : bool = False, 
+        with_iciness : bool = False,
+        denorm_coords : bool = False
+    ) -> dict:
     
     dataFields = list(data_dict.keys())
     sim_ids = []
@@ -373,7 +383,10 @@ def read_data(dataFiles, data_dict : dict, with_names : bool = False, with_coord
                     dimCoordsKey = fieldPath + "_coords"
                     dimName = data[group].variables[fieldName].dims[0]
                     dimVals = data[group].coords[dimName].values
-                    data_dict[dimCoordsKey].append(dimVals)
+                    if denorm_coords:
+                        data_dict[dimCoordsKey].append(dimVals * (data.ionGyrofrequency_radPs / (2.0 * np.pi)))    
+                    else:
+                        data_dict[dimCoordsKey].append(dimVals)
                 # Get ICE indicators if requested
                 if with_iciness:
                     for attr, val in data[fieldPath].attrs.items():

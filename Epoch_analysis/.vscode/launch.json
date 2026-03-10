@@ -228,12 +228,12 @@
                     // "aeon.RDSTRegressor",
                     // "aeon.Catch22Regressor",
                     // "aeon.TSFreshRegressor",
-                    // "aeon.HydraRegressor",
+                    "aeon.HydraRegressor",
                     // "aeon.DrCIFRegressor",
                     // "aeon.TimeSeriesForestRegressor",
                     // "aeon.FreshPRINCERegressor",
                     // "aeon.RocketRegressor",
-                    "aeon.MiniRocketRegressor",
+                    // "aeon.MiniRocketRegressor",
                     // "aeon.MultiRocketRegressor",
                     // "aeon.MultiRocketHydraRegressor",
                     // "aeon.RISTRegressor",
@@ -252,8 +252,9 @@
                     "LeaveOneOut",
                     //"RepeatedKFolds",
                 "--resultsFilepath",
-                    "/home/era536/Documents/Epoch/Data/2026_analysis/tsr_aeon/debug.json",
-                // "--doIce",
+                    "/home/era536/Documents/Epoch/Data/2026_analysis/tsr_aeon/test_adding_freq_channel.json",
+                "--betaIncludeFreqs",
+                    // "--doIce",
                 // "--iceMetrics",
                 //     "ICEmetric_c22HighFluct",
                 //     "ICEmetric_fundamentalPower",
@@ -262,7 +263,7 @@
                 //     "ICEmetric_harmonicPeakFloorRatio",
                 //     "ICEmetric_harmonicPower",
                 //     "ICEmetric_energyTransfer",
-                // "--doPlot",
+                "--doPlot",
                 // "--noTitle"
                 "--nThreads",
                     "12"
@@ -878,10 +879,10 @@
                     "/home/era536/Documents/Epoch/Data/2026_analysis/all_angles_2/",
                 "--outputDir",
                     "/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_2/",
-                "--combineSpectra",
+                // "--combineSpectra",
                 // "--calculateIciness",
                 // "--plotIciness",
-                // "--recoverB0",
+                "--recoverB0",
                 "--fields", 
                     "Magnetic_Field_Bz/power/powerByFrequency", 
                     "Electric_Field_Ex/power/powerByFrequency", 
@@ -950,5 +951,17 @@
                     "/home/era536/Documents/Epoch/Data/batch_testing_4/output/",
             ]
         },
+        {
+            "name": "Python Debugger: SLURM scripter",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "slurm_scripts.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "--config",
+                    "config_files/slurm_jobs.json"
+            ]
+        }
     ]
 }
