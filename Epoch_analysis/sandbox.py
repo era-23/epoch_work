@@ -469,6 +469,90 @@ def analyse_bad_predictions(csvPredictions : Path, inputDecks : Path):
         plot_style="contour"
     )
 
+def analyse_x_gyrofreqs(dataDir: Path, num_gyro_freqs : float, outputFolder : Path):
+    
+    spectraTypes = ["Magnetic_Field_Bz", "Electric_Field_Ex", "Electric_Field_Ey"]
+
+    if dataDir.name != "data":
+        data_dir = dataDir / "data"
+    else:
+        data_dir = dataDir
+    data_files = glob.glob(str(data_dir / "*.nc"))
+
+    # Pre-check for data length:
+    index_counts = []
+    for simulation in data_files:
+
+        data = xr.open_datatree(
+            simulation,
+            engine="netcdf4"
+        )
+
+        for spectra in spectraTypes:
+            num_indices = float(data[f"/{spectra}/power/powerByFrequency"].sel(frequency = slice(0.0, num_gyro_freqs)).size)
+            index_counts.append(num_indices)
+    
+    if np.max(index_counts) != np.min(index_counts):
+        print(f"Spectra would be different lengths: {np.max(index_counts)} vs {np.min(index_counts)}. Defaulting to minimum.")
+    
+    indices_to_keep = int(np.min(index_counts))
+
+    dataset_len = 0
+    max_frequencies = []
+    for simulation in data_files:
+
+        data = xr.open_datatree(
+            simulation,
+            engine="netcdf4"
+        )
+        newData : xr.DataTree = copy.deepcopy(data)
+
+        sim_name = Path(simulation).name
+
+        new_data_len = []
+        for spectra in spectraTypes:
+
+            dataset_len = newData[f"/{spectra}/power/powerByFrequency"].size
+            frequencies = newData[f"/{spectra}/power/powerByFrequency"].coords["frequency"]
+            new_range = newData[f"/{spectra}/power/powerByFrequency"].isel(frequency = slice(0, indices_to_keep))
+            new_freqs = newData[f"/{spectra}/power/powerByFrequency"].coords["frequency"].isel(frequency = slice(0, indices_to_keep))
+            new_len = new_freqs.size
+
+            print(f"Spectra: {spectra}: Current len: {dataset_len}, Max frequency: {float(frequencies[-1])} gyrofrequencies.")
+            print(f"Spectra: {spectra}: Truncating to {num_gyro_freqs} gyrofrequencies ({new_len} indices).")
+
+            data_attrs = newData[f"/{spectra}/power/powerByFrequency"].attrs
+            coords_attrs = newData[f"/{spectra}/power/frequency"].attrs
+            newData[f"/{spectra}/power"] = newData[f"/{spectra}/power"].to_dataset().drop_vars("powerByFrequency")
+            newData[f"/{spectra}/power"] = newData[f"/{spectra}/power"].to_dataset().drop_dims("frequency")
+            newData[f"/{spectra}/power/powerByFrequency"] = new_range
+            newData[f"/{spectra}/power/frequency"] = new_freqs
+            newData[f"/{spectra}/power/powerByFrequency"] = newData[f"/{spectra}/power/powerByFrequency"].assign_coords(frequency = new_freqs)
+
+            newPowerSpectra = newData[f"/{spectra}/power/powerByFrequency"]
+
+            max_real_f = (float(newPowerSpectra.coords["frequency"][-1] * (data.ionGyrofrequency_radPs / (2.0 * np.pi))) * u.Hz).to(u.MHz)
+            max_frequencies.append(max_real_f)
+            print(f"Truncated spectra has len {newPowerSpectra.size}, max freq {float(newPowerSpectra.coords['frequency'][-1])} gyrofrequencies ({max_real_f}).")
+
+            # print(newData[f"/{spectra}/power/frequency"].to_numpy())
+            # print(newData[f"/{spectra}/power/powerByFrequency"].to_numpy())
+            # plt.plot(data[f"/{spectra}/power/frequency"].to_numpy(), data[f"/{spectra}/power/powerByFrequency"].to_numpy(), color = "blue")
+            # plt.plot(newData[f"/{spectra}/power/frequency"].to_numpy(), newData[f"/{spectra}/power/powerByFrequency"].to_numpy(), color = "red")
+            # plt.xlabel("Gyrofrequencies")
+            # plt.show()
+
+            assert new_len == newData[f"/{spectra}/power/powerByFrequency"].size
+            new_data_len.append(new_len)
+        
+        assert new_data_len[0] == new_data_len[1]
+        assert new_data_len[1] == new_data_len[2]
+
+        newData.to_netcdf(outputFolder / sim_name.replace("stats.nc", f"{num_gyro_freqs}_gyros_stats.nc"))
+
+    fs = [f.value for f in max_frequencies]
+    print(f"Max frequencies range from {np.min(fs)} to {np.max(fs)}MHz.")
+
 def analyse_real_frequencies(combined_stats_folder : Path):
 
     spectraTypes = ["Magnetic_Field_Bz", "Electric_Field_Ex", "Electric_Field_Ey"]
@@ -905,7 +989,8 @@ if __name__ == "__main__":
     # )
 
     # analyse_real_frequencies(Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_2/data/"))
+    analyse_x_gyrofreqs(Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_2/data/"), num_gyro_freqs=11.0, outputFolder=Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_reduced/"))
 
-    fourier_power(Path("/home/era536/Documents/Epoch/Data/batch_testing_4/total_run_43/"))
+    # fourier_power(Path("/home/era536/Documents/Epoch/Data/batch_testing_4/total_run_43/"))
 
     # test_simulation_power_spectra(args.dataDir, args.outputDir)
