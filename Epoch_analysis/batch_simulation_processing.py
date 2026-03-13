@@ -598,6 +598,7 @@ def process_simulation_batch(
 
             # Dispersion relations
             wavenumberToFrequencyTable = e_utils.create_omega_k_plots(original_spec, fieldStats, field, field_unit, plotFieldFolder, simFolder.name, inputDeck, bkgdSpecies, fastSpecies, maxK=maxK, maxW=maxW, display=displayPlots, debug=debug)
+            e_utils.create_power_spectra(ds[field], fieldStats, debug)
             e_utils.create_t_k_plot(tk_spec, field, field_unit, plotFieldFolder, simFolder.name, maxK, displayPlots)
 
             if bispectra:

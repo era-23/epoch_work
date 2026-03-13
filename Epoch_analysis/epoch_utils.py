@@ -749,6 +749,9 @@ def create_omega_k_plots(
         display : bool,
         debug):
 
+    if not os.path.exists(saveDirectory):
+        os.makedirs(saveDirectory)
+
     print("Generating w-k plots....")
     field = fieldNameToText(field)
     spec = fftSpectrum.load() # Load complex data
@@ -998,6 +1001,75 @@ def create_omega_k_plots(
     del(log_spec)
 
     return maxPowerFrequenciesByK
+
+def create_power_spectra(
+        fieldData : xr.Dataset, 
+        fieldStats : nc.Dataset,
+        debug : bool = False
+):
+    # Get power spectrum
+    ps = xrft.power_spectrum(fieldData, scaling = "spectrum") # PS over space and time
+    ps = ps.rename(freq_time = "frequency")
+    ps = ps.rename(freq_x_space = "wavenumber")
+    freq_ps_all = ps.sum(dim = "wavenumber") # Sum over all k
+    freq_ps = freq_ps_all.sel(frequency=freq_ps_all.frequency>=0.0)
+    freq_ps.loc[dict(frequency=0.0)] = 0.0
+
+    # Get power spectral density
+    psd = xrft.power_spectrum(fieldData, scaling = "density")
+    psd = psd.rename(freq_time = "frequency")
+    psd = psd.rename(freq_x_space = "wavenumber")
+    freq_psd_all = psd.sum(dim = "wavenumber") # Sum over all k
+    freq_psd = freq_psd_all.sel(frequency=freq_psd_all.frequency>=0.0)
+    freq_psd.loc[dict(frequency=0.0)] = 0.0
+
+    assert (freq_ps.coords['frequency'] == freq_psd.coords['frequency']).all()
+    if "power" not in fieldStats.groups.keys():
+        powerStats = fieldStats.createGroup("power")
+        powerStats.createDimension("frequency", freq_ps.coords['frequency'].size)
+    powerStats = fieldStats["power"]
+
+    if "frequency" not in powerStats.variables.keys():
+        w_var = powerStats.createVariable("frequency", datatype="f4", dimensions=("frequency",))
+        w_var[:] = freq_ps.coords["frequency"].data
+        w_var.units = "wCI"
+
+    if "frequencyPowerSpectrum" not in powerStats.variables.keys():
+        powerStats.createVariable("frequencyPowerSpectrum", datatype="f4", dimensions=("frequency",))
+    ps_var = powerStats.variables["frequencyPowerSpectrum"]
+
+    if "frequencyPowerSpectralDensity" not in powerStats.variables.keys():
+        powerStats.createVariable("frequencyPowerSpectralDensity", datatype="f4", dimensions=("frequency",))
+    psd_var = powerStats.variables["frequencyPowerSpectralDensity"]
+
+    ps_var[:] = freq_ps.data
+    psd_var[:] = freq_psd.data
+
+    ps_freq_sum = float(np.sum(freq_ps_all) / (ps.coords['wavenumber'].spacing * freq_ps.coords['frequency'].spacing))
+    # ps_freq_sum += float(np.sum(ps.sel(frequency=0.0)) / (ps.coords['wavenumber'].spacing * freq_ps.coords['frequency'].spacing))
+    powerStats.parsevalFrequencyPowerSpectrum = ps_freq_sum
+
+    psd_freq_sum = float(np.sum(freq_psd_all))
+    # psd_freq_sum += float(np.sum(psd.sel(frequency=0.0)))
+    powerStats.parsevalFrequencyPowerSpectralDensity = psd_freq_sum
+
+    # Optional plots
+    if debug:
+        print(f"Parseval PS: {ps_freq_sum}")
+        # freq_ps.plot()
+        # plt.xlabel("Frequency [Hz]")
+        # plt.ylabel("Power [T^2]")
+        # plt.title("Sum of power spectrum over all k")
+        # plt.grid()
+        # plt.show()
+
+        print(f"Parseval PSD: {psd_freq_sum}")
+        # freq_psd.plot()
+        # plt.xlabel("Frequency [Hz]")
+        # plt.ylabel("Power Density [T^2 m/Hz]")
+        # plt.title("Sum of PSD over all k")
+        # plt.grid()
+        # plt.show()
 
 def create_t_k_spectrum(
         originalFftSpectrum : xr.DataArray, 
