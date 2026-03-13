@@ -105,6 +105,7 @@ class TSRBattery:
     logFields : ArrayLike = None
     algorithms : ArrayLike = None
     normalised : bool = False
+    scaledInputs : bool = False
     numObservations : int = 0
     numOutputs : int = 0
     numInputDimensions : int = 0

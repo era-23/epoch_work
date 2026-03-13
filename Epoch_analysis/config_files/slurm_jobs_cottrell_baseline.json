@@ -10,7 +10,7 @@
         "script": "/users/era536/scratch/repos/epoch_work/Epoch_analysis/ts_aeon_regression_development.py",
         "script_args": [
             "--dir", 
-                "/users/era536/scratch/epoch/ml_feb26/cottrell_11_gyros/",
+                "/users/era536/scratch/epoch/ml_feb26/combined_spectra_cottrell_2/",
             "--inputSpectra",
                 "Magnetic_Field_Bz/power/powerByFrequency",
             "--outputFields", 
@@ -37,7 +37,7 @@
             "--resultsFilepath", 
                 "/users/era536/scratch/epoch/publications/modelling_nl_spectra/tsr_2/cottrell_11_gyros_baseline/aeon_main_cottrell_baseline.json",
             "--doPlot", 
-            "--betaIncludeFreqs",
+            "--scaleInputs",
             "--noTitle",
             "--nThreads", 
                 "$SLURM_CPUS_PER_TASK"

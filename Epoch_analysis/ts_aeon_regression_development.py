@@ -3,6 +3,8 @@ import glob
 import os
 from pathlib import Path
 import warnings
+
+from sklearn.preprocessing import MinMaxScaler
 import ml_utils
 import matplotlib.pyplot as plt
 import numpy as np
@@ -186,7 +188,8 @@ def regress(
     data_files = glob.glob(str(data_dir / "*.nc")) 
     battery.directory = str(directory.resolve())
     battery.algorithms = algorithms
-    battery.normalised = normalise
+    battery.normalised = True
+    battery.scaledInputs = scaleInputs
 
     # Input data
     inputs = {name : [] for name in inputSpectraNames}
@@ -222,6 +225,7 @@ def regress(
     print(f"Max spec length: {np.max(spec_lengths)} min spec length: {min_l}")
     max_common_coord = np.max([c[-1] for c in [inputs[f"{inputSpectrumName}_coords"] for inputSpectrumName in inputSpectraNames]])
     
+    scaler_train = MinMaxScaler(feature_range=(0, 1))
     inputData = []
     for field in inputSpectraNames:
         specs = inputs[field]
@@ -232,13 +236,12 @@ def regress(
                 resamp_series, resamp_coords = ml_utils.downsample_series(truncd_series, truncd_coords, min_l, f"{field.split('/')[0]}_run_{inputs['sim_ids'][i]}", directory / "spectra_homogenisation/")
                 specs[i] = resamp_series
                 coords[i] = resamp_coords
-        inputData.append(specs)
+        inputData.append(specs if not scaleInputs else [scaler_train.fit_transform(s.reshape(-1, 1)).flatten()for s in specs])
     if includeFreqs:
         inputData.append(coords) # Append only the last set of coordinates (they should be the same for all fields)
 
     # Reshape into 3D numpy array of shape (n_cases, n_channels, n_timepoints)
     inputSpectra = np.swapaxes(np.array(inputData), 0, 1)
-    # outputs = np.array(list(outputs.values()))
 
     logFields = np.intersect1d(outputFields, logFields)
     battery.logFields = np.array(logFields)
@@ -325,11 +328,10 @@ def regress(
                 test_y = output_values[test]
 
                 # Renormalise for each split
-                if normalise:
-                    train_y, scaler = ml_utils.normalise_data(train_y)
-                    test_y, _ = ml_utils.normalise_data(test_y, scaler = scaler)
-                    print(f"scaler mean: {scaler.mean_}")
-                    print(f"1.0 in normalised RMSE units is {scaler.inverse_transform([[1.0]])} in original {output_field} units (may be logged).")
+                train_y, scaler = ml_utils.normalise_data(train_y)
+                test_y, _ = ml_utils.normalise_data(test_y, scaler = scaler)
+                print(f"scaler mean: {scaler.mean_}")
+                print(f"1.0 in normalised RMSE units is {scaler.inverse_transform([[1.0]])} in original {output_field} units (may be logged).")
 
                 print("    Training model....")
                 # Fit
@@ -536,7 +538,7 @@ if __name__ == "__main__":
         type=str
     )
     parser.add_argument(
-        "--scaleInput",
+        "--scaleInputs",
         action="store_true",
         help="Scale inputs to between 0-1, removing amplitudes of spectra. Makes prediction worse, so only use when necessary (e.g. comparison to experiment).",
         required = False

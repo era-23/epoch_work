@@ -86,11 +86,8 @@ def regress_cottrell(
         logFields : list,
         algorithms : list,
         cottrellDatapath : Path,
-        normalise : bool = True,
         resultsFilepath : Path = None,
-        doPlot : bool = True,
-        noTitle : bool = False,
-        includeFreqs : bool = True,
+        includeFreqs : bool = False,
         nThreads : int = 1
 ):
     
@@ -133,6 +130,7 @@ def regress_cottrell(
     print(f"Max spec length: {np.max(spec_lengths)} min spec length: {min_l}")
     max_common_coord = np.max([c[-1] for c in [inputs[f"{inputSpectrumName}_coords"] for inputSpectrumName in inputSpectraNames]])
     
+    scaler_train = MinMaxScaler(feature_range=(0, 1))
     inputData = []
     for field in inputSpectraNames:
         specs = inputs[field]
@@ -141,7 +139,7 @@ def regress_cottrell(
             if len(specs[i]) > min_l:
                 truncd_series, truncd_coords = ml_utils.truncate_series(specs[i], inputs[f"{field}_coords"][i], max_common_coord)
                 resamp_series, resamp_coords = ml_utils.downsample_series(truncd_series, truncd_coords, min_l, f"{field.split('/')[0]}_run_{inputs['sim_ids'][i]}", dataDirectory / "spectra_homogenisation/")
-                specs[i] = resamp_series
+                specs[i] = scaler_train.fit_transform(resamp_series.reshape(-1, 1)).flatten()
                 coords[i] = resamp_coords
         inputData.append(specs)
     if includeFreqs:
@@ -158,22 +156,16 @@ def regress_cottrell(
 
     sort_indices = np.argsort(cottrell_data["Frequency (MHz)"])
     equally_spaced_freqs = np.linspace(cottrell_data["Frequency (MHz)"].min(), cottrell_data["Frequency (MHz)"].max(), inputSpectra.shape[2])
-    test_x = [np.interp(equally_spaced_freqs, np.sort(cottrell_data["Frequency (MHz)"]), cottrell_data["ICE Intensity (dB)"][sort_indices]), equally_spaced_freqs]
+    test_x = [np.interp(equally_spaced_freqs, np.sort(cottrell_data["Frequency (MHz)"]), cottrell_data["ICE Intensity (dB)"][sort_indices])]
+    if includeFreqs:
+        test_x.append(equally_spaced_freqs)
     # True values (edge JET values )
     all_true_y = {"B0strength" : 2.21, "backgroundDensity" : 1.7E19, "beamFraction" : 1.5E-4, "pitch" : 0.4}
-    # There is no test_y as we're not scoring predictions yet
-    # B = 2.8T, background density = 3.6E19, beamFraction = 6.5E-4 (TRANSP), pitch = ???
-
-    # Normalise train_x, train_y and test_x
-    # Need to normalise the training spectra independently because we don't know the scale for the cottrell data
-    # scaler_train = MinMaxScaler(feature_range=(0, 1))
-    # for observation in train_x:
-    #     for i in range(len(observation)):
-    #         observation[i] = scaler_train.fit_transform(observation[i].reshape(-1, 1)).flatten()
 
     train_x = inputSpectra
+
     test_x = np.array([np.swapaxes(np.array(test_x), 0, 1).T])
-    test_x[0][0] = MinMaxScaler(feature_range=(0, 1)).fit_transform(test_x[0][0].reshape(-1, 1)).T
+    test_x[0][0] = scaler_train.fit_transform(test_x[0][0].reshape(-1, 1)).T # Only scale spectra, not frequencies
     
     all_abs_normalised_errors = {a : [] for a in algorithms}
     all_predictions = {a : [] for a in algorithms}
@@ -264,7 +256,7 @@ def regress_cottrell(
                 "denormed_std" : pred_sd_denormed[0], 
                 "denormed_stderr" : pred_se_denormed[0]
             }
-            print(results_dict)
+            # print(results_dict)
             all_results.append(results_dict)
 
     # plt.subplots(figsize=(8.5, 8))
@@ -752,7 +744,5 @@ if __name__ == "__main__":
             ], 
             cottrellDatapath = args.cottrellFilepath,
             resultsFilepath=args.resultsFilepath,
-            doPlot=True,
-            noTitle=True,
             includeFreqs=args.betaIncludeFreqs,
             nThreads = args.nThreads)
