@@ -989,8 +989,8 @@ if __name__ == "__main__":
     # )
 
     # analyse_real_frequencies(Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_2/data/"))
-    analyse_x_gyrofreqs(Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_2/data/"), num_gyro_freqs=11.0, outputFolder=Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_reduced/"))
+    # analyse_x_gyrofreqs(Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_2/data/"), num_gyro_freqs=11.0, outputFolder=Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_reduced/"))
 
-    # fourier_power(Path("/home/era536/Documents/Epoch/Data/batch_testing_4/total_run_43/"))
+    fourier_power(Path("/home/era536/Documents/Epoch/Data/batch_testing_4/total_run_43/"))
 
     # test_simulation_power_spectra(args.dataDir, args.outputDir)

@@ -163,7 +163,7 @@ def regress(
         cvFolds : int,
         cvRepeats : int,
         cvStrategy : str = "RepeatedKFolds",
-        normalise : bool = True,
+        scaleInputs : bool = False,
         doIce : bool = False,
         includeFreqs : bool = False,
         iceMetricsToUse : list = None,
@@ -536,6 +536,12 @@ if __name__ == "__main__":
         type=str
     )
     parser.add_argument(
+        "--scaleInput",
+        action="store_true",
+        help="Scale inputs to between 0-1, removing amplitudes of spectra. Makes prediction worse, so only use when necessary (e.g. comparison to experiment).",
+        required = False
+    )
+    parser.add_argument(
         "--doPlot",
         action="store_true",
         help="Plot predictions.",
@@ -597,6 +603,7 @@ if __name__ == "__main__":
         args.cvFolds, 
         args.cvRepeats, 
         args.cvStrategy,
+        scaleInputs=args.scaleInputs,
         doIce=args.doIce,
         includeFreqs=args.betaIncludeFreqs,
         iceMetricsToUse=args.iceMetrics,

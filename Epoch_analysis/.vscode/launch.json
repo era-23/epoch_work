@@ -279,13 +279,14 @@
             "args": [
                 "--cottrell",
                 "--dataDir", 
-                    "/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_cottrell_2/data/",
+                    "/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_reduced/data/",
                 "--cottrellFilepath",
                     "/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_cottrell_2/cottrell_93_experimental_data.csv",
                 "--resultsFilepath",
-                    "/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_cottrell_2/",
+                    "/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_reduced/",
                 "--nThreads",
                     "12",
+                "--betaIncludeFreqs",
             ]
         },
         {
