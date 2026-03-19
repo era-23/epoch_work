@@ -696,7 +696,7 @@ def regress_scanFrequencies(
     for frequency_bandwidth in frequencyBandwidths:
         
         print(f"Spectra range from a maximum frequency of {(np.min(last_freqs) * u.Hz).to(u.MHz)} to {(np.max(last_freqs) * u.Hz).to(u.MHz)}. Truncating to {frequency_bandwidth} MHz")
-        frequency_bandwidth = (frequency_bandwidth * u.MHz).to(u.Hz).value
+        frequency_bandwidth = float((frequency_bandwidth * u.MHz).to(u.Hz))
 
         inputData = []
         for field in inputSpectraNames:
