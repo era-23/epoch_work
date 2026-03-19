@@ -223,7 +223,7 @@ def regress(
         spec_lengths.extend([len(s) for s in inputs[field]])
     min_l = np.min(spec_lengths)
     print(f"Max spec length: {np.max(spec_lengths)} min spec length: {min_l}")
-    max_common_coord = np.max([c[-1] for c in [inputs[f"{inputSpectrumName}_coords"] for inputSpectrumName in inputSpectraNames]])
+    max_common_coord = np.max([c[-1] for c in [inputs[f"{inputSpectrumName}_denorm_coords"] for inputSpectrumName in inputSpectraNames]])
     
     scaler_train = MinMaxScaler(feature_range=(0, 1))
     inputData = []
@@ -232,8 +232,8 @@ def regress(
         coords = inputs[f"{field}_coords"]
         for i in range(len(specs)):
             if len(specs[i]) > min_l:
-                truncd_series, truncd_coords = ml_utils.truncate_series(specs[i], inputs[f"{field}_coords"][i], max_common_coord)
-                resamp_series, resamp_coords = ml_utils.downsample_series(truncd_series, truncd_coords, min_l, f"{field.split('/')[0]}_run_{inputs['sim_ids'][i]}", directory / "spectra_homogenisation/")
+                truncd_series, truncd_coords = ml_utils.truncate_series(specs[i], inputs[f"{field}_denorm_coords"][i], max_common_coord)
+                resamp_series, resamp_coords = ml_utils.resample_series(truncd_series, truncd_coords, min_l, f"{field.split('/')[0]}_run_{inputs['sim_ids'][i]}", directory / "spectra_homogenisation/")
                 specs[i] = resamp_series
                 coords[i] = resamp_coords
         inputData.append(specs if not scaleInputs else [scaler_train.fit_transform(s.reshape(-1, 1)).flatten()for s in specs])

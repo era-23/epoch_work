@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
@@ -132,6 +133,7 @@ class TSRResult:
     algorithm : str = None
     algorithmArgs : dict = None
     output : str = None
+    frequencyBandwidth : float = 0.0
     cvR2_mean : float = 0.0
     cvR2_var : float = 0.0
     cvR2_stderr : float = 0.0
@@ -148,6 +150,7 @@ class TSRResult:
 @dataclass
 class TSRPrediction:
     algorithm : str = None
+    frequencyBandwidth : float = 0.0
     inputChannels : ArrayLike = None
     outputQuantity : str = None
     datapoint_ID : int = None
@@ -359,6 +362,10 @@ def read_data(
             dimCoordsKey = fieldPath + "_coords"
             data_dict[dimCoordsKey] = []
     
+    if denorm_coords:
+        for fieldPath in dataFields:
+            data_dict[fieldPath + "_denorm_coords"] = []
+    
     if with_iciness:
         for fieldPath in dataFields:
             for metric in epoch_utils.ICE_METRICS:
@@ -381,13 +388,11 @@ def read_data(
                 data_dict[fieldPath].append(data[group].variables[fieldName].values.astype('float64'))
                 # Get coordinates if requested
                 if with_coords:
-                    dimCoordsKey = fieldPath + "_coords"
                     dimName = data[group].variables[fieldName].dims[0]
                     dimVals = data[group].coords[dimName].values
+                    data_dict[fieldPath + "_coords"].append(dimVals)
                     if denorm_coords:
-                        data_dict[dimCoordsKey].append(dimVals * (data.ionGyrofrequency_radPs / (2.0 * np.pi)))    
-                    else:
-                        data_dict[dimCoordsKey].append(dimVals)
+                        data_dict[f"{fieldPath + '_denorm_coords'}"].append(dimVals * (data.ionGyrofrequency_radPs / (2.0 * np.pi)))    
                 # Get ICE indicators if requested
                 if with_iciness:
                     for attr, val in data[fieldPath].attrs.items():
@@ -428,32 +433,41 @@ def preprocess_plasma_features(data : dict) -> dict:
 
     return data
 
-def downsample_series(series : ArrayLike, coords : ArrayLike, numSamples : int, signalName : str = None, savedir : Path = None):
+def resample_series(series : ArrayLike, coords : ArrayLike, numSamples : int, signalName : str = None, savedir : Path = None):
 
     print(f"Resampling signal from {len(series)} to {numSamples}....")
 
-    resampled_signal = resample(series, numSamples)
-    res_coords = np.linspace(coords[0], coords[-1], len(resampled_signal))
-    print(f"Resampled signal length: {len(resampled_signal)}")
+    res_coords = np.linspace(coords[0], coords[-1], numSamples, endpoint=True)
+    resampled_signal_linterp = np.interp(res_coords, coords, series)
+    
+    print(f"Resampled signal length: {len(resampled_signal_linterp)}")
 
     if savedir is not None:
+
+        if not os.path.exists(savedir):
+            os.makedirs(savedir)
+
         plt.plot(coords, series, label = "original")
-        plt.plot(res_coords, resampled_signal, label = "resampled")
+        plt.plot(res_coords, resampled_signal_linterp, label = "resampled with Linterp")
         plt.legend()
         plt.title(signalName)
         plt.savefig(savedir / f"{signalName}.png")
         plt.clf()
 
-    return resampled_signal, res_coords
+    return resampled_signal_linterp, res_coords
 
 
-def truncate_series(series : ArrayLike, seriesCoordinates : ArrayLike, maxCoordinate : float):
+def truncate_series(series : ArrayLike, seriesCoordinates : ArrayLike, maxCoordinate : float, altCoordinates : ArrayLike = None):
 
     print(f"Truncting signal from maximum coordinate of {seriesCoordinates[-1]} to first {maxCoordinate}....")
 
     cutoffIndex = np.searchsorted(seriesCoordinates, maxCoordinate)
     truncatedSeries = series[:cutoffIndex]
     truncatedCoords = seriesCoordinates[:cutoffIndex]
+
+    if altCoordinates is not None:
+        truncatedAltCoordinates = altCoordinates[:cutoffIndex]
+        return truncatedSeries, truncatedCoords, truncatedAltCoordinates
 
     return truncatedSeries, truncatedCoords
 

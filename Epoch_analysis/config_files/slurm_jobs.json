@@ -57,5 +57,41 @@
         "mem": "64G",
         "gpu" : 1,
         "filename": "train_gpu.sh"
+    },
+    {
+        "job_name": "expSFM",
+        "filename": "aeon_scanFreqs.sh",
+        "ntasks": 1,
+        "cpus": 16,
+        "mem": "128G",
+        "time": "00-23:59:00",
+        "output": "/users/era536/scratch/epoch/publications/modelling_nl_spectra/logs/",
+        "script": "/users/era536/scratch/repos/epoch_work/Epoch_analysis/tsr_experiment.py",
+        "script_args": [
+            "--dataDir", 
+                "/users/era536/scratch/epoch/publications/modelling_nl_spectra/tsr_3/full_spectra/",
+            "--frequency",
+            "--algorithms", 
+                "aeon.DummyRegressor",
+                "aeon.HydraRegressor",
+                "aeon.RocketRegressor",
+                "aeon.MiniRocketRegressor",
+                "aeon.MultiRocketRegressor",
+                "aeon.MultiRocketHydraRegressor", 
+                "aeon.RandomIntervalSpectralEnsembleRegressor",
+                "aeon.TimeSeriesForestRegressor",
+                "aeon.QUANTRegressor",
+                "aeon.KNeighborsTimeSeriesRegressor",
+                "aeon.RDSTRegressor",
+            "--frequencyBandwidths",
+                "100.0",
+                "200.0",
+                "400.0",
+                "600.0",
+            "--resultsFilepath", 
+                "/users/era536/scratch/epoch/publications/modelling_nl_spectra/tsr_3/aeon_scanFreqs_main.json",
+            "--nThreads", 
+                "$SLURM_CPUS_PER_TASK"
+        ]
     }
 ]

@@ -1,5 +1,7 @@
 import argparse
+import copy
 import glob
+import math
 import os
 from pathlib import Path
 import csv
@@ -15,6 +17,7 @@ from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error,
 from sklearn.preprocessing import MinMaxScaler
 import random
 import epoch_utils
+from astropy import units as u
 
 from dataclass_csv import DataclassWriter
 
@@ -138,7 +141,7 @@ def regress_cottrell(
         for i in range(len(specs)):
             if len(specs[i]) > min_l:
                 truncd_series, truncd_coords = ml_utils.truncate_series(specs[i], inputs[f"{field}_coords"][i], max_common_coord)
-                resamp_series, resamp_coords = ml_utils.downsample_series(truncd_series, truncd_coords, min_l, f"{field.split('/')[0]}_run_{inputs['sim_ids'][i]}", dataDirectory / "spectra_homogenisation/")
+                resamp_series, resamp_coords = ml_utils.resample_series(truncd_series, truncd_coords, min_l, f"{field.split('/')[0]}_run_{inputs['sim_ids'][i]}", dataDirectory / "spectra_homogenisation/")
                 specs[i] = scaler_train.fit_transform(resamp_series.reshape(-1, 1)).flatten()
                 coords[i] = resamp_coords
         inputData.append(specs)
@@ -399,7 +402,7 @@ def regress_scanArgs(
         for i in range(len(specs)):
             if len(specs[i]) > min_l:
                 truncd_series, truncd_coords = ml_utils.truncate_series(specs[i], inputs[f"{field}_coords"][i], max_common_coord)
-                resamp_series, _ = ml_utils.downsample_series(truncd_series, truncd_coords, min_l, f"{field.split('/')[0]}_run_{inputs['sim_ids'][i]}", directory / "spectra_homogenisation/")
+                resamp_series, _ = ml_utils.resample_series(truncd_series, truncd_coords, min_l, f"{field.split('/')[0]}_run_{inputs['sim_ids'][i]}", directory / "spectra_homogenisation/")
                 specs[i] = resamp_series
         inputData.append(specs) 
 
@@ -615,6 +618,257 @@ def regress_scanArgs(
             w = DataclassWriter(f, allPredictionsRecord, ml_utils.TSRPrediction)
             w.write()
 
+def regress_scanFrequencies(
+        dataDirectory : Path,
+        inputSpectraNames : list,
+        outputFields : list,
+        logFields : list,
+        algorithms : list,
+        frequencyBandwidths : list,
+        resultsFilepath : Path = None,
+        includeGyroFreqs : bool = False,
+        scale : bool = False,
+        doPlot : bool = True,
+        noTitle : bool = False,
+        nThreads : int = 1
+):
+    SMALL_SIZE = 10
+    MEDIUM_SIZE = 16
+    BIGGER_SIZE = 20
+
+    plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
+    plt.rc('axes', titlesize=BIGGER_SIZE)     # fontsize of the axes title
+    plt.rc('axes', labelsize=BIGGER_SIZE)    # fontsize of the x and y labels
+    plt.rc('xtick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
+    plt.rc('ytick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
+    plt.rc('legend', fontsize=12)    # legend fontsize
+    plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
+
+    # Initialise results objects
+    battery = ml_utils.TSRBattery()
+    battery.package = "Aeon"
+    battery.directory = str(dataDirectory.resolve())
+    battery.algorithms = algorithms
+
+    if not ("data" in dataDirectory.name):
+        data_dir = dataDirectory / "data"
+    else:
+        data_dir = dataDirectory
+    data_files = glob.glob(str(data_dir / "*.nc")) 
+
+    # Input data
+    inputs = {name : [] for name in inputSpectraNames}
+    inputs = ml_utils.read_data(data_files, inputs, with_names = True, with_coords = True, with_iciness = False, denorm_coords = True)
+    battery.inputSpectra = np.array(inputSpectraNames)
+
+    # Output data
+    outputs = {outputField : [] for outputField in outputFields}
+    outputs = ml_utils.read_data(data_files, outputs, with_names = False, with_coords = False)
+    battery.outputFields = np.array(outputFields)
+    battery.numOutputs = len(outputs.keys())
+
+    logFields = np.intersect1d(outputFields, logFields)
+    battery.logFields = np.array(logFields)
+    battery.original_output_means = dict.fromkeys(outputFields)
+    battery.original_output_stdevs = dict.fromkeys(outputFields)
+
+    battery.equalLengthTimeseries = True
+    battery.multivariate = battery.numInputDimensions > 1
+
+    battery.cvStrategy = "LeaveOneOut"
+    battery.cvFolds = 100
+    battery.cvRepeats = 1
+    battery.results = []
+
+    spec_lengths = []
+    last_freqs = []
+    for field in inputSpectraNames:
+        spec_lengths.extend([len(s) for s in inputs[field]])
+        last_freqs.extend([x[-1] for x in inputs[f"{field}_denorm_coords"]])
+    min_l = np.min(spec_lengths)
+    print(f"Max spec length: {np.max(spec_lengths)} min spec length: {min_l}")
+
+    if scale:
+        scaler_train = MinMaxScaler(feature_range=(0, 1))
+
+    allPredictionsRecord = []
+
+    for frequency_bandwidth in frequencyBandwidths:
+        
+        print(f"Spectra range from a maximum frequency of {(np.min(last_freqs) * u.Hz).to(u.MHz)} to {(np.max(last_freqs) * u.Hz).to(u.MHz)}. Truncating to {frequency_bandwidth} MHz")
+        frequency_bandwidth = (frequency_bandwidth * u.MHz).to(u.Hz).value
+
+        inputData = []
+        for field in inputSpectraNames:
+            specs = copy.deepcopy(inputs[field])
+            coords = np.zeros_like(specs)
+            # Append gyrofreqs
+            for i in range(len(specs)):
+                gyro_coords = inputs[f"{field}_coords"][i]
+                denormed_coords = inputs[f"{field}_denorm_coords"][i]
+                if denormed_coords[-1] > frequency_bandwidth: # Truncate based on denormalised frequencies (i.e. Hz)
+                    truncd_series, truncd_coords, truncd_gyroCoords = ml_utils.truncate_series(specs[i], denormed_coords, frequency_bandwidth, altCoordinates = gyro_coords)
+                    resamp_series, _ = ml_utils.resample_series(truncd_series, truncd_coords, min_l, f"{field.split('/')[0]}_run_{inputs['sim_ids'][i]}", dataDirectory / "spectra_homogenisation/")
+                    specs[i] = scaler_train.fit_transform(resamp_series.reshape(-1, 1)).flatten() if scale else resamp_series
+                if includeGyroFreqs:
+                    coords[i] = truncd_gyroCoords
+            inputData.append(specs)
+        if includeGyroFreqs:
+            inputData.append(coords)
+
+        # Reshape into 3D numpy array of shape (n_cases, n_channels, n_timepoints)
+        inputSpectra = np.swapaxes(np.array(inputData), 0, 1)
+
+        logFields = np.intersect1d(outputFields, logFields)
+
+        if scale:
+            scaled_x = np.array([inputSpectra.T])
+            scaled_x[0][0] = scaler_train.fit_transform(scaled_x[0][0].reshape(-1, 1)).T # Only scale spectra, not frequencies
+            inputSpectra = scaled_x
+
+        battery.numObservations = inputSpectra.shape[0]
+        battery.numInputDimensions = inputSpectra.shape[1]
+        battery.numTimepointsIfEqual = inputSpectra.shape[2]
+
+        for output_field, output_values in outputs.items():
+        
+            assert len(output_values) == inputSpectra.shape[0]
+            case_indices = np.arange(len(output_values))
+            output_values = np.array(output_values)
+            cv = LeaveOneOut()
+            tt_split = list(enumerate(cv.split(case_indices)))
+
+            if output_field in logFields:
+                output_values = np.log10(output_values)
+
+            # Record denormalisation parameters
+            _, scaler = ml_utils.normalise_data(output_values)
+            print(f"Original data mean: {np.mean(output_values)}, original data SD: {np.std(output_values)}")
+            print(f"Mean (0.0) in normalised RMSE units is {scaler.mean_} in original {output_field} units (or {10**scaler.mean_} in log space).")
+            print(f"SD in normalised RMSE units is {np.sqrt(scaler.var_)} in original {output_field} units (or {10**np.sqrt(scaler.var_)} in log space).")
+            battery.original_output_means[output_field] = scaler.mean_
+            battery.original_output_stdevs[output_field] = np.sqrt(scaler.var_)
+
+            for algorithm in algorithms:
+                print(f"Building {algorithm} model for {output_field} from {inputSpectraNames}....")
+                
+                # Results
+                result = ml_utils.TSRResult()
+                result.output = output_field
+                result.algorithm = algorithm
+                result.frequencyBandwidth = frequency_bandwidth
+                
+                tsr = ml_utils.get_algorithm(algorithm, nThreads)
+
+                # CV Folds
+                all_test_indices = []
+                all_test_points = []
+                all_predictions = []
+                all_test_points_denormed = []
+                all_predictions_denormed = []
+                
+                for fold, (train, test) in tt_split:
+                    print(f"Fold: {fold} (test indices: {test})....")
+
+                    train_x = [inputSpectra[t] for t in train]
+                    train_y = output_values[train]
+                    scaled_x = [inputSpectra[t] for t in test]
+                    test_y = output_values[test]
+
+                    # Renormalise for each split
+                    train_y, scaler = ml_utils.normalise_data(train_y)
+                    test_y, _ = ml_utils.normalise_data(test_y, scaler = scaler)
+                    print(f"scaler mean: {scaler.mean_}")
+                    print(f"1.0 in normalised RMSE units is {scaler.inverse_transform([[1.0]])[0] - scaler.mean_} in original {output_field} units (may be logged).")
+
+                    print("    Training model....")
+                    # Fit
+                    tsr.fit(train_x, train_y)
+
+                    # Predict
+                    predictions = tsr.predict(scaled_x)
+
+                    preds_denormed = ml_utils.denormalise_data(predictions, scaler)
+                    test_y_denormed = ml_utils.denormalise_data(test_y, scaler)
+                    if output_field in logFields:
+                        preds_denormed = 10.0**preds_denormed
+                        test_y_denormed = 10.0**test_y_denormed
+                    print(f"    Predictions:  {predictions} (normalised), {preds_denormed} (original)")
+                    print(f"    Ground truth: {test_y} (normalised), {test_y_denormed} (original)")
+                    skl_rmse = root_mean_squared_error(test_y, predictions)
+                    print(f"    sklearn rmse: {skl_rmse} (actuals S.D.: {np.std(test_y)})")
+
+                    all_test_indices.extend(test.tolist())
+                    all_test_points.extend(test_y.tolist())
+                    all_test_points_denormed.extend(test_y_denormed)
+                    all_predictions.extend(list(predictions))
+                    all_predictions_denormed.extend(preds_denormed)
+
+                    # Log predictions
+                    testLens = [len(predictions), len(test), len(test_y), len(test_y_denormed), len(predictions), len(preds_denormed)]
+                    assert len(set(testLens)) == 1 # All lists have equal length
+                    for i in range(len(predictions)):
+                        predRecord = ml_utils.TSRPrediction(
+                            algorithm=algorithm,
+                            frequencyBandwidth=frequency_bandwidth,
+                            inputChannels=np.array(inputSpectraNames),
+                            outputQuantity=output_field,
+                            datapoint_ID=test[i],
+                            fold_ID=fold,
+                            trueValue_normalised=test_y[i],
+                            trueValue_denormalised=test_y_denormed[i][0],
+                            trueValue_denormalised_log10=np.log10(test_y_denormed[i][0]),
+                            predictedValue_normalised=predictions[i],
+                            predictedValue_denormalised=preds_denormed[i][0],
+                            predictedValue_denormalised_log10=np.log10(preds_denormed[i][0])
+                        )
+                        allPredictionsRecord.append(predRecord)
+
+                rmse, rmse_var, rmse_se = ml_utils.root_mean_squared_error(all_predictions, all_test_points)
+                r2 = r2_score(all_test_points, all_predictions)
+                summary_str = f"{output_field} -- {algorithm}: Mean r2 = {r2:.5f}, mean RMSE: {rmse:.5f}+-{rmse_se:.5f}"
+                print("--------------------------------------------------------------------------------------------------------------------------")
+                print(summary_str)
+                print("--------------------------------------------------------------------------------------------------------------------------")
+                result.cvR2_mean = r2
+                result.cvRMSE_mean = rmse
+                result.cvRMSE_var = rmse_var
+                result.cvRMSE_stderr = rmse_se
+                result.cvMAE_mean = mean_absolute_error(y_true=all_test_points, y_pred=all_predictions, multioutput="uniform_average")
+                mae_all = mean_absolute_error(y_true=all_test_points, y_pred=all_predictions, multioutput="raw_values")
+                result.cvMAE_var = np.var(mae_all)
+                result.cvMAE_stderr = sem(mae_all)
+                result.cvMAPE_mean = mean_absolute_percentage_error(y_true=all_test_points, y_pred=all_predictions, multioutput="uniform_average")
+                mape_all = mean_absolute_percentage_error(y_true=all_test_points, y_pred=all_predictions, multioutput="raw_values")
+                result.cvMAPE_var = np.var(mape_all)
+                result.cvMAPE_stderr = sem(mape_all)
+
+                battery.results.append(result)
+
+                if doPlot:
+                    plot_predictions(
+                        algorithm_name = algorithm,
+                        field = output_field,
+                        sim_ids = all_test_indices, 
+                        truth = all_test_points_denormed,
+                        preds = all_predictions_denormed,
+                        r2 = result.cvR2_mean,
+                        rmse = result.cvRMSE_mean,
+                        saveFolder = resultsFilepath.parent / "predictions" / algorithm, 
+                        doLog = output_field in logFields,
+                        noTitle = noTitle
+                    )
+
+    # Write results and all predictions
+    ml_utils.write_ML_result_to_file(battery, resultsFilepath)
+    if len(allPredictionsRecord) > 0:
+        predsPath = resultsFilepath.parent / "predictions"
+        if not os.path.exists(predsPath):
+            os.makedirs(predsPath)
+        with open(predsPath / f"{resultsFilepath.name.replace('.json', '').replace('.', '')}_predictions.csv", "w") as f:
+            w = DataclassWriter(f, allPredictionsRecord, ml_utils.TSRPrediction)
+            w.write()
+
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser("parser")
@@ -633,9 +887,31 @@ if __name__ == "__main__":
         type=Path
     )
     parser.add_argument(
+        "--algorithms",
+        action="store",
+        help="Algorithms to run.",
+        required = False,
+        type=str,
+        nargs="*"
+    )
+    parser.add_argument(
+        "--frequencyBandwidths",
+        action="store",
+        help="Frequency bandwidths to scan.",
+        required = False,
+        type=str,
+        nargs="*"
+    )
+    parser.add_argument(
         "--cottrell",
         action="store_true",
         help="Run Cottrell experiment.",
+        required = False
+    )
+    parser.add_argument(
+        "--frequency",
+        action="store_true",
+        help="Run accuracy vs frequency bandwidth experiment.",
         required = False
     )
     parser.add_argument(
@@ -710,6 +986,54 @@ if __name__ == "__main__":
     #     mRocketTypeArgs = mRocket_type_nKernels_maxDilations,
     #     nThreads = args.nThreads)
     
+    if args.frequency:
+        regress_scanFrequencies(
+            dataDirectory = args.dataDir, 
+            inputSpectraNames = [
+                "Magnetic_Field_Bz/power/frequencyPowerSpectrum",
+                "Electric_Field_Ex/power/frequencyPowerSpectrum",
+                "Electric_Field_Ey/power/frequencyPowerSpectrum",
+            ], 
+            outputFields = [
+                "B0strength", 
+                "pitch", 
+                "backgroundDensity", 
+                "beamFraction"
+            ], 
+            logFields = [
+                "backgroundDensity", 
+                "beamFraction"
+            ], 
+            algorithms = args.algorithms,
+            # algorithms = [
+            #     # "aeon.DummyRegressor",
+            #     "aeon.HydraRegressor", 
+            #     # "aeon.RocketRegressor", 
+            #     "aeon.MiniRocketRegressor", 
+            #     # "aeon.MultiRocketRegressor", 
+            #     # "aeon.MultiRocketHydraRegressor", 
+            #     # "aeon.QUANTRegressor", 
+            #     # "aeon.KNeighborsTimeSeriesRegressor",
+            #     # "aeon.RDSTRegressor",
+            #     # "aeon.TimeSeriesForestRegressor",
+            #     # "aeon.Catch22Regressor",
+            #     # "aeon.RandomIntervalRegressor",
+            #     # "aeon.SummaryRegressor",
+            #     # "aeon.TSFreshRegressor",
+            #     # "aeon.FreshPRINCERegressor"
+            # ], 
+            # frequencyBandwidths = [
+            #     200.0, 
+            #     400.0,
+            #     600.0
+            # ],
+            frequencyBandwidths= args.frequencyBandwidths,
+            resultsFilepath = args.resultsFilepath,
+            includeGyroFreqs = args.betaIncludeFreqs,
+            scale = False,
+            doPlot = False,
+            nThreads = args.nThreads)
+
     if args.cottrell:
         regress_cottrell(
             dataDirectory = args.dataDir, 
@@ -727,18 +1051,18 @@ if __name__ == "__main__":
                 "beamFraction"
             ], 
             algorithms = [
-                "aeon.HydraRegressor", 
-                "aeon.RocketRegressor", 
+                # "aeon.HydraRegressor", 
+                # "aeon.RocketRegressor", 
                 "aeon.MiniRocketRegressor", 
-                "aeon.MultiRocketRegressor", 
-                "aeon.MultiRocketHydraRegressor", 
-                "aeon.QUANTRegressor", 
-                "aeon.KNeighborsTimeSeriesRegressor",
-                "aeon.RDSTRegressor",
-                "aeon.TimeSeriesForestRegressor",
-                "aeon.Catch22Regressor",
-                "aeon.RandomIntervalRegressor",
-                "aeon.SummaryRegressor",
+                # "aeon.MultiRocketRegressor", 
+                # "aeon.MultiRocketHydraRegressor", 
+                # "aeon.QUANTRegressor", 
+                # "aeon.KNeighborsTimeSeriesRegressor",
+                # "aeon.RDSTRegressor",
+                # "aeon.TimeSeriesForestRegressor",
+                # "aeon.Catch22Regressor",
+                # "aeon.RandomIntervalRegressor",
+                # "aeon.SummaryRegressor",
                 # "aeon.TSFreshRegressor",
                 # "aeon.FreshPRINCERegressor"
             ], 

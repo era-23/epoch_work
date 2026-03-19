@@ -383,12 +383,18 @@ def combine_spectra(dataDirectory : Path, outputDirectory : Path):
         # newData_xr["Electric_Field_Ey/power"].drop_vars("frequencyOfMaxPowerByK")
 
         # Set spectral variables to 0
-        newData_xr["Magnetic_Field_Bz/power/powerByFrequency"] *= 0.0
         newData_xr["Magnetic_Field_Bz/power/powerByWavenumber"] *= 0.0
-        newData_xr["Electric_Field_Ex/power/powerByFrequency"] *= 0.0
+        newData_xr["Magnetic_Field_Bz/power/powerByFrequency"] *= 0.0
+        newData_xr["Magnetic_Field_Bz/power/frequencyPowerSpectrum"] *= 0.0
+        newData_xr["Magnetic_Field_Bz/power/frequencyPowerSpectralDensity"] *= 0.0
         newData_xr["Electric_Field_Ex/power/powerByWavenumber"] *= 0.0
-        newData_xr["Electric_Field_Ey/power/powerByFrequency"] *= 0.0
+        newData_xr["Electric_Field_Ex/power/powerByFrequency"] *= 0.0
+        newData_xr["Electric_Field_Ex/power/frequencyPowerSpectrum"] *= 0.0
+        newData_xr["Electric_Field_Ex/power/frequencyPowerSpectralDensity"] *= 0.0
         newData_xr["Electric_Field_Ey/power/powerByWavenumber"] *= 0.0
+        newData_xr["Electric_Field_Ey/power/powerByFrequency"] *= 0.0
+        newData_xr["Electric_Field_Ey/power/frequencyPowerSpectrum"] *= 0.0
+        newData_xr["Electric_Field_Ey/power/frequencyPowerSpectralDensity"] *= 0.0
         newData_xr["Energy/backgroundIonMeanEnergyDensity"] *= 0.0
         newData_xr["Energy/electronMeanEnergyDensity"] *= 0.0
         newData_xr["Energy/electricFieldMeanEnergyDensity"] *= 0.0
@@ -434,25 +440,31 @@ def combine_spectra(dataDirectory : Path, outputDirectory : Path):
             # Electric and magnetic fields
             newData_xr["Magnetic_Field_Bz/power/powerByWavenumber"] += angle_data_xr["Magnetic_Field_Bz/power/powerByWavenumber"]
             newData_xr["Magnetic_Field_Bz/power/powerByFrequency"] += angle_data_xr["Magnetic_Field_Bz/power/powerByFrequency"]
+            newData_xr["Magnetic_Field_Bz/power/frequencyPowerSpectrum"] += angle_data_xr["Magnetic_Field_Bz/power/frequencyPowerSpectrum"]
+            newData_xr["Magnetic_Field_Bz/power/frequencyPowerSpectralDensity"] += angle_data_xr["Magnetic_Field_Bz/power/frequencyPowerSpectralDensity"]
             newData_xr["Electric_Field_Ex/power/powerByWavenumber"] += angle_data_xr["Electric_Field_Ex/power/powerByWavenumber"]
             newData_xr["Electric_Field_Ex/power/powerByFrequency"] += angle_data_xr["Electric_Field_Ex/power/powerByFrequency"]
+            newData_xr["Electric_Field_Ex/power/frequencyPowerSpectrum"] += angle_data_xr["Electric_Field_Ex/power/frequencyPowerSpectrum"]
+            newData_xr["Electric_Field_Ex/power/frequencyPowerSpectralDensity"] += angle_data_xr["Electric_Field_Ex/power/frequencyPowerSpectralDensity"]
             newData_xr["Electric_Field_Ey/power/powerByWavenumber"] += angle_data_xr["Electric_Field_Ey/power/powerByWavenumber"]
             newData_xr["Electric_Field_Ey/power/powerByFrequency"] += angle_data_xr["Electric_Field_Ey/power/powerByFrequency"]
+            newData_xr["Electric_Field_Ey/power/frequencyPowerSpectrum"] += angle_data_xr["Electric_Field_Ey/power/frequencyPowerSpectrum"]
+            newData_xr["Electric_Field_Ey/power/frequencyPowerSpectralDensity"] += angle_data_xr["Electric_Field_Ey/power/frequencyPowerSpectralDensity"]
 
             # Plots
             axBz.plot(
                 angle_data_xr["Magnetic_Field_Bz/power"].coords["frequency"].data, 
-                angle_data_xr["Magnetic_Field_Bz/power/powerByFrequency"].data, 
+                angle_data_xr["Magnetic_Field_Bz/power/frequencyPowerSpectrum"].data, 
                 label = f"{angle_data_xr.attrs['B0angle']} degrees"
             )
             axEx.plot(
                 angle_data_xr["Electric_Field_Ex/power"].coords["frequency"].data, 
-                angle_data_xr["Electric_Field_Ex/power/powerByFrequency"].data, 
+                angle_data_xr["Electric_Field_Ex/power/frequencyPowerSpectrum"].data, 
                 label = f"{angle_data_xr.attrs['B0angle']} degrees"
             )
             axEy.plot(
                 angle_data_xr["Electric_Field_Ey/power"].coords["frequency"].data, 
-                angle_data_xr["Electric_Field_Ey/power/powerByFrequency"].data, 
+                angle_data_xr["Electric_Field_Ey/power/frequencyPowerSpectrum"].data, 
                 label = f"{angle_data_xr.attrs['B0angle']} degrees"
             )
 
@@ -465,10 +477,16 @@ def combine_spectra(dataDirectory : Path, outputDirectory : Path):
 
             simulation_total_original_power += angle_data_xr["Magnetic_Field_Bz/power/powerByWavenumber"].sum()
             simulation_total_original_power += angle_data_xr["Magnetic_Field_Bz/power/powerByFrequency"].sum()
+            simulation_total_original_power += angle_data_xr["Magnetic_Field_Bz/power/frequencyPowerSpectrum"].sum()
+            simulation_total_original_power += angle_data_xr["Magnetic_Field_Bz/power/frequencyPowerSpectralDensity"].sum()
             simulation_total_original_power += angle_data_xr["Electric_Field_Ex/power/powerByWavenumber"].sum()
             simulation_total_original_power += angle_data_xr["Electric_Field_Ex/power/powerByFrequency"].sum()
+            simulation_total_original_power += angle_data_xr["Electric_Field_Ex/power/frequencyPowerSpectrum"].sum()
+            simulation_total_original_power += angle_data_xr["Electric_Field_Ex/power/frequencyPowerSpectralDensity"].sum()
             simulation_total_original_power += angle_data_xr["Electric_Field_Ey/power/powerByWavenumber"].sum()
             simulation_total_original_power += angle_data_xr["Electric_Field_Ey/power/powerByFrequency"].sum()
+            simulation_total_original_power += angle_data_xr["Electric_Field_Ey/power/frequencyPowerSpectrum"].sum()
+            simulation_total_original_power += angle_data_xr["Electric_Field_Ey/power/frequencyPowerSpectralDensity"].sum()
             simulation_total_original_power += angle_data_xr["Energy/backgroundIonMeanEnergyDensity"].sum()
             simulation_total_original_power += angle_data_xr["Energy/electronMeanEnergyDensity"].sum()
             simulation_total_original_power += angle_data_xr["Energy/electricFieldMeanEnergyDensity"].sum()
@@ -478,10 +496,16 @@ def combine_spectra(dataDirectory : Path, outputDirectory : Path):
         # Power check
         simulation_total_new_power = newData_xr["Magnetic_Field_Bz/power/powerByWavenumber"].sum()
         simulation_total_new_power += newData_xr["Magnetic_Field_Bz/power/powerByFrequency"].sum()
+        simulation_total_new_power += newData_xr["Magnetic_Field_Bz/power/frequencyPowerSpectrum"].sum()
+        simulation_total_new_power += newData_xr["Magnetic_Field_Bz/power/frequencyPowerSpectralDensity"].sum()
         simulation_total_new_power += newData_xr["Electric_Field_Ex/power/powerByWavenumber"].sum()
         simulation_total_new_power += newData_xr["Electric_Field_Ex/power/powerByFrequency"].sum()
+        simulation_total_new_power += newData_xr["Electric_Field_Ex/power/frequencyPowerSpectrum"].sum()
+        simulation_total_new_power += newData_xr["Electric_Field_Ex/power/frequencyPowerSpectralDensity"].sum()
         simulation_total_new_power += newData_xr["Electric_Field_Ey/power/powerByWavenumber"].sum()
         simulation_total_new_power += newData_xr["Electric_Field_Ey/power/powerByFrequency"].sum()
+        simulation_total_new_power += newData_xr["Electric_Field_Ey/power/frequencyPowerSpectrum"].sum()
+        simulation_total_new_power += newData_xr["Electric_Field_Ey/power/frequencyPowerSpectralDensity"].sum()
         simulation_total_new_power += newData_xr["Energy/backgroundIonMeanEnergyDensity"].sum()
         simulation_total_new_power += newData_xr["Energy/electronMeanEnergyDensity"].sum()
         simulation_total_new_power += newData_xr["Energy/electricFieldMeanEnergyDensity"].sum()
@@ -499,17 +523,17 @@ def combine_spectra(dataDirectory : Path, outputDirectory : Path):
         # Plot
         axBz.plot(
             newData_xr["Magnetic_Field_Bz/power"].coords["frequency"].data, 
-            newData_xr["Magnetic_Field_Bz/power/powerByFrequency"].data, 
+            newData_xr["Magnetic_Field_Bz/power/frequencyPowerSpectrum"].data, 
             label = "Combined"
         )
         axEx.plot(
             newData_xr["Electric_Field_Ex/power"].coords["frequency"].data, 
-            newData_xr["Electric_Field_Ex/power/powerByFrequency"].data, 
+            newData_xr["Electric_Field_Ex/power/frequencyPowerSpectrum"].data, 
             label = "Combined"
         )
         axEy.plot(
             newData_xr["Electric_Field_Ey/power"].coords["frequency"].data, 
-            newData_xr["Electric_Field_Ey/power/powerByFrequency"].data, 
+            newData_xr["Electric_Field_Ey/power/frequencyPowerSpectrum"].data, 
             label = "Combined"
         )
         axBz.set_ylim(bottom=0)
@@ -522,6 +546,7 @@ def combine_spectra(dataDirectory : Path, outputDirectory : Path):
         axEx.grid()
         axEy.grid()
         plt.savefig(outputPlotDirectory / f"{sim_id}_combined_spectra.png")
+        plt.close("all")
 
         # Fix energy stats
         for k, _ in newData_xr["Energy"].attrs.items():
