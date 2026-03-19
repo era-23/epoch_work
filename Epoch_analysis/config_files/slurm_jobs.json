@@ -6,7 +6,7 @@
         "cpus": 16,
         "mem": "128G",
         "time": "00-23:59:00",
-        "output": "/home/era536/Documents/Epoch/Data/2026_analysis/tsr_aeon/logs/",
+        "output": "/users/era536/scratch/epoch/publications/modelling_nl_spectra/logs/",
         "script": "/users/era536/scratch/repos/epoch_work/Epoch_analysis/ts_aeon_regression_development.py",
         "script_args": [
             "--dir", 
