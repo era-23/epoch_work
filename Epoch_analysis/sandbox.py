@@ -1,5 +1,6 @@
 import argparse
 import glob
+import os
 from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
@@ -576,8 +577,8 @@ def analyse_real_frequencies(combined_stats_folder : Path):
         )
         
         all_simulation_data[Path(simulation).name] = data
-        dataset_len = data["/Magnetic_Field_Bz/power/powerByFrequency"].size
-        first_frequencies.append((data["/Magnetic_Field_Bz/power/powerByFrequency"].coords["frequency"][0] * data.ionGyrofrequency_radPs) / (2.0 * np.pi))
+        dataset_len = data["/Magnetic_Field_Bz/power/frequencyPowerSpectrum"].size
+        first_frequencies.append((data["/Magnetic_Field_Bz/power/frequencyPowerSpectrum"].coords["frequency"][0] * data.ionGyrofrequency_radPs) / (2.0 * np.pi))
 
         max_gyrofrequency_radPs = data["/Magnetic_Field_Bz/power/frequency"] * data.ionGyrofrequency_radPs
         f1 = u.Hz * float(max_gyrofrequency_radPs[-1]) / (2.0 * np.pi)
@@ -593,9 +594,15 @@ def analyse_real_frequencies(combined_stats_folder : Path):
 
     # Get new time coordinates
     new_time_points_start = first_frequencies[lowest_max_idx]
+    if new_time_points_start == 0:
+        new_time_points_start = 1E-20
 
-    equal_f_folder = Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_equal_freqs_2/data/")
-    cottrell_folder = Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_cottrell_2/data/")
+    equal_f_folder = Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_equal_freqs_3/data/")
+    if not os.path.exists(equal_f_folder):
+        os.makedirs(equal_f_folder)
+    cottrell_folder = Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_cottrell_3/data/")
+    if not os.path.exists(cottrell_folder):
+        os.makedirs(cottrell_folder)
 
     # 0-1 scaler for Cottrell data
     scaler_cottrell = MinMaxScaler(feature_range=(0, 1))
@@ -609,35 +616,35 @@ def analyse_real_frequencies(combined_stats_folder : Path):
         # Lowest max real frequency
         for spectra in spectraTypes:
             # All series should be the same length (will need to be interpolated onto new coordinates)
-            assert dataset_len == newData[f"/{spectra}/power/powerByFrequency"].size
+            assert dataset_len == newData[f"/{spectra}/power/frequencyPowerSpectrum"].size
 
-            frequencies_hz = (newData[f"/{spectra}/power/powerByFrequency"].coords["frequency"] * newData.ionGyrofrequency_radPs) / (2.0 * np.pi)
+            frequencies_hz = (newData[f"/{spectra}/power/frequencyPowerSpectrum"].coords["frequency"] * newData.ionGyrofrequency_radPs) / (2.0 * np.pi)
 
-            print(f"Current len: {dataset_len}, Max frequency: {(float(frequencies_hz[-1]) * u.Hz).to(u.MHz)} ({float(newData[f'/{spectra}/power/powerByFrequency'].coords['frequency'][-1])} gyrofrequencies).")
+            print(f"Current len: {dataset_len}, Max frequency: {(float(frequencies_hz[-1]) * u.Hz).to(u.MHz)} ({float(newData[f'/{spectra}/power/frequencyPowerSpectrum'].coords['frequency'][-1])} gyrofrequencies).")
 
             newData[f"/{spectra}/power/frequency"] = frequencies_hz
-            newData[f"/{spectra}/power/powerByFrequency"] = newData[f"/{spectra}/power/powerByFrequency"].assign_coords(frequency = frequencies_hz)
+            newData[f"/{spectra}/power/frequencyPowerSpectrum"] = newData[f"/{spectra}/power/frequencyPowerSpectrum"].assign_coords(frequency = frequencies_hz)
 
-            newPowerSpectra = newData[f"/{spectra}/power/powerByFrequency"].sel(frequency = slice(0.0, lowest_max_freq))
+            newPowerSpectra = newData[f"/{spectra}/power/frequencyPowerSpectrum"].sel(frequency = slice(0.0, lowest_max_freq))
 
             print(f"Truncated spectra has len {newPowerSpectra.size}, Max freq {(float(newPowerSpectra.coords['frequency'][-1]) * u.Hz).to(u.MHz)} ({float(newPowerSpectra.coords['frequency'][-1]) * (2.0 * np.pi / newData.ionGyrofrequency_radPs)} gyrofrequencies), interpolating to size {dataset_len}....")
 
             new_freq_points = np.linspace(float(new_time_points_start), lowest_max_freq, dataset_len)
             newPowerSpectra = newPowerSpectra.interp(frequency = new_freq_points, kwargs={"fill_value": "extrapolate"})
             
-            newData[f"/{spectra}/power/powerByFrequency"].data = newPowerSpectra.data
+            newData[f"/{spectra}/power/frequencyPowerSpectrum"].data = newPowerSpectra.data
             newData[f"/{spectra}/power/frequency"] = new_freq_points
-            newData[f"/{spectra}/power/powerByFrequency"] = newData[f"/{spectra}/power/powerByFrequency"].assign_coords(frequency = new_freq_points)
+            newData[f"/{spectra}/power/frequencyPowerSpectrum"] = newData[f"/{spectra}/power/frequencyPowerSpectrum"].assign_coords(frequency = new_freq_points)
             newData[f"/{spectra}/power"] = newData[f"/{spectra}/power"].assign(frequency_gyro = xr.DataArray((new_freq_points * (2.0 * np.pi)) / newData.ionGyrofrequency_radPs))
 
             # print(newData[f"/{spectra}/power/frequency_gyro"].to_numpy())
-            # print(newData[f"/{spectra}/power/powerByFrequency"].to_numpy())
-            # plt.plot(data[f"/{spectra}/power/frequency"].to_numpy(), data[f"/{spectra}/power/powerByFrequency"].to_numpy(), color = "blue")
-            # plt.plot(newData[f"/{spectra}/power/frequency_gyro"].to_numpy(), newData[f"/{spectra}/power/powerByFrequency"].to_numpy(), color = "red")
+            # print(newData[f"/{spectra}/power/frequencyPowerSpectrum"].to_numpy())
+            # plt.plot(data[f"/{spectra}/power/frequency"].to_numpy(), data[f"/{spectra}/power/frequencyPowerSpectrum"].to_numpy(), color = "blue")
+            # plt.plot(newData[f"/{spectra}/power/frequency_gyro"].to_numpy(), newData[f"/{spectra}/power/frequencyPowerSpectrum"].to_numpy(), color = "red")
             # plt.xlabel("Gyrofrequencies")
             # plt.show()
 
-            print(f"New len: {newData[f'/{spectra}/power/powerByFrequency'].size}, Max frequency: {(float(newData[f'/{spectra}/power/powerByFrequency'].coords['frequency'][-1]) * u.Hz).to(u.MHz)} ({float(newData[f'/{spectra}/power/frequency_gyro'][-1])} gyrofrequencies).")
+            print(f"New len: {newData[f'/{spectra}/power/frequencyPowerSpectrum'].size}, Max frequency: {(float(newData[f'/{spectra}/power/frequencyPowerSpectrum'].coords['frequency'][-1]) * u.Hz).to(u.MHz)} ({float(newData[f'/{spectra}/power/frequency_gyro'][-1])} gyrofrequencies).")
 
         newData.to_netcdf(equal_f_folder / sim_name.replace("stats.nc", "equalF_stats.nc"))
 
@@ -646,37 +653,50 @@ def analyse_real_frequencies(combined_stats_folder : Path):
         for spectra in spectraTypes:
 
             # All series should be the same length (will need to be interpolated onto new coordinates)
-            assert dataset_len == newData[f"/{spectra}/power/powerByFrequency"].size
+            assert dataset_len == newData[f"/{spectra}/power/frequencyPowerSpectrum"].size
             
-            frequencies_hz = (newData[f"/{spectra}/power/powerByFrequency"].coords["frequency"] * newData.ionGyrofrequency_radPs) / (2.0 * np.pi)
+            frequencies_hz = (newData[f"/{spectra}/power/frequencyPowerSpectrum"].coords["frequency"] * newData.ionGyrofrequency_radPs) / (2.0 * np.pi)
 
-            print(f"Current len: {len(frequencies_hz)}, Max frequency: {(float(frequencies_hz[-1]) * u.Hz).to(u.MHz)} ({float(newData[f'/{spectra}/power/powerByFrequency'].coords['frequency'][-1])} gyrofrequencies).")
+            print(f"Current len: {len(frequencies_hz)}, Max frequency: {(float(frequencies_hz[-1]) * u.Hz).to(u.MHz)} ({float(newData[f'/{spectra}/power/frequencyPowerSpectrum'].coords['frequency'][-1])} gyrofrequencies).")
 
             newData[f"/{spectra}/power/frequency"] = frequencies_hz
-            newData[f"/{spectra}/power/powerByFrequency"] = newData[f"/{spectra}/power/powerByFrequency"].assign_coords(frequency = frequencies_hz)
+            newData[f"/{spectra}/power/frequencyPowerSpectrum"] = newData[f"/{spectra}/power/frequencyPowerSpectrum"].assign_coords(frequency = frequencies_hz)
 
-            newPowerSpectra = newData[f"/{spectra}/power/powerByFrequency"].sel(frequency = slice(0.0, cottrell_max_freq))
+            newPowerSpectra = newData[f"/{spectra}/power/frequencyPowerSpectrum"].sel(frequency = slice(0.0, cottrell_max_freq))
 
             print(f"Truncated spectra has len {newPowerSpectra.size}, Max freq {(float(newPowerSpectra.coords['frequency'][-1]) * u.Hz).to(u.MHz)} ({float(newPowerSpectra.coords['frequency'][-1])} gyrofrequencies), interpolating to size {dataset_len}....")
 
             new_freq_points = np.linspace(float(new_time_points_start), cottrell_max_freq, dataset_len)
             newPowerSpectra = newPowerSpectra.interp(frequency = new_freq_points, kwargs={"fill_value": "extrapolate"})
 
+            # Avoid spurious first value
+            newPowerSpectrum = newPowerSpectra.data
+            newPowerSpectrum[0] = newPowerSpectra.data[1]
+
             # Log, scale and write
-            newData[f"/{spectra}/power/powerByFrequency"].data = scaler_cottrell.fit_transform(np.log10(newPowerSpectra.data).reshape(-1, 1)).flatten()
+            newData[f"/{spectra}/power/frequencyPowerSpectrum"].data = scaler_cottrell.fit_transform(np.log10(newPowerSpectrum).reshape(-1, 1)).flatten()
             newData[f"/{spectra}/power/frequency"] = new_freq_points
-            newData[f"/{spectra}/power/powerByFrequency"] = newData[f"/{spectra}/power/powerByFrequency"].assign_coords(frequency = new_freq_points)
+            newData[f"/{spectra}/power/frequencyPowerSpectrum"] = newData[f"/{spectra}/power/frequencyPowerSpectrum"].assign_coords(frequency = new_freq_points)
             newData[f"/{spectra}/power"] = newData[f"/{spectra}/power"].assign(frequency_gyro = xr.DataArray((new_freq_points * (2.0 * np.pi)) / newData.ionGyrofrequency_radPs))
 
-            # plt.plot(newData[f"/{spectra}/power/frequency"].to_numpy() / 1e6, newData[f"/{spectra}/power/powerByFrequency"].to_numpy())
-            # plt.xlabel("Frequencies")
-            # plt.show()
+            # print(newData[f"/{spectra}/power/frequency_gyro"].to_numpy())
+            # print(newData[f"/{spectra}/power/frequencyPowerSpectrum"].to_numpy())
+            _, ax1 = plt.subplots()
+            ax1.plot(data[f"/{spectra}/power/frequency"].to_numpy(), data[f"/{spectra}/power/frequencyPowerSpectrum"].to_numpy(), color = "blue")
+            ax2 = ax1.twinx()
+            ax2.plot(newData[f"/{spectra}/power/frequency_gyro"].to_numpy(), newData[f"/{spectra}/power/frequencyPowerSpectrum"].to_numpy(), color = "red")
+            plt.xlabel("Gyrofrequencies")
+            plt.show()
 
-            # plt.plot(newData[f"/{spectra}/power/frequency_gyro"].to_numpy(), newData[f"/{spectra}/power/powerByFrequency"].to_numpy())
-            # plt.xlabel("Gyrofrequencies")
-            # plt.show()
+            plt.plot(newData[f"/{spectra}/power/frequency"].to_numpy() / 1e6, newData[f"/{spectra}/power/frequencyPowerSpectrum"].to_numpy())
+            plt.xlabel("Frequencies")
+            plt.show()
 
-            print(f"New len: {newData[f'/{spectra}/power/powerByFrequency'].size}, Max frequency: {(float(newData[f'/{spectra}/power/powerByFrequency'].coords['frequency'][-1]) * u.Hz).to(u.MHz)} ({float(newData[f'/{spectra}/power/frequency_gyro'][-1])} gyrofrequencies).")
+            plt.plot(newData[f"/{spectra}/power/frequency_gyro"].to_numpy(), newData[f"/{spectra}/power/frequencyPowerSpectrum"].to_numpy())
+            plt.xlabel("Gyrofrequencies")
+            plt.show()
+
+            print(f"New len: {newData[f'/{spectra}/power/frequencyPowerSpectrum'].size}, Max frequency: {(float(newData[f'/{spectra}/power/frequencyPowerSpectrum'].coords['frequency'][-1]) * u.Hz).to(u.MHz)} ({float(newData[f'/{spectra}/power/frequency_gyro'][-1])} gyrofrequencies).")
 
         newData.to_netcdf(cottrell_folder / sim_name.replace("stats.nc", "cottrellRange_stats.nc"))
 
@@ -749,7 +769,7 @@ def fourier_power(simulation_dataPath : Path):
     # plt.show()
 
     # Power spectrum
-    ps = xrft.power_spectrum(signal, scaling = "spectrum")
+    ps = xrft.power_spectrum(signal, scaling = "spectrum", window = "hann", window_correction=False)
     print(f"Parseval: PS: sum(PS) / (dk * dw) = {float(np.sum(ps) / (ps.coords['freq_space'].spacing * ps.coords['freq_time'].spacing))}")
     ps.plot(cbar_kwargs={'label': "Power [T^2]"})
     plt.title("Power spectrum")
@@ -787,7 +807,7 @@ def fourier_power(simulation_dataPath : Path):
     # plt.show()
 
     # Power spectral density
-    psd = xrft.power_spectrum(signal, scaling = "density")
+    psd = xrft.power_spectrum(signal, scaling = "density", window = "hann", window_correction=True)
     print(f"Parseval: PSD: sum(PSD) = {float(np.sum(psd))}")
     psd.plot(cbar_kwargs={'label': "Power [T^2 m/Hz]"})
     plt.title("Power spectral density")
@@ -811,7 +831,7 @@ def fourier_power(simulation_dataPath : Path):
     plt.grid()
     plt.show()
 
-def test_simulation_power_spectra(dataDirectory : Path, outputFolder : Path):
+def test_simulation_power_spectra(dataDirectory : Path, outputFolder : Path, window : str = None):
     
     print(f"Analyzing simulation in '{dataDirectory.name}'")
 
@@ -902,10 +922,14 @@ def test_simulation_power_spectra(dataDirectory : Path, outputFolder : Path):
     plt.savefig(outputFolder / f"{dataDirectory.name}_fft_better_sum.png")
     plt.close("all")
 
+    # Intentionally remove DC offset -- debugging
+    # bz = bz - bz.mean()
+
     # Power spectrum
-    ps = xrft.power_spectrum(bz, scaling = "spectrum")
+    ps = xrft.power_spectrum(bz, scaling = "spectrum", window = window, window_correction=(window is not None), detrend = "constant")
     ps = ps.where(ps.freq_x_space!=0.0, None)
-    print(f"Parseval: PS: sum(PS) / (dk * dw) = {float(np.sum(ps) / (wavenumber_spacing * frequency_spacing))}")
+    # print(f"Parseval: PS: sum(PS) / (dk * dw) = {float(np.sum(ps) / (wavenumber_spacing * frequency_spacing))}")
+    print(f"Parseval: PS: sum(PS) = {float(np.sum(ps))}")
     np.abs(ps).plot()
     plt.title("Power spectrum")
     plt.xlim(-100,100)
@@ -915,9 +939,14 @@ def test_simulation_power_spectra(dataDirectory : Path, outputFolder : Path):
 
     ps_pos = ps.sel(freq_time=ps.freq_time>0.0)
     freq_ps = ps_pos.sum(dim = "freq_x_space")
-    ps_freq_sum = float(2.0 * np.sum(freq_ps) / (wavenumber_spacing * frequency_spacing))
-    ps_freq_sum += float(np.sum(ps.sel(freq_time=0.0)) / (wavenumber_spacing * frequency_spacing))
-    print(f"Parseval: Freq PS (naive sum, y = sum(PS)): 2 * sum(y) / (dk * dw) = {ps_freq_sum}")
+    # ps_freq_sum = float(2.0 * np.sum(freq_ps) / (wavenumber_spacing * frequency_spacing))
+    # ps_freq_sum += float(np.sum(ps.sel(freq_time=0.0)) / (wavenumber_spacing * frequency_spacing))
+    ps_freq_sum = float(np.sum(freq_ps) / (wavenumber_spacing * frequency_spacing))
+    # ps_freq_sum = float(2.0 * np.sum(freq_ps))
+    # ps_freq_sum += float(np.sum(ps.sel(freq_time=0.0)))
+    print(f"Parseval: Freq PS (naive sum, y = sum(PS)): sum(y)  / (dk * dw) = {ps_freq_sum}")
+    # print(f"Parseval: Freq PS (naive sum, y = sum(PS)): 2 * sum(y) = {ps_freq_sum}")
+    # print(f"Parseval: Freq PS (naive sum, y = sum(PS)): 2 * sum(y) / (dk * dw) = {ps_freq_sum}")
     np.abs(freq_ps).plot()
     plt.title("Naive sum of power spectrum over all k")
     plt.grid()
@@ -925,7 +954,7 @@ def test_simulation_power_spectra(dataDirectory : Path, outputFolder : Path):
     plt.close("all")
 
     # Power spectral density
-    psd = xrft.power_spectrum(bz, scaling = "density")
+    psd = xrft.power_spectrum(bz, scaling = "density", window = window, window_correction=(window is not None), detrend = "constant")
     psd = psd.where(psd.freq_x_space!=0.0, None)
     print(f"Parseval: PSD: sum(PSD) = {float(np.sum(psd))}")
     np.abs(psd).plot()
@@ -938,7 +967,7 @@ def test_simulation_power_spectra(dataDirectory : Path, outputFolder : Path):
     psd_pos = psd.sel(freq_time=psd.freq_time>0.0)
     freq_psd = psd_pos.sum(dim = "freq_x_space")
     psd_freq_sum = float(2.0 * np.sum(freq_psd))
-    psd_freq_sum += float(np.sum(psd.sel(freq_time=0.0)))
+    # psd_freq_sum += float(np.sum(psd.sel(freq_time=0.0)))
     print(f"Parseval: Freq PSD spectrum (naive sum, y = sum(PSD)): 2 * sum(y) = {psd_freq_sum}")
     np.abs(freq_psd).plot()
     plt.title("Naive sum of PSD over all k")
@@ -989,6 +1018,13 @@ if __name__ == "__main__":
         required = False,
         type=Path
     )
+    parser.add_argument(
+        "--window",
+        action="store",
+        help="Window to apply to the power spectrum.",
+        required = False,
+        type=str
+    )
 
     args = parser.parse_args()
 
@@ -1001,9 +1037,9 @@ if __name__ == "__main__":
     #     Path("/home/era536/Documents/Epoch/Data/2026_analysis/original_input_decks/run_0_100/")
     # )
 
-    # analyse_real_frequencies(Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_2/data/"))
+    # analyse_real_frequencies(Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_3/data/"))
     # analyse_x_gyrofreqs(Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_2/data/"), num_gyro_freqs=11.0, outputFolder=Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_reduced/"))
 
-    fourier_power(Path("/home/era536/Documents/Epoch/Data/batch_testing_4/total_run_43/"))
+    # fourier_power(Path("/home/era536/Documents/Epoch/Data/batch_testing_4/total_run_43/"))
 
-    # test_simulation_power_spectra(args.dataDir, args.outputDir)
+    test_simulation_power_spectra(args.dataDir, args.outputDir, args.window)

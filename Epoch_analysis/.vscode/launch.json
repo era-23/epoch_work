@@ -278,14 +278,14 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "args": [
-                // "--cottrell",
-                "--frequency",
+                "--cottrell",
+                // "--frequency",
                 "--dataDir", 
                     "/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_3/",
-                // "--cottrellFilepath",
-                //     "/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_cottrell_2/cottrell_93_experimental_data.csv",
+                "--cottrellFilepath",
+                    "/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_cottrell_3/cottrell_93_experimental_data.csv",
                 "--resultsFilepath",
-                    "/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_3/analysis/test_scanFreqs.json",
+                    "/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_cottrell_3/cottrell_3_results.csv",
                 "--nThreads",
                     "12",
                 "--algorithms",
@@ -955,9 +955,11 @@
             "justMyCode": false,
             "args": [
                 "--dataDir",
-                    "/home/era536/Documents/Epoch/Data/batch_testing_4/run_43_short/",
+                    "/home/era536/Documents/Epoch/Data/batch_testing_4/run_43/",
                 "--outputDir",
-                    "/home/era536/Documents/Epoch/Data/batch_testing_4/output/",
+                    "/home/era536/Documents/Epoch/Data/batch_testing_4/output/hann_detrend/",
+                "--window",
+                    "hann",
             ]
         },
         {

@@ -1008,7 +1008,7 @@ def create_power_spectra(
         debug : bool = False
 ):
     # Get power spectrum
-    ps = xrft.power_spectrum(fieldData, scaling = "spectrum") # PS over space and time
+    ps = xrft.power_spectrum(fieldData, scaling = "spectrum", window = 'hann', window_correction=True, detrend = "constant") # PS over space and time
     ps = ps.rename(freq_time = "frequency")
     ps = ps.rename(freq_x_space = "wavenumber")
     freq_ps_all = ps.sum(dim = "wavenumber") # Sum over all k
@@ -1016,7 +1016,7 @@ def create_power_spectra(
     freq_ps.loc[dict(frequency=0.0)] = 0.0
 
     # Get power spectral density
-    psd = xrft.power_spectrum(fieldData, scaling = "density")
+    psd = xrft.power_spectrum(fieldData, scaling = "density", window = 'hann', window_correction=True, detrend = "constant")
     psd = psd.rename(freq_time = "frequency")
     psd = psd.rename(freq_x_space = "wavenumber")
     freq_psd_all = psd.sum(dim = "wavenumber") # Sum over all k
