@@ -134,6 +134,7 @@ class TSRResult:
     algorithmArgs : dict = None
     output : str = None
     frequencyBandwidth : float = 0.0
+    frequencyUnit : str = None
     cvR2_mean : float = 0.0
     cvR2_var : float = 0.0
     cvR2_stderr : float = 0.0

@@ -626,7 +626,7 @@ def regress_scanFrequencies(
         algorithms : list,
         frequencyBandwidths : list,
         resultsFilepath : Path = None,
-        includeGyroFreqs : bool = False,
+        includeAltFreqs : bool = False,
         scale : bool = False,
         doPlot : bool = True,
         noTitle : bool = False,
@@ -675,6 +675,12 @@ def regress_scanFrequencies(
     battery.equalLengthTimeseries = True
     battery.multivariate = battery.numInputDimensions > 1
 
+    # Frequency bandwidths
+    frequencyBandwidths = [float(f) for f in frequencyBandwidths]
+    frequencyUnit = 'MHz'
+    if frequencyBandwidths[-1] <= 80.0: # max frequency is only 80, so must be gyrofrequencies.
+        frequencyUnit = 'gyrofrequencies'
+
     battery.cvStrategy = "LeaveOneOut"
     battery.cvFolds = 100
     battery.cvRepeats = 1
@@ -695,9 +701,8 @@ def regress_scanFrequencies(
 
     for frequency_bandwidth in frequencyBandwidths:
         
-        print(f"Spectra range from a maximum frequency of {(np.min(last_freqs) * u.Hz).to(u.MHz)} to {(np.max(last_freqs) * u.Hz).to(u.MHz)}. Truncating to {frequency_bandwidth} MHz")
-        frequency_bandwidth = float((frequency_bandwidth * u.MHz).to(u.Hz))
-
+        print(f"Spectra range from a maximum frequency of {(np.min(last_freqs) * u.Hz).to(u.MHz)} to {(np.max(last_freqs) * u.Hz).to(u.MHz)}. Truncating to {frequency_bandwidth} {frequencyUnit}")
+        frequency_bandwidth = float((frequency_bandwidth * u.MHz).to(u.Hz)) if frequencyUnit == 'MHz' else frequency_bandwidth
         inputData = []
         for field in inputSpectraNames:
             specs = copy.deepcopy(inputs[field])
@@ -706,14 +711,25 @@ def regress_scanFrequencies(
             for i in range(len(specs)):
                 gyro_coords = inputs[f"{field}_coords"][i]
                 denormed_coords = inputs[f"{field}_denorm_coords"][i]
-                if denormed_coords[-1] > frequency_bandwidth: # Truncate based on denormalised frequencies (i.e. Hz)
-                    truncd_series, truncd_coords, truncd_gyroCoords = ml_utils.truncate_series(specs[i], denormed_coords, frequency_bandwidth, altCoordinates = gyro_coords)
-                    resamp_series, _ = ml_utils.resample_series(truncd_series, truncd_coords, min_l, f"{field.split('/')[0]}_run_{inputs['sim_ids'][i]}", dataDirectory / "spectra_homogenisation/")
-                    specs[i] = scaler_train.fit_transform(resamp_series.reshape(-1, 1)).flatten() if scale else resamp_series
-                if includeGyroFreqs:
-                    coords[i] = truncd_gyroCoords
+                if frequencyUnit == 'Mhz':
+                    if denormed_coords[-1] > frequency_bandwidth: # Truncate based on denormalised frequencies (i.e. Hz)
+                        truncd_series, truncd_coords, truncd_gyroCoords = ml_utils.truncate_series(specs[i], denormed_coords, frequency_bandwidth, altCoordinates = gyro_coords)
+                        resamp_series, _ = ml_utils.resample_series(truncd_series, truncd_coords, min_l, f"{field.split('/')[0]}_run_{inputs['sim_ids'][i]}", dataDirectory / "spectra_homogenisation/")
+                        specs[i] = scaler_train.fit_transform(resamp_series.reshape(-1, 1)).flatten() if scale else resamp_series
+                    if includeAltFreqs:
+                        coords[i] = np.linspace(truncd_gyroCoords[0], truncd_gyroCoords[-1], coords.shape[1])
+                elif frequencyUnit == 'gyrofrequencies':
+                    if gyro_coords[-1] > frequency_bandwidth: # Truncate based on denormalised frequencies (i.e. Hz)
+                        truncd_series, truncd_coords, truncd_freqCoords = ml_utils.truncate_series(specs[i], gyro_coords, frequency_bandwidth, altCoordinates = denormed_coords)
+                        resamp_series, _ = ml_utils.resample_series(truncd_series, truncd_coords, min_l, f"{field.split('/')[0]}_run_{inputs['sim_ids'][i]}", dataDirectory / "spectra_homogenisation/")
+                        specs[i] = scaler_train.fit_transform(resamp_series.reshape(-1, 1)).flatten() if scale else resamp_series
+                    if includeAltFreqs:
+                        coords[i] = np.linspace(truncd_freqCoords[0], truncd_freqCoords[-1], coords.shape[1])
+                else:
+                    print("Unknown frequency bandwidth unit. Exiting")
+                    raise AttributeError()
             inputData.append(specs)
-        if includeGyroFreqs:
+        if includeAltFreqs:
             inputData.append(coords)
 
         # Reshape into 3D numpy array of shape (n_cases, n_channels, n_timepoints)
@@ -899,7 +915,7 @@ if __name__ == "__main__":
         action="store",
         help="Frequency bandwidths to scan.",
         required = False,
-        type=str,
+        type=float,
         nargs="*"
     )
     parser.add_argument(
@@ -930,7 +946,7 @@ if __name__ == "__main__":
         default=1
     )
     parser.add_argument(
-        "--betaIncludeFreqs",
+        "--includeFreqs",
         action="store_true",
         help="Beta test: include frequencies in Hz (not gyrofrequency) as a channel.",
         required = False
@@ -1005,31 +1021,9 @@ if __name__ == "__main__":
                 "beamFraction"
             ], 
             algorithms = args.algorithms,
-            # algorithms = [
-            #     # "aeon.DummyRegressor",
-            #     "aeon.HydraRegressor", 
-            #     # "aeon.RocketRegressor", 
-            #     "aeon.MiniRocketRegressor", 
-            #     # "aeon.MultiRocketRegressor", 
-            #     # "aeon.MultiRocketHydraRegressor", 
-            #     # "aeon.QUANTRegressor", 
-            #     # "aeon.KNeighborsTimeSeriesRegressor",
-            #     # "aeon.RDSTRegressor",
-            #     # "aeon.TimeSeriesForestRegressor",
-            #     # "aeon.Catch22Regressor",
-            #     # "aeon.RandomIntervalRegressor",
-            #     # "aeon.SummaryRegressor",
-            #     # "aeon.TSFreshRegressor",
-            #     # "aeon.FreshPRINCERegressor"
-            # ], 
-            # frequencyBandwidths = [
-            #     200.0, 
-            #     400.0,
-            #     600.0
-            # ],
             frequencyBandwidths= args.frequencyBandwidths,
             resultsFilepath = args.resultsFilepath,
-            includeGyroFreqs = args.betaIncludeFreqs,
+            includeAltFreqs = args.includeFreqs,
             scale = False,
             doPlot = False,
             nThreads = args.nThreads)
@@ -1068,5 +1062,5 @@ if __name__ == "__main__":
             ], 
             cottrellDatapath = args.cottrellFilepath,
             resultsFilepath=args.resultsFilepath,
-            includeFreqs=args.betaIncludeFreqs,
+            includeFreqs=args.includeFreqs,
             nThreads = args.nThreads)
