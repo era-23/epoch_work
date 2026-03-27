@@ -229,7 +229,7 @@ def regress(
     inputData = []
     for field in inputSpectraNames:
         specs = inputs[field]
-        coords = inputs[f"{field}_coords"]
+        coords = inputs[f"{field}_denorm_coords"]
         for i in range(len(specs)):
             if len(specs[i]) > min_l:
                 truncd_series, truncd_coords = ml_utils.truncate_series(specs[i], inputs[f"{field}_denorm_coords"][i], max_common_coord)
@@ -562,9 +562,9 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
-        "--betaIncludeFreqs",
+        "--includeFreqs",
         action="store_true",
-        help="Beta test: include frequencies in Hz (not gyrofrequency) as a channel.",
+        help="Beta: include frequencies in Hz (not gyrofrequency) as a channel.",
         required = False
     )
     parser.add_argument(
@@ -607,7 +607,7 @@ if __name__ == "__main__":
         args.cvStrategy,
         scaleInputs=args.scaleInputs,
         doIce=args.doIce,
-        includeFreqs=args.betaIncludeFreqs,
+        includeFreqs=args.includeFreqs,
         iceMetricsToUse=args.iceMetrics,
         resultsFilepath=args.resultsFilepath,
         doPlot=args.doPlot,
