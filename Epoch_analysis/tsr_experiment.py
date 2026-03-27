@@ -711,7 +711,7 @@ def regress_scanFrequencies(
             for i in range(len(specs)):
                 gyro_coords = inputs[f"{field}_coords"][i]
                 denormed_coords = inputs[f"{field}_denorm_coords"][i]
-                if frequencyUnit == 'Mhz':
+                if frequencyUnit == 'MHz':
                     if denormed_coords[-1] > frequency_bandwidth: # Truncate based on denormalised frequencies (i.e. Hz)
                         truncd_series, truncd_coords, truncd_gyroCoords = ml_utils.truncate_series(specs[i], denormed_coords, frequency_bandwidth, altCoordinates = gyro_coords)
                         resamp_series, _ = ml_utils.resample_series(truncd_series, truncd_coords, min_l, f"{field.split('/')[0]}_run_{inputs['sim_ids'][i]}", dataDirectory / "spectra_homogenisation/")
