@@ -951,6 +951,12 @@ if __name__ == "__main__":
         help="Beta test: include frequencies in Hz (not gyrofrequency) as a channel.",
         required = False
     )
+    parser.add_argument(
+        "--scale",
+        action="store_true",
+        help="Scale spectra to 0-1 amplitude.",
+        required = False
+    )
 
     args = parser.parse_args()
 
@@ -1024,7 +1030,7 @@ if __name__ == "__main__":
             frequencyBandwidths= args.frequencyBandwidths,
             resultsFilepath = args.resultsFilepath,
             includeAltFreqs = args.includeFreqs,
-            scale = False,
+            scale = args.scale,
             doPlot = False,
             nThreads = args.nThreads)
 
