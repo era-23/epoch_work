@@ -911,6 +911,14 @@ if __name__ == "__main__":
         nargs="*"
     )
     parser.add_argument(
+        "--inputSpectra",
+        action="store",
+        help="Spectra to use for TSR input.",
+        required = False,
+        type=str,
+        nargs="*"
+    )
+    parser.add_argument(
         "--frequencyBandwidths",
         action="store",
         help="Frequency bandwidths to scan.",
@@ -1011,7 +1019,7 @@ if __name__ == "__main__":
     if args.frequency:
         regress_scanFrequencies(
             dataDirectory = args.dataDir, 
-            inputSpectraNames = [
+            inputSpectraNames = args.inputSpectra if (args.inputSpectra is not None) else [
                 "Magnetic_Field_Bz/power/frequencyPowerSpectrum",
                 "Electric_Field_Ex/power/frequencyPowerSpectrum",
                 "Electric_Field_Ey/power/frequencyPowerSpectrum",
