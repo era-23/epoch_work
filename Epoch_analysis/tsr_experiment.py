@@ -876,7 +876,7 @@ def regress_scanFrequencies(
                     )
 
     # Write results and all predictions
-    ml_utils.write_ML_result_to_file(battery, resultsFilepath.replace('.csv', '.json'))
+    ml_utils.write_ML_result_to_file(battery, resultsFilepath.parent / resultsFilepath.name.replace('.csv', '.json'))
     if len(allPredictionsRecord) > 0:
         predsPath = resultsFilepath.parent / "predictions"
         if not os.path.exists(predsPath):

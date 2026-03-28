@@ -290,11 +290,11 @@
                     "12",
                 "--algorithms",
                     "aeon.DummyRegressor",
-                    "aeon.MiniRocketRegressor",
+                    // "aeon.MiniRocketRegressor",
                 "--frequencyBandwidths",
                     "100.0",
                     "200.0",
-                    "600.0",
+                    // "600.0",
                 "--includeFreqs",
             ]
         },
