@@ -627,7 +627,8 @@ def regress_scanFrequencies(
         frequencyBandwidths : list,
         resultsFilepath : Path = None,
         includeAltFreqs : bool = False,
-        scale : bool = False,
+        scaleInputs : bool = False,
+        logInputs : bool = False,
         doPlot : bool = True,
         noTitle : bool = False,
         nThreads : int = 1
@@ -694,7 +695,7 @@ def regress_scanFrequencies(
     min_l = np.min(spec_lengths)
     print(f"Max spec length: {np.max(spec_lengths)} min spec length: {min_l}")
 
-    if scale:
+    if scaleInputs:
         scaler_train = MinMaxScaler(feature_range=(0, 1))
 
     allPredictionsRecord = []
@@ -715,14 +716,18 @@ def regress_scanFrequencies(
                     if denormed_coords[-1] > frequency_bandwidth: # Truncate based on denormalised frequencies (i.e. Hz)
                         truncd_series, truncd_coords, truncd_gyroCoords = ml_utils.truncate_series(specs[i], denormed_coords, frequency_bandwidth, altCoordinates = gyro_coords)
                         resamp_series, _ = ml_utils.resample_series(truncd_series, truncd_coords, min_l, f"{field.split('/')[0]}_run_{inputs['sim_ids'][i]}", dataDirectory / "spectra_homogenisation/")
-                        specs[i] = scaler_train.fit_transform(resamp_series.reshape(-1, 1)).flatten() if scale else resamp_series
+                        if logInputs:
+                            resamp_series = np.array([np.log10(resamp_series[1]) if resamp_series[1] != 0.0 else 0.0] + np.log10(resamp_series[1:]).tolist())
+                        specs[i] = scaler_train.fit_transform(resamp_series.reshape(-1, 1)).flatten() if scaleInputs else resamp_series
                     if includeAltFreqs:
                         coords[i] = np.linspace(truncd_gyroCoords[0], truncd_gyroCoords[-1], coords.shape[1])
                 elif frequencyUnit == 'gyrofrequencies':
                     if gyro_coords[-1] > frequency_bandwidth: # Truncate based on denormalised frequencies (i.e. Hz)
                         truncd_series, truncd_coords, truncd_freqCoords = ml_utils.truncate_series(specs[i], gyro_coords, frequency_bandwidth, altCoordinates = denormed_coords)
                         resamp_series, _ = ml_utils.resample_series(truncd_series, truncd_coords, min_l, f"{field.split('/')[0]}_run_{inputs['sim_ids'][i]}", dataDirectory / "spectra_homogenisation/")
-                        specs[i] = scaler_train.fit_transform(resamp_series.reshape(-1, 1)).flatten() if scale else resamp_series
+                        if logInputs:
+                            resamp_series = np.array([np.log10(resamp_series[1]) if resamp_series[1] != 0.0 else 0.0] + np.log10(resamp_series[1:]).tolist())
+                        specs[i] = scaler_train.fit_transform(resamp_series.reshape(-1, 1)).flatten() if scaleInputs else resamp_series
                     if includeAltFreqs:
                         coords[i] = np.linspace(truncd_freqCoords[0], truncd_freqCoords[-1], coords.shape[1])
                 else:
@@ -736,11 +741,6 @@ def regress_scanFrequencies(
         inputSpectra = np.swapaxes(np.array(inputData), 0, 1)
 
         logFields = np.intersect1d(outputFields, logFields)
-
-        if scale:
-            scaled_x = np.array([inputSpectra.T])
-            scaled_x[0][0] = scaler_train.fit_transform(scaled_x[0][0].reshape(-1, 1)).T # Only scale spectra, not frequencies
-            inputSpectra = scaled_x
 
         battery.numObservations = inputSpectra.shape[0]
         battery.numInputDimensions = inputSpectra.shape[1]
@@ -960,9 +960,15 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
-        "--scale",
+        "--scaleInputs",
         action="store_true",
         help="Scale spectra to 0-1 amplitude.",
+        required = False
+    )
+    parser.add_argument(
+        "--logInputs",
+        action="store_true",
+        help="Take logarithms of input spectra.",
         required = False
     )
 
@@ -1038,7 +1044,8 @@ if __name__ == "__main__":
             frequencyBandwidths= args.frequencyBandwidths,
             resultsFilepath = args.resultsFilepath,
             includeAltFreqs = args.includeFreqs,
-            scale = args.scale,
+            scaleInputs = args.scaleInputs,
+            logInputs = args.logInputs,
             doPlot = False,
             nThreads = args.nThreads)
 

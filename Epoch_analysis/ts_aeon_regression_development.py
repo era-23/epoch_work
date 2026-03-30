@@ -166,6 +166,7 @@ def regress(
         cvRepeats : int,
         cvStrategy : str = "RepeatedKFolds",
         scaleInputs : bool = False,
+        logInputs : bool = False,
         doIce : bool = False,
         includeFreqs : bool = False,
         iceMetricsToUse : list = None,
@@ -236,7 +237,12 @@ def regress(
                 resamp_series, resamp_coords = ml_utils.resample_series(truncd_series, truncd_coords, min_l, f"{field.split('/')[0]}_run_{inputs['sim_ids'][i]}", directory / "spectra_homogenisation/")
                 specs[i] = resamp_series
                 coords[i] = resamp_coords
-        inputData.append(specs if not scaleInputs else [scaler_train.fit_transform(s.reshape(-1, 1)).flatten()for s in specs])
+        spec_data = specs if not scaleInputs else [scaler_train.fit_transform(s.reshape(-1, 1)).flatten()for s in specs]
+        if logInputs:
+            for i in range(len(spec_data)):
+                trace = spec_data[i] 
+                spec_data[i] = [np.log10(trace[1]) if trace[1] != 0.0 else 0.0] + np.log10(trace[1:]).tolist()
+        inputData.append(spec_data)
     if includeFreqs:
         inputData.append(coords) # Append only the last set of coordinates (they should be the same for all fields)
 
@@ -544,6 +550,12 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
+        "--logInputs",
+        action="store_true",
+        help="Take logarithms of input spectra.",
+        required = False
+    )
+    parser.add_argument(
         "--doPlot",
         action="store_true",
         help="Plot predictions.",
@@ -606,6 +618,7 @@ if __name__ == "__main__":
         args.cvRepeats, 
         args.cvStrategy,
         scaleInputs=args.scaleInputs,
+        logInputs=args.logInputs,
         doIce=args.doIce,
         includeFreqs=args.includeFreqs,
         iceMetricsToUse=args.iceMetrics,
