@@ -116,7 +116,7 @@ def regress_cottrell(
 
     # Input data
     inputs = {name : [] for name in inputSpectraNames}
-    inputs = ml_utils.read_data(data_files, inputs, with_names = True, with_coords = True, with_iciness = False)
+    inputs = ml_utils.read_data(data_files, inputs, with_names = True, with_coords = True, with_iciness = False, denorm_coords = True)
 
     # Output data
     outputs = {outputField : [] for outputField in outputFields}
@@ -137,13 +137,14 @@ def regress_cottrell(
     inputData = []
     for field in inputSpectraNames:
         specs = inputs[field]
-        coords = inputs[f"{field}_coords"]
+        coords = inputs[f"{field}_denorm_coords"]
         for i in range(len(specs)):
             if len(specs[i]) > min_l:
-                truncd_series, truncd_coords = ml_utils.truncate_series(specs[i], inputs[f"{field}_coords"][i], max_common_coord)
+                truncd_series, truncd_coords = ml_utils.truncate_series(specs[i], inputs[f"{field}_denorm_coords"][i], max_common_coord)
                 resamp_series, resamp_coords = ml_utils.resample_series(truncd_series, truncd_coords, min_l, f"{field.split('/')[0]}_run_{inputs['sim_ids'][i]}", dataDirectory / "spectra_homogenisation/")
-                specs[i] = scaler_train.fit_transform(resamp_series.reshape(-1, 1)).flatten()
+                specs[i] = resamp_series
                 coords[i] = resamp_coords
+            specs[i] = scaler_train.fit_transform(specs[i].reshape(-1, 1)).flatten()
         inputData.append(specs)
     if includeFreqs:
         inputData.append(coords) # Append only the last set of coordinates (they should be the same for all fields)
@@ -161,7 +162,9 @@ def regress_cottrell(
     equally_spaced_freqs = np.linspace(cottrell_data["Frequency (MHz)"].min(), cottrell_data["Frequency (MHz)"].max(), inputSpectra.shape[2])
     test_x = [np.interp(equally_spaced_freqs, np.sort(cottrell_data["Frequency (MHz)"]), cottrell_data["ICE Intensity (dB)"][sort_indices])]
     if includeFreqs:
-        test_x.append(equally_spaced_freqs)
+        cottrell_gyro_freqs = np.linspace(cottrell_data["Frequency (MHz)"].min() / 17.0, cottrell_data["Frequency (MHz)"].max() / 17.0, inputSpectra.shape[2])
+        test_x.append(cottrell_gyro_freqs)
+    
     # True values (edge JET values )
     all_true_y = {"B0strength" : 2.21, "backgroundDensity" : 1.7E19, "beamFraction" : 1.5E-4, "pitch" : 0.4}
 
@@ -177,6 +180,31 @@ def regress_cottrell(
 
     n_repeats = 10
     all_results = []
+
+    # # For debugging spectral ranges
+    # SMALL_SIZE = 10
+    # MEDIUM_SIZE = 20
+    # BIGGER_SIZE = 24
+
+    # plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
+    # plt.rc('axes', titlesize=BIGGER_SIZE)     # fontsize of the axes title
+    # plt.rc('axes', labelsize=BIGGER_SIZE)    # fontsize of the x and y labels
+    # plt.rc('xtick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
+    # plt.rc('ytick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
+    # plt.rc('legend', fontsize=MEDIUM_SIZE)    # legend fontsize
+    # plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
+    # for i in [75, 104]:
+    #     data = train_x[i][0]
+    #     plt.figure(figsize=(8, 8))
+    #     plt.plot(equally_spaced_freqs, test_x[0][0], color = "tab:blue", label = r"Cottrell '93: $B_z$")
+    #     plt.plot(equally_spaced_freqs, data, color = "tab:orange", label = r"Run 75: training $B_z$")
+    #     plt.ylabel("Spectral power [a.u.]")
+    #     plt.xlabel("Frequency [MHz]")
+    #     plt.grid()
+    #     plt.legend(loc="upper left")
+    #     plt.tight_layout()
+    #     # plt.title(inputs["sim_ids"][i])
+    #     plt.show()
 
     for output_field, output_values in outputs.items():
 
@@ -274,6 +302,11 @@ def regress_cottrell(
     # plt.grid()
     # plt.show()
 
+    if not os.path.exists(resultsFilepath):
+        if not resultsFilepath.name.endswith(".csv"):
+            os.makedirs(resultsFilepath)
+        else:
+            os.makedirs(resultsFilepath.parent)
     resultsFilepath = resultsFilepath if str(resultsFilepath).endswith(".csv") else resultsFilepath / "cottrell_regression_results.csv"
     with open(resultsFilepath, "w") as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=all_results[0].keys())
@@ -1053,7 +1086,7 @@ if __name__ == "__main__":
         regress_cottrell(
             dataDirectory = args.dataDir, 
             inputSpectraNames = [
-                "Magnetic_Field_Bz/power/powerByFrequency",
+                "Magnetic_Field_Bz/power/frequencyPowerSpectrum",
             ], 
             outputFields = [
                 "B0strength", 
@@ -1077,9 +1110,11 @@ if __name__ == "__main__":
                 "aeon.TimeSeriesForestRegressor",
                 "aeon.Catch22Regressor",
                 "aeon.RandomIntervalRegressor",
+                "aeon.RandomIntervalSpectralEnsembleRegressor",
                 "aeon.SummaryRegressor",
+                # "aeon.DummyRegressor",
                 # "aeon.TSFreshRegressor",
-                "aeon.FreshPRINCERegressor"
+                # "aeon.FreshPRINCERegressor"
             ], 
             cottrellDatapath = args.cottrellFilepath,
             resultsFilepath=args.resultsFilepath,

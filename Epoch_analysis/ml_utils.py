@@ -393,7 +393,10 @@ def read_data(
                     dimVals = data[group].coords[dimName].values
                     data_dict[fieldPath + "_coords"].append(dimVals)
                     if denorm_coords:
-                        data_dict[f"{fieldPath + '_denorm_coords'}"].append(dimVals * (data.ionGyrofrequency_radPs / (2.0 * np.pi)))    
+                        if dimVals[-1] < 1000.0: # Must be in gyrofrequencies
+                            data_dict[f"{fieldPath + '_denorm_coords'}"].append(dimVals * (data.ionGyrofrequency_radPs / (2.0 * np.pi))) # Append Hz
+                        else: # Coords are in Hz
+                            data_dict[f"{fieldPath + '_denorm_coords'}"].append(dimVals * ((2.0 * np.pi) / data.ionGyrofrequency_radPs)) # Append gyrofrequencies
                 # Get ICE indicators if requested
                 if with_iciness:
                     for attr, val in data[fieldPath].attrs.items():

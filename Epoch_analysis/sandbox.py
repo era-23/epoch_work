@@ -597,10 +597,10 @@ def analyse_real_frequencies(combined_stats_folder : Path):
     if new_time_points_start == 0:
         new_time_points_start = 1E-20
 
-    equal_f_folder = Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_equal_freqs_3/data/")
+    equal_f_folder = Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_equal_freqs_4/data/")
     if not os.path.exists(equal_f_folder):
         os.makedirs(equal_f_folder)
-    cottrell_folder = Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_cottrell_3/data/")
+    cottrell_folder = Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_cottrell_4/data/")
     if not os.path.exists(cottrell_folder):
         os.makedirs(cottrell_folder)
 
@@ -681,20 +681,20 @@ def analyse_real_frequencies(combined_stats_folder : Path):
 
             # print(newData[f"/{spectra}/power/frequency_gyro"].to_numpy())
             # print(newData[f"/{spectra}/power/frequencyPowerSpectrum"].to_numpy())
-            _, ax1 = plt.subplots()
-            ax1.plot(data[f"/{spectra}/power/frequency"].to_numpy(), data[f"/{spectra}/power/frequencyPowerSpectrum"].to_numpy(), color = "blue")
-            ax2 = ax1.twinx()
-            ax2.plot(newData[f"/{spectra}/power/frequency_gyro"].to_numpy(), newData[f"/{spectra}/power/frequencyPowerSpectrum"].to_numpy(), color = "red")
-            plt.xlabel("Gyrofrequencies")
-            plt.show()
+            # _, ax1 = plt.subplots()
+            # ax1.plot(data[f"/{spectra}/power/frequency"].to_numpy(), data[f"/{spectra}/power/frequencyPowerSpectrum"].to_numpy(), color = "blue")
+            # ax2 = ax1.twinx()
+            # ax2.plot(newData[f"/{spectra}/power/frequency_gyro"].to_numpy(), newData[f"/{spectra}/power/frequencyPowerSpectrum"].to_numpy(), color = "red")
+            # plt.xlabel("Gyrofrequencies")
+            # plt.show()
 
-            plt.plot(newData[f"/{spectra}/power/frequency"].to_numpy() / 1e6, newData[f"/{spectra}/power/frequencyPowerSpectrum"].to_numpy())
-            plt.xlabel("Frequencies")
-            plt.show()
+            # plt.plot(newData[f"/{spectra}/power/frequency"].to_numpy() / 1e6, newData[f"/{spectra}/power/frequencyPowerSpectrum"].to_numpy())
+            # plt.xlabel("Frequencies")
+            # plt.show()
 
-            plt.plot(newData[f"/{spectra}/power/frequency_gyro"].to_numpy(), newData[f"/{spectra}/power/frequencyPowerSpectrum"].to_numpy())
-            plt.xlabel("Gyrofrequencies")
-            plt.show()
+            # plt.plot(newData[f"/{spectra}/power/frequency_gyro"].to_numpy(), newData[f"/{spectra}/power/frequencyPowerSpectrum"].to_numpy())
+            # plt.xlabel("Gyrofrequencies")
+            # plt.show()
 
             print(f"New len: {newData[f'/{spectra}/power/frequencyPowerSpectrum'].size}, Max frequency: {(float(newData[f'/{spectra}/power/frequencyPowerSpectrum'].coords['frequency'][-1]) * u.Hz).to(u.MHz)} ({float(newData[f'/{spectra}/power/frequency_gyro'][-1])} gyrofrequencies).")
 
@@ -1037,9 +1037,9 @@ if __name__ == "__main__":
     #     Path("/home/era536/Documents/Epoch/Data/2026_analysis/original_input_decks/run_0_100/")
     # )
 
-    # analyse_real_frequencies(Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_3/data/"))
+    analyse_real_frequencies(Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_4/data/"))
     # analyse_x_gyrofreqs(Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_2/data/"), num_gyro_freqs=11.0, outputFolder=Path("/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_reduced/"))
 
     # fourier_power(Path("/home/era536/Documents/Epoch/Data/batch_testing_4/total_run_43/"))
 
-    test_simulation_power_spectra(args.dataDir, args.outputDir, args.window)
+    # test_simulation_power_spectra(args.dataDir, args.outputDir, args.window)

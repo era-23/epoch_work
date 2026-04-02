@@ -79,6 +79,11 @@ def power_spectrum(dataFile : Path, field : str, doPlot : bool = True):
     )
 
     B0 = float(data.attrs["B0strength"])
+    one_gf_hz = data.ionGyrofrequency_radPs / (2.0 * np.pi)
+    print(one_gf_hz)
+    print((one_gf_hz * u.Hz).to(u.MHz))
+    cottrell_gfs = 187E6 / one_gf_hz
+    print(cottrell_gfs)
     s = field.split("/")
     group = "/" if len(s) == 1 else '/'.join(s[:-1])
     fieldName = s[-1]
@@ -96,17 +101,48 @@ def power_spectrum(dataFile : Path, field : str, doPlot : bool = True):
         axs.set_ylabel(f"Sum of power in {fieldName} over all k [T]")
         plt.show()
 
-        fig, axs = plt.subplots(figsize=(15, 10))
-        axs.plot(coords, 10.0 * np.log10(fieldData / B0))
-        axs.set_xticks(ticks=np.arange(np.floor(coords[0]), np.ceil(coords[-1])+1.0, 1.0), minor=True)
-        axs.grid(which='both', axis='x')
-        axs.set_xlabel(r"Frequency [$\Omega_{ci}$]")
-        axs.set_ylabel(f"Sum of power in {fieldName} over all k [dB]")
-        plt.show()
+        # fig, axs = plt.subplots(figsize=(15, 10))
+        # axs.plot(coords, 10.0 * np.log10(fieldData / B0))
+        # axs.set_xticks(ticks=np.arange(np.floor(coords[0]), np.ceil(coords[-1])+1.0, 1.0), minor=True)
+        # axs.grid(which='both', axis='x')
+        # axs.set_xlabel(r"Frequency [$\Omega_{ci}$]")
+        # axs.set_ylabel(f"Sum of power in {fieldName} over all k [dB]")
+        # plt.show()
+
+        # Used to showcase how much of a spectrum is being truncated
+
+        # SMALL_SIZE = 10
+        # MEDIUM_SIZE = 20
+        # BIGGER_SIZE = 24
+
+        # plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
+        # plt.rc('axes', titlesize=BIGGER_SIZE)     # fontsize of the axes title
+        # plt.rc('axes', labelsize=BIGGER_SIZE)    # fontsize of the x and y labels
+        # plt.rc('xtick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
+        # plt.rc('ytick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
+        # plt.rc('legend', fontsize=BIGGER_SIZE)    # legend fontsize
+        # plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
+
+        # fig, axs = plt.subplots(figsize=(10, 8))
+        # cottrell_coords = coords[coords<=cottrell_gfs]
+        # cottrell_data = fieldData[:len(cottrell_coords)]
+        # trunc_coords = coords[coords<=50.0]
+        # trunc_data = fieldData[len(cottrell_coords):len(trunc_coords)]
+        # axs.plot(trunc_coords[len(cottrell_coords):], trunc_data, color = "tab:green", label = r"Run 75: full $B_z$")
+        # cottrell_data[0] = 0.0
+        # axs.plot(cottrell_coords, cottrell_data, color = "tab:orange", label = r"Run 75: training $B_z$")
+        # axs.set_yscale("log")
+        # axs.set_xticks(ticks=np.arange(np.floor(trunc_coords[0]), np.ceil(trunc_coords[-1])+1.0, 1.0), minor=True)
+        # axs.grid(which='both', axis='x')
+        # axs.set_xlabel(r"Frequency [$\Omega_{c,\alpha}$]")
+        # axs.set_ylabel(r"Spectral power [$T^2$]")
+        # plt.tight_layout()
+        # plt.legend(loc = "upper right")
+        # plt.show()
 
     return fieldData, coords
 
-def compare_spectra(folder : Path, simNumbers : list, maxXcoord : float = 50.0, axesToEquate = list):
+def compare_spectra(folder : Path, simNumbers : list, maxXcoord : float = 50.0, axesToEquate = list, logScale : bool = False):
     
     # Limit to two simulations for now
     assert len(simNumbers) == 2
@@ -130,7 +166,7 @@ def compare_spectra(folder : Path, simNumbers : list, maxXcoord : float = 50.0, 
     f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
     f.set_scientific(True)
     axBz1.set_title(f"Run {simNumbers[0]} spectral power: {r'$B_z$'}")
-    axBz1.set_ylabel(r"$T \cdot \Omega_{c, \alpha}$")
+    axBz1.set_ylabel(r"$T^2$")
     axBz1.yaxis.set_major_formatter(f)
     f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
     f.set_scientific(True)
@@ -140,7 +176,7 @@ def compare_spectra(folder : Path, simNumbers : list, maxXcoord : float = 50.0, 
     f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
     f.set_scientific(True)
     axEx1.set_title(f"Run {simNumbers[0]} spectral power: {r'$E_x$'}")
-    axEx1.set_ylabel(r"$\frac{V}{m} \cdot \Omega_{c, \alpha}$")
+    axEx1.set_ylabel(r"$[\frac{V}{m}]^2$")
     axEx1.yaxis.set_major_formatter(f)
     f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
     f.set_scientific(True)
@@ -150,7 +186,7 @@ def compare_spectra(folder : Path, simNumbers : list, maxXcoord : float = 50.0, 
     f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
     f.set_scientific(True)
     axEy1.set_title(f"Run {simNumbers[0]} spectral power: {r'$E_y$'}")
-    axEy1.set_ylabel(r"$\frac{V}{m} \cdot \Omega_{c, \alpha}$")
+    axEy1.set_ylabel(r"$[\frac{V}{m}]^2$")
     axEy1.yaxis.set_major_formatter(f)
     f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
     f.set_scientific(True)
@@ -184,9 +220,9 @@ def compare_spectra(folder : Path, simNumbers : list, maxXcoord : float = 50.0, 
             axEy = axes[simNumber][2]
 
             # Slice to maximum frequency
-            bzData = angle_data_xr["Magnetic_Field_Bz/power/powerByFrequency"].sel(frequency = slice(0.1, maxXcoord))
-            exData = angle_data_xr["Electric_Field_Ex/power/powerByFrequency"].sel(frequency = slice(0.1, maxXcoord))
-            eyData = angle_data_xr["Electric_Field_Ey/power/powerByFrequency"].sel(frequency = slice(0.1, maxXcoord))
+            bzData = angle_data_xr["Magnetic_Field_Bz/power/frequencyPowerSpectrum"].sel(frequency = slice(0.1, maxXcoord))
+            exData = angle_data_xr["Electric_Field_Ex/power/frequencyPowerSpectrum"].sel(frequency = slice(0.1, maxXcoord))
+            eyData = angle_data_xr["Electric_Field_Ey/power/frequencyPowerSpectrum"].sel(frequency = slice(0.1, maxXcoord))
             coords = bzData.coords["frequency"] # Assumes coords are constant for the different spectra
             axBz.plot(
                 coords.data, 
@@ -205,9 +241,9 @@ def compare_spectra(folder : Path, simNumbers : list, maxXcoord : float = 50.0, 
             )
 
         # Slice to maximum frequency
-        bzData = combined_data_xr["Magnetic_Field_Bz/power/powerByFrequency"].sel(frequency = slice(0.1, maxXcoord))
-        exData = combined_data_xr["Electric_Field_Ex/power/powerByFrequency"].sel(frequency = slice(0.1, maxXcoord))
-        eyData = combined_data_xr["Electric_Field_Ey/power/powerByFrequency"].sel(frequency = slice(0.1, maxXcoord))
+        bzData = combined_data_xr["Magnetic_Field_Bz/power/frequencyPowerSpectrum"].sel(frequency = slice(0.1, maxXcoord))
+        exData = combined_data_xr["Electric_Field_Ex/power/frequencyPowerSpectrum"].sel(frequency = slice(0.1, maxXcoord))
+        eyData = combined_data_xr["Electric_Field_Ey/power/frequencyPowerSpectrum"].sel(frequency = slice(0.1, maxXcoord))
         coords = bzData.coords["frequency"] # Assumes coords are constant for the different spectra
         allData["Bz"].extend(bzData)
         allData["Ex"].extend(exData)
@@ -231,10 +267,17 @@ def compare_spectra(folder : Path, simNumbers : list, maxXcoord : float = 50.0, 
     axes = {"Bz" : (axBz1, axBz2), "Ex" : (axEx1, axEx2), "Ey": (axEy1, axEy2)}
     for field, axs in axes.items():
         for ax in axs:
-            ax.set_ylim(bottom=0)
             ax.grid()
+            if logScale:
+                ax.set_yscale("log")
+            else:
+                ax.set_ylim(bottom=0)
             if field in axesToEquate:
-                ax.set_ylim(top=np.max(allData[field])*1.05)
+                if logScale:
+                    ax.set_ylim(bottom=np.min(allData[field])*0.001)
+                    ax.set_ylim(top=np.max(allData[field])*5.0)
+                else:
+                    ax.set_ylim(top=np.max(allData[field])*1.05)
             
     handles, labels = axBz1.get_legend_handles_labels()
     labels, handles = zip(*sorted(zip(labels, handles), key=lambda t: t[0]))
@@ -242,7 +285,7 @@ def compare_spectra(folder : Path, simNumbers : list, maxXcoord : float = 50.0, 
     axBz1.legend(handles, labels)
     # fig.tight_layout()
     fig.align_labels()
-    fig.subplots_adjust(wspace=0.1, hspace=0.25)
+    fig.subplots_adjust(wspace=0.15, hspace=0.25)
     plt.show()
 
 def dispersion_relations_for_papers(
@@ -442,7 +485,8 @@ def plot_cottrell_regression(csvResultsPath : Path):
     
     results = pd.read_csv(csvResultsPath)
     outputFields = results["field"].unique()
-    exclude_algos = ["aeon.RandomIntervalRegressor", "aeon.KNeighborsTimeSeriesRegressor", "aeon.MiniRocketRegressor", "aeon.MultiRocketHydraRegressor", "aeon.FreshPRINCERegressor"]
+    exclude_algos = ["aeon.QUANTRegressor", "aeon.MultiRocketRegressor", "aeon.Catch22Regressor", "aeon.TimeSeriesForestRegressor"]
+    # exclude_algos = []
 
     fig, axs = plt.subplots(len(outputFields), 1, figsize=(12,10))
     for i in range(len(outputFields)):
@@ -457,14 +501,16 @@ def plot_cottrell_regression(csvResultsPath : Path):
             axs[i].fill_between(x = [result["true_value_before_log"] - 0.07, result["true_value_before_log"] + 0.07], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
         if field == "pitch":
             axs[i].fill_between(x = [result["true_value_before_log"] - 0.05, result["true_value_before_log"] + 0.04], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
+        if field == "beamFraction":
+            axs[i].fill_between(x = [result["true_value_before_log"] - 0.0001, result["true_value_before_log"] + 0.0003], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
         else:
-            axs[i].axvline(x = result["true_value_before_log"], color = "black", linestyle=":", lw = 2.0, label="Experimental value")
+            axs[i].axvline(x = result["true_value_before_log"], color = "black", linestyle=":", lw = 2.0, label="Cottrell '93 value")
 
         best = field_results[abs(field_results["mean_denormed_error"]) == abs(field_results["mean_denormed_error"]).min()]
         mrh = field_results[field_results["algorithm"] == "aeon.MultiRocketHydraRegressor"]
         print(f"Best algorithm for {field}: {best['algorithm'].values[0]}, Prediction: {best['mean_denormed_prediction'].values[0]}, S.D. {best['denormed_std'].values[0]}, MRH Prediction: {mrh['mean_denormed_prediction'].values[0]}, MRH S.D. {mrh['denormed_std'].values[0]}")
 
-    axs[0].legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, 2.0))
+    axs[0].legend(loc='center', ncols = 2, bbox_to_anchor = (0.3, 2.0))
     fig.supylabel("Output field", fontsize = 20)
     fig.supxlabel("Prediction", fontsize = 20)
     axs[2].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=False))
@@ -476,31 +522,36 @@ def plot_cottrell_regression(csvResultsPath : Path):
         ax.grid()
     plt.show()
 
+    axis_positions = [0.0, -1.0, 1.0]
     fig, axs = plt.subplots(len(outputFields), 1, figsize=(12,10))
     for i in range(len(outputFields)):
         field = outputFields[i]
         field_results = results[results["field"] == field]
-
+        axs[i].set_ylim((-2.0, 2.0))
+        axs[i].set_yticks(ticks=[0.0], labels=[epoch_utils.fieldNameToText(field)])
         for index, result in field_results.iterrows():
             if result["algorithm"] not in exclude_algos:
                 if field == "backgroundDensity":
-                    axs[i].errorbar(result["mean_denormed_prediction"] / 10**20, epoch_utils.fieldNameToText(field), xerr=result["denormed_std"] / 10**20, label = result["algorithm"], ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
+                    axs[i].errorbar(result["mean_denormed_prediction"] / 10**20, axis_positions[index % 3], xerr=result["denormed_std"] / 10**20, label = result["algorithm"], ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
                 else:
-                    axs[i].errorbar(result["mean_denormed_prediction"], epoch_utils.fieldNameToText(field), xerr=result["denormed_std"], label = result["algorithm"], ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
+                    axs[i].errorbar(result["mean_denormed_prediction"], axis_positions[index % 3], xerr=result["denormed_std"], label = result["algorithm"], ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
         
         if field == "B0strength":
             axs[i].fill_between(x = [result["true_value_before_log"] - 0.07, result["true_value_before_log"] + 0.07], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
         if field == "backgroundDensity":
-            axs[i].axvline(x = result["true_value_before_log"] / 10**20, color = "black", linestyle=":", lw = 2.0, label="Experimental value")
+            axs[i].fill_between(x = [(result["true_value_before_log"] / 10**20) - 0.05, (result["true_value_before_log"] / 10**20) + 0.05], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
+            axs[i].axvline(x = result["true_value_before_log"] / 10**20, color = "black", linestyle=":", lw = 2.0, label="Cottrell '93 value")
+        if field == "beamFraction":
+            axs[i].fill_between(x = [result["true_value_before_log"] - 0.0001, result["true_value_before_log"] + 0.0003], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
         if field == "pitch":
             axs[i].fill_between(x = [result["true_value_before_log"] - 0.05, result["true_value_before_log"] + 0.04], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
         else:
-            axs[i].axvline(x = result["true_value_before_log"], color = "black", linestyle=":", lw = 2.0, label="Experimental value")
+            axs[i].axvline(x = result["true_value_before_log"], color = "black", linestyle=":", lw = 2.0, label="Cottrell '93 value")
 
-    axs[0].legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, 2.0))
+    axs[0].legend(loc='center', ncols = 2, bbox_to_anchor = (0.3, 2.0))
     fig.supxlabel("Prediction", fontsize = 20)
     fig.supylabel("Output field", fontsize = 20)
-    axs[0].set_xlim(1.0, 5.0)
+    axs[0].set_xlim(0.5, 5.0)
     axs[1].set_xlim(0.0, 1.0)
     axs[2].set_xlim(0.1, 1.0)
     axs[3].set_xlim(1E-4, 1E-2)
@@ -512,7 +563,7 @@ def plot_cottrell_regression(csvResultsPath : Path):
 
     plt.tight_layout()
     for ax in axs:
-        ax.grid()
+        ax.grid(axis="x", which="both")
     plt.show()
         
 
@@ -554,6 +605,12 @@ if __name__ == "__main__":
         "--cottrell",
         action="store_true",
         help="Plot TSER of Cottrell 1993 experimental data.",
+        required = False
+    )
+    parser.add_argument(
+        "--log",
+        action="store_true",
+        help="Plot on log scale.",
         required = False
     )
     parser.add_argument(
@@ -624,7 +681,7 @@ if __name__ == "__main__":
         if args.dataFolder:
             all_power_spectra(args.dataFolder, args.fields)
     if args.compareSpectra:
-        compare_spectra(args.dataFolder, args.sims, 50, args.equateAxes)
+        compare_spectra(args.dataFolder, args.sims, 50, args.equateAxes, args.log)
     if args.dispersion:
         dispersion_relations_for_papers(args.dataFolder, args.outputFolder, args.sims[0], field=args.fields[0], maxK=args.maxK, maxW=args.maxW)
     if args.energy:

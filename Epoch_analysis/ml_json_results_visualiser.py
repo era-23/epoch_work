@@ -114,6 +114,7 @@ def plotScatter(resultsDict : dict, metric : str = "cvR2"):
 def plotBar(resultsDict : dict, metric : str = "cvR2", errors : str = "rmseSE", dropAlgorithms : list = []): 
 
     patterns = [ "/" , ".", "\\" , "|" , "-" , "+" , "x",  "o", "O", "*" ]
+    field_names = {"B0strength" : r"$B_0$", "backgroundDensity" : "electron density", "pitch" : "pitch", "beamFraction" : "alpha concentration"}
     
     # results
     results = resultsDict["results"]
@@ -160,7 +161,7 @@ def plotBar(resultsDict : dict, metric : str = "cvR2", errors : str = "rmseSE", 
     if resultsDict["cvStrategy"] == "RepeatedKFolds":
         ax.set_title(f'{resultsDict["cvFolds"]}-fold CV results ({resultsDict["cvRepeats"]} repeats)')
     ax.set_xlabel('Output')
-    xLabels = [epoch_utils.fieldNameToText(lab) for lab in xLabels]
+    xLabels = [field_names[lab] for lab in xLabels]
     ax.set_xticks(x + (0.5 * (len(algorithms) -1) * width), xLabels)
     if len(resultsDict["algorithms"]) > 5:
         ax.legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, 1.12))
@@ -169,6 +170,7 @@ def plotBar(resultsDict : dict, metric : str = "cvR2", errors : str = "rmseSE", 
     ax.set_ylim(top= 1.0 if metric == "cvR2" else np.round(np.max([v for v in barVals.values()]) + 0.2, 1))
     ax.axhline(0.0, color="black", lw=0.5)
     ax.grid(axis="y")
+    ax.set_ylim(0.0, 1.1)
     plt.tight_layout()
 
     plt.show()
@@ -213,6 +215,47 @@ def latexTable(resultsFile : Path, experimentName : str):
 
         print(table.draw())
 
+def plotAccuracyByFrequency(resultsFile : Path):
+    with open(resultsFile, "r") as f:
+        parser = json.load(f)
+
+        results = pd.DataFrame.from_dict(parser["results"])
+        results : pd.DataFrame = results[results["algorithm"] == "aeon.HydraRegressor"].sort_values(by="frequencyBandwidth")
+
+        if results["frequencyBandwidth"].max() < 80.0:
+            unit = "gyros"
+        else:
+            unit = "hz"
+            results["frequencyBandwidth"] = results["frequencyBandwidth"].apply(lambda x : x / 1e6)
+
+        B0_results : pd.DataFrame = results[results["output"] == "B0strength"]
+        pitch_results : pd.DataFrame = results[results["output"] == "pitch"]
+        density_results : pd.DataFrame = results[results["output"] == "backgroundDensity"]
+        beamFraction_results : pd.DataFrame = results[results["output"] == "beamFraction"]
+
+        print(results[["algorithm", "output", "frequencyBandwidth", "cvR2_mean"]].sort_values(by="output"))
+
+        cottrell_freq = 187.0
+        cottrell_max_gyros = 48.7
+        cottrell_min_gyros = 4.87
+
+        plt.figure(figsize=(8,8))
+        plt.errorbar(B0_results["frequencyBandwidth"], B0_results["cvR2_mean"], linewidth=3.0, yerr=B0_results["cvRMSE_stderr"], label=r"$B_0$ strength")
+        plt.errorbar(pitch_results["frequencyBandwidth"], pitch_results["cvR2_mean"], linewidth=3.0, yerr=pitch_results["cvRMSE_stderr"], label=r"$\alpha$ velocity pitch")
+        plt.errorbar(density_results["frequencyBandwidth"], density_results["cvR2_mean"], linewidth=3.0, yerr=density_results["cvRMSE_stderr"], label="electron density")
+        plt.errorbar(beamFraction_results["frequencyBandwidth"], beamFraction_results["cvR2_mean"], linewidth=3.0, yerr=beamFraction_results["cvRMSE_stderr"], label=r"$\alpha$ concentration")
+        plt.ylim(bottom=0.0, top=1.0)
+        if unit == "gyros":
+            plt.xlabel(r"Spectra frequency bandwidth [$\Omega_{c,\alpha}$]")
+            plt.fill_betweenx(y = [0, 1], x1= cottrell_min_gyros, x2 = cottrell_max_gyros, color = "black", alpha = 0.15, label = "Cottrell '93 range")
+        else:
+            plt.xlabel("Spectra frequency bandwidth [MHz]")
+            # plt.axvline(x = cottrell_freq, color = "black", linestyle="--", lw = 2.0, label="Cottrell '93 maximum")
+        plt.ylabel(r"LOOCV accuracy [$R^2$]")
+        plt.legend(loc="center right")
+        plt.tight_layout()
+        plt.show()
+
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser("parser")
@@ -233,6 +276,12 @@ if __name__ == "__main__":
         "--latex",
         action="store_true",
         help="Print a latex table of results.",
+        required = False
+    )
+    parser.add_argument(
+        "--accuracyByFrequency",
+        action="store_true",
+        help="Plot accuracy by freqency.",
         required = False
     )
     parser.add_argument(
@@ -288,3 +337,5 @@ if __name__ == "__main__":
         plotResults(args.file, args.metric, args.errors if args.errors is not None else "rmseSE", dropAlgorithms)
     if args.latex:
         latexTable(args.file, args.experimentName)
+    if args.accuracyByFrequency:
+        plotAccuracyByFrequency(args.file)
