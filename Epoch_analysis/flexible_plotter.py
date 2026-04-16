@@ -1,6 +1,7 @@
 import argparse
 import csv
 import glob
+import os
 from pathlib import Path
 import epydeck
 from matplotlib import ticker
@@ -148,19 +149,21 @@ def compare_spectra(folder : Path, simNumbers : list, maxXcoord : float = 50.0, 
     assert len(simNumbers) == 2
 
     # Finding folder with all angle data...
-    allAngle_folders = set(glob.glob(str(folder / "*angles*/")) + glob.glob(str(folder.parent / "*angles*/")))
-    assert len(allAngle_folders) == 1
+    assert "angles" in folder.name
     # Get angle subfolders
     # Get data folders for each angle
-    angle_folders = glob.glob(str(Path(allAngle_folders.pop()) / "9[0-9]/data/"))
+    angle_folders = glob.glob(str(folder / "9[0-9]/data/"))
     assert len(angle_folders) > 0
 
+    set_number = folder.name.split("_")[-1]
+
     # Finding data folder with combined spectra...
-    combinedSpectra_folder = set(glob.glob(str(folder / "*combined_spectra*/data/")))
+    combinedSpectra_folder = set(glob.glob(str(folder.parent / f"combined_spectra_{set_number}/data/")))
     assert len(combinedSpectra_folder) == 1
     combinedSpectra_folder = Path(combinedSpectra_folder.pop())
 
-    fig, ((axBz1, axBz2), (axEx1, axEx2), (axEy1, axEy2)) = plt.subplots(3, 2, sharex=True, figsize=(16, 20))
+    # fig, ((axBz1, axBz2), (axEx1, axEx2), (axEy1, axEy2)) = plt.subplots(3, 2, sharex=True, figsize=(16, 20))
+    fig, ((axEx1, axEx2), (axEy1, axEy2), (axBz1, axBz2)) = plt.subplots(3, 2, sharex=True, figsize=(16, 20))
     # fig.suptitle(f"{simNumbers[0]} vs {simNumbers[1]}")
     
     f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
@@ -190,10 +193,11 @@ def compare_spectra(folder : Path, simNumbers : list, maxXcoord : float = 50.0, 
     axEy1.yaxis.set_major_formatter(f)
     f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
     f.set_scientific(True)
-    axEy1.set_xlabel(r"Frequency [$\Omega_{c, \alpha}$]")
     axEy2.set_title(f"Run {simNumbers[1]} spectral power: {r'$E_y$'}")
     axEy2.yaxis.set_major_formatter(f)
-    axEy2.set_xlabel(r"Frequency [$\Omega_{c, \alpha}$]")
+
+    axBz1.set_xlabel(r"Frequency [$\Omega_{c, \alpha}$]")
+    axBz2.set_xlabel(r"Frequency [$\Omega_{c, \alpha}$]")
 
     axes = {simNumbers[0] : (axBz1, axEx1, axEy1), simNumbers[1] : (axBz2, axEx2, axEy2)}
     allData = {"Bz" : [], "Ex" : [], "Ey": []}
@@ -566,6 +570,46 @@ def plot_cottrell_regression(csvResultsPath : Path):
         ax.grid(axis="x", which="both")
     plt.show()
         
+def plot_all_predictions_for_one_algorithm(
+        csvResultsPath : Path,
+        algorithm_name : str,
+        saveFolder : Path,
+        noTitle : bool = True,
+        doLog : bool = False
+    ):
+    
+    results = pd.read_csv(csvResultsPath)
+    outputFields = results["outputQuantity"].unique()
+    colours = ["red", "green", "blue", "orange"]
+    markers = ["o", "^", "s", "D"]
+
+    if not os.path.exists(saveFolder):
+        os.makedirs(saveFolder)
+
+    plt.subplots(figsize=(8, 8))
+    allPredictions : pd.DataFrame = results[results["algorithm"] == algorithm_name]
+    truth = allPredictions["trueValue_normalised"].to_numpy()
+    plt.plot([np.min(truth), np.max(truth)], [np.min(truth), np.max(truth)], color = "black", linestyle="dashed", markersize = 20, label="ideal predictions")
+    for i in range(len(outputFields)):
+        field = outputFields[i]
+        predictions : pd.DataFrame = allPredictions[allPredictions["outputQuantity"] == field]
+        plt.scatter(predictions["trueValue_normalised"].to_numpy(), predictions["predictedValue_normalised"].to_numpy(), marker = markers[i], s = 50, color = colours[i], label = epoch_utils.fieldNameToText(field))
+    plt.grid()
+    if not noTitle:
+        plt.title(f"{algorithm_name}")
+    if doLog:
+        plt.xscale("log")
+        plt.yscale("log")
+        plt.grid(which="both")
+
+    plt.xlabel(f"True values [norm.]")
+    plt.ylabel(f"Predictions [norm.]")
+
+    # Set legend
+    handles, labels = plt.gca().get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    plt.legend(by_label.values(), by_label.keys())
+    plt.savefig(saveFolder / f"{algorithm_name}_grouped_predictions.png", bbox_inches="tight")
 
 if __name__ == "__main__":
     
@@ -608,6 +652,12 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
+        "--predictions",
+        action="store_true",
+        help="Plot all TSER predictions for one algorithm on one plot.",
+        required = False
+    )
+    parser.add_argument(
         "--log",
         action="store_true",
         help="Plot on log scale.",
@@ -642,6 +692,13 @@ if __name__ == "__main__":
         required = False,
         type=str,
         nargs="*"
+    )
+    parser.add_argument(
+        "--algorithm",
+        action="store",
+        help="Algorithm to plot.",
+        required = False,
+        type=str
     )
     parser.add_argument(
         "--maxK",
@@ -688,4 +745,6 @@ if __name__ == "__main__":
         energy_plots_for_papers(args.dataFolder)
     if args.cottrell:
         plot_cottrell_regression(args.dataFolder)
+    if args.predictions:
+        plot_all_predictions_for_one_algorithm(args.dataFile, args.algorithm, args.outputFolder)
 

@@ -256,6 +256,8 @@ def plotAccuracyByFrequency(resultsFile : Path):
         plt.tight_layout()
         plt.show()
 
+# def print_results(resultsFile : Path):
+
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser("parser")
