@@ -256,7 +256,21 @@ def plotAccuracyByFrequency(resultsFile : Path):
         plt.tight_layout()
         plt.show()
 
-# def print_results(resultsFile : Path):
+def print_results(resultsFile : Path):
+    with open(resultsFile, "r") as f:
+        parser = json.load(f)
+
+        results : pd.DataFrame = pd.DataFrame.from_dict(parser["results"])
+        algorithms = results["algorithm"].unique()
+        fields = results["output"].unique()
+
+        for field in fields:
+            field_results = results[results["output"] == field].sort_values(by="cvR2_mean", ascending=False)
+            print("--------------------- BY R^2 ---------------------")
+            print(field_results.to_string(columns=["output", "algorithm", "cvR2_mean", "cvRMSE_mean", "cvMAE_mean"]))
+            print("--------------------- BY RMSE ---------------------")
+            field_results = field_results.sort_values(by="cvRMSE_mean")
+            print(field_results.to_string(columns=["output", "algorithm", "cvR2_mean", "cvRMSE_mean", "cvMAE_mean"]))
 
 if __name__ == "__main__":
     
@@ -272,6 +286,12 @@ if __name__ == "__main__":
         "--plot",
         action="store_true",
         help="Plot a bar chart of results.",
+        required = False
+    )
+    parser.add_argument(
+        "--print",
+        action="store_true",
+        help="Print results.",
         required = False
     )
     parser.add_argument(
@@ -341,3 +361,5 @@ if __name__ == "__main__":
         latexTable(args.file, args.experimentName)
     if args.accuracyByFrequency:
         plotAccuracyByFrequency(args.file)
+    if args.print:
+        print_results(args.file)

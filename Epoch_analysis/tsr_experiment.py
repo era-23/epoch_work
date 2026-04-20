@@ -138,12 +138,31 @@ def regress_cottrell(
     for field in inputSpectraNames:
         specs = inputs[field]
         coords = inputs[f"{field}_denorm_coords"]
+        
         for i in range(len(specs)):
+            
+            # If truncation needed
             if len(specs[i]) > min_l:
                 truncd_series, truncd_coords = ml_utils.truncate_series(specs[i], inputs[f"{field}_denorm_coords"][i], max_common_coord)
                 resamp_series, resamp_coords = ml_utils.resample_series(truncd_series, truncd_coords, min_l, f"{field.split('/')[0]}_run_{inputs['sim_ids'][i]}", dataDirectory / "spectra_homogenisation/")
                 specs[i] = resamp_series
                 coords[i] = resamp_coords
+
+            # If the first point is a minimum
+            if np.argmin(specs[i]) == 0: 
+                spec = specs[i]
+                first_peak = int(next(i for i,(v0,v1) in enumerate(zip(spec[:-1], spec[1:])) if v0>v1))
+                linterp_early = np.linspace(np.mean(spec), spec[first_peak], first_peak)
+                preserve_late = spec[first_peak:]
+                specs[i] = np.concatenate((linterp_early, preserve_late), axis = 0)
+            elif np.argmax(specs[i]) == 0: # Else if the first point is a maximum
+                spec = specs[i]
+                first_trough = int(next(i for i,(v0,v1) in enumerate(zip(spec[:-1], spec[1:])) if v0<v1))
+                linterp_early = np.linspace(np.mean(spec), spec[first_trough], first_trough)
+                preserve_late = spec[first_trough:]
+                specs[i] = np.concatenate((linterp_early, preserve_late), axis = 0)
+            
+            # Scale
             specs[i] = scaler_train.fit_transform(specs[i].reshape(-1, 1)).flatten()
         inputData.append(specs)
     if includeFreqs:
@@ -205,6 +224,14 @@ def regress_cottrell(
     #     plt.tight_layout()
     #     # plt.title(inputs["sim_ids"][i])
     #     plt.show()
+    
+    for simulation in inputSpectra:
+        
+        plt.plot(simulation[1], simulation[0], color = "blue")
+        plt.title("data")
+        plt.axhline(y = np.mean(simulation[0]), color = "red")
+        plt.grid(which = "major", axis = "x")
+        plt.show()
 
     for output_field, output_values in outputs.items():
 
