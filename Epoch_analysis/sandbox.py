@@ -998,8 +998,7 @@ def test_simulation_power_spectra(dataDirectory : Path, outputFolder : Path, win
     # spec_three = spec_three.sel(frequency=spec_three.frequency>0.0)
     # np.abs(spec_three).plot(label = "7.5")
     # plt.yscale("log")
-    # plt.show()
-
+    # plt.show() 
 
 if __name__ == "__main__":
 

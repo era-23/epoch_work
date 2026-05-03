@@ -114,7 +114,7 @@ def plotScatter(resultsDict : dict, metric : str = "cvR2"):
 def plotBar(resultsDict : dict, metric : str = "cvR2", errors : str = "rmseSE", dropAlgorithms : list = []): 
 
     patterns = [ "/" , ".", "\\" , "|" , "-" , "+" , "x",  "o", "O", "*" ]
-    field_names = {"B0strength" : r"$B_0$", "backgroundDensity" : "electron density", "pitch" : "pitch", "beamFraction" : "alpha concentration"}
+    field_names = {"B0strength" : r"$B_0$", "backgroundDensity" : r"$n_e$", "pitch" : r"$\lambda$", "beamFraction" : "alpha concentration"}
     
     # results
     results = resultsDict["results"]
@@ -150,7 +150,7 @@ def plotBar(resultsDict : dict, metric : str = "cvR2", errors : str = "rmseSE", 
         rects = ax.bar(x + offset, value, width, label=algorithm, yerr=barErrs[algorithm], edgecolor='black')
         if list(barErrs.values())[0]:
             ax.errorbar(x + offset, value, yerr=barErrs[algorithm], fmt=",", color = "k")
-        ax.bar_label(rects, padding=3, fontsize = 12)
+        ax.bar_label(rects, padding=3, fontsize = 17, rotation=90)
         multiplier += 1
 
     # Add some text for labels, title and custom x-axis tick labels, etc.

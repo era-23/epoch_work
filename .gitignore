@@ -4,3 +4,7 @@
 .virtualenvs/
 Epoch_analysis/aeon_tsc.log
 Epoch_analysis/newCsv.csv
+code_sandbox/mast_data.py
+.gitignore
+.gitignore
+code_sandbox/.vscode/settings.json

@@ -489,8 +489,9 @@ def plot_cottrell_regression(csvResultsPath : Path):
     
     results = pd.read_csv(csvResultsPath)
     outputFields = results["field"].unique()
-    exclude_algos = ["aeon.QUANTRegressor", "aeon.MultiRocketRegressor", "aeon.Catch22Regressor", "aeon.TimeSeriesForestRegressor"]
-    # exclude_algos = []
+    # exclude_algos = ["aeon.KNeighborsTimeSeriesRegressor", "aeon.TimeSeriesForestRegressor", "aeon.RandomIntervalSpectralEnsembleRegressor", "aeon.RocketRegressor"]
+    # exclude_algos = ["aeon.KNeighborsTimeSeriesRegressor", "aeon.TimeSeriesForestRegressor", "aeon.RandomIntervalRegressor", "aeon.QUANTRegressor"]
+    exclude_algos = [ "aeon.KNeighborsTimeSeriesRegressor", "aeon.RandomIntervalSpectralEnsembleRegressor", "aeon.QUANTRegressor", "aeon.RandomIntervalRegressor"]
 
     fig, axs = plt.subplots(len(outputFields), 1, figsize=(12,10))
     for i in range(len(outputFields)):
@@ -515,8 +516,8 @@ def plot_cottrell_regression(csvResultsPath : Path):
         print(f"Best algorithm for {field}: {best['algorithm'].values[0]}, Prediction: {best['mean_denormed_prediction'].values[0]}, S.D. {best['denormed_std'].values[0]}, MRH Prediction: {mrh['mean_denormed_prediction'].values[0]}, MRH S.D. {mrh['denormed_std'].values[0]}")
 
     axs[0].legend(loc='center', ncols = 2, bbox_to_anchor = (0.3, 2.0))
-    fig.supylabel("Output field", fontsize = 20)
-    fig.supxlabel("Prediction", fontsize = 20)
+    fig.supylabel("Output field", fontsize = 24)
+    fig.supxlabel("Prediction", fontsize = 24)
     axs[2].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=False))
     axs[2].set_xscale("log")
     axs[3].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
@@ -526,9 +527,10 @@ def plot_cottrell_regression(csvResultsPath : Path):
         ax.grid()
     plt.show()
 
-    axis_positions = [0.0, -1.0, 1.0]
+    axis_positions = [1.0, 0.75, 0.5, 0.25, 0.0, -0.25, -0.5, -0.75, -1.0, 1.0, 0.75, 0.5, 0.25]
     fig, axs = plt.subplots(len(outputFields), 1, figsize=(12,10))
     for i in range(len(outputFields)):
+        plot_position_counter = 0
         field = outputFields[i]
         field_results = results[results["field"] == field]
         axs[i].set_ylim((-2.0, 2.0))
@@ -536,19 +538,20 @@ def plot_cottrell_regression(csvResultsPath : Path):
         for index, result in field_results.iterrows():
             if result["algorithm"] not in exclude_algos:
                 if field == "backgroundDensity":
-                    axs[i].errorbar(result["mean_denormed_prediction"] / 10**20, axis_positions[index % 3], xerr=result["denormed_std"] / 10**20, label = result["algorithm"], ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
+                    axs[i].errorbar(result["mean_denormed_prediction"] / 10**20, axis_positions[plot_position_counter], xerr=result["denormed_std"] / 10**20, label = result["algorithm"], ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
                 else:
-                    axs[i].errorbar(result["mean_denormed_prediction"], axis_positions[index % 3], xerr=result["denormed_std"], label = result["algorithm"], ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
+                    axs[i].errorbar(result["mean_denormed_prediction"], axis_positions[plot_position_counter], xerr=result["denormed_std"], label = result["algorithm"], ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
+                plot_position_counter += 1
         
         if field == "B0strength":
             axs[i].fill_between(x = [result["true_value_before_log"] - 0.07, result["true_value_before_log"] + 0.07], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
-        if field == "backgroundDensity":
-            axs[i].fill_between(x = [(result["true_value_before_log"] / 10**20) - 0.05, (result["true_value_before_log"] / 10**20) + 0.05], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
-            axs[i].axvline(x = result["true_value_before_log"] / 10**20, color = "black", linestyle=":", lw = 2.0, label="Cottrell '93 value")
         if field == "beamFraction":
             axs[i].fill_between(x = [result["true_value_before_log"] - 0.0001, result["true_value_before_log"] + 0.0003], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
         if field == "pitch":
             axs[i].fill_between(x = [result["true_value_before_log"] - 0.05, result["true_value_before_log"] + 0.04], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
+        if field == "backgroundDensity":
+            axs[i].fill_between(x = [(result["true_value_before_log"] / 10**20) - 0.05, (result["true_value_before_log"] / 10**20) + 0.05], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
+            axs[i].axvline(x = result["true_value_before_log"] / 10**20, color = "black", linestyle=":", lw = 2.0, label="Cottrell '93 value")
         else:
             axs[i].axvline(x = result["true_value_before_log"], color = "black", linestyle=":", lw = 2.0, label="Cottrell '93 value")
 
@@ -744,7 +747,7 @@ if __name__ == "__main__":
     if args.energy:
         energy_plots_for_papers(args.dataFolder)
     if args.cottrell:
-        plot_cottrell_regression(args.dataFolder)
+        plot_cottrell_regression(args.dataFile)
     if args.predictions:
         plot_all_predictions_for_one_algorithm(args.dataFile, args.algorithm, args.outputFolder)
 

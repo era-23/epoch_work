@@ -270,11 +270,11 @@ fieldNameToText_dict = {
     "Electric_Field_Ey" : r"$E_y$",
     "/Electric_Field_Ey" : r"$E_y$",
 
-    "B0strength" : r"$B_0$", 
-    # "B0strength" : "B0 [T]", 
+    # "B0strength" : r"$B_0$", 
+    "B0strength" : r"$B_0$ [T]", 
     "B0angle" : "B0 angle", 
-    "backgroundDensity" : "density", 
-    # "backgroundDensity" : r"density [$10^{20}m^{-3}$]", 
+    # "backgroundDensity" : "density", 
+    "backgroundDensity" : r"density [$10^{20}m^{-3}$]", 
     # "backgroundDensity" : r"density [$m^{-3}$]", 
     "beamFraction" : "alpha concentration",
     "pitch" : "pitch"
