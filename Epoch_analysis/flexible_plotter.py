@@ -168,32 +168,32 @@ def compare_spectra(folder : Path, simNumbers : list, maxXcoord : float = 50.0, 
     
     f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
     f.set_scientific(True)
-    axBz1.set_title(f"Run {simNumbers[0]} spectral power: {r'$B_z$'}")
-    axBz1.set_ylabel(r"$T^2$")
+    axBz1.set_title(f"Run {simNumbers[0]}")
+    axBz1.set_ylabel(r"$\delta B_z$ [$T^2$]")
     axBz1.yaxis.set_major_formatter(f)
     f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
     f.set_scientific(True)
-    axBz2.set_title(f"Run {simNumbers[1]} spectral power: {r'$B_z$'}")
+    axBz2.set_title(f"Run {simNumbers[1]}")
     axBz2.yaxis.set_major_formatter(f)
     
     f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
     f.set_scientific(True)
-    axEx1.set_title(f"Run {simNumbers[0]} spectral power: {r'$E_x$'}")
-    axEx1.set_ylabel(r"$[\frac{V}{m}]^2$")
+    axEx1.set_title(f"Run {simNumbers[0]}")
+    axEx1.set_ylabel(r"$\delta E_x$ [$\frac{V}{m}^2$]")
     axEx1.yaxis.set_major_formatter(f)
     f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
     f.set_scientific(True)
-    axEx2.set_title(f"Run {simNumbers[1]} spectral power: {r'$E_x$'}")
+    axEx2.set_title(f"Run {simNumbers[1]}")
     axEx2.yaxis.set_major_formatter(f)
     
     f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
     f.set_scientific(True)
-    axEy1.set_title(f"Run {simNumbers[0]} spectral power: {r'$E_y$'}")
-    axEy1.set_ylabel(r"$[\frac{V}{m}]^2$")
+    axEy1.set_title(f"Run {simNumbers[0]}")
+    axEy1.set_ylabel(r"$\delta E_y$ [$\frac{V}{m}^2$]")
     axEy1.yaxis.set_major_formatter(f)
     f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
     f.set_scientific(True)
-    axEy2.set_title(f"Run {simNumbers[1]} spectral power: {r'$E_y$'}")
+    axEy2.set_title(f"Run {simNumbers[1]}")
     axEy2.yaxis.set_major_formatter(f)
 
     axBz1.set_xlabel(r"Frequency [$\Omega_{c, \alpha}$]")
@@ -285,8 +285,8 @@ def compare_spectra(folder : Path, simNumbers : list, maxXcoord : float = 50.0, 
             
     handles, labels = axBz1.get_legend_handles_labels()
     labels, handles = zip(*sorted(zip(labels, handles), key=lambda t: t[0]))
-    axBz2.legend(handles, labels)
-    axBz1.legend(handles, labels)
+    axBz2.legend(handles, labels, loc = "upper right")
+    axBz1.legend(handles, labels, loc = "upper right")
     # fig.tight_layout()
     fig.align_labels()
     fig.subplots_adjust(wspace=0.15, hspace=0.25)
@@ -500,7 +500,7 @@ def plot_cottrell_regression(csvResultsPath : Path):
 
         for index, result in field_results.iterrows():
             if result["algorithm"] not in exclude_algos:
-                axs[i].errorbar(result["mean_denormed_prediction"], epoch_utils.fieldNameToText(field), xerr=result["denormed_std"], label = result["algorithm"], ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
+                axs[i].errorbar(result["mean_denormed_prediction"], epoch_utils.fieldNameToSymbol(field), xerr=result["denormed_std"], label = result["algorithm"], ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
         
         if field == "B0strength":
             axs[i].fill_between(x = [result["true_value_before_log"] - 0.07, result["true_value_before_log"] + 0.07], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
@@ -527,6 +527,18 @@ def plot_cottrell_regression(csvResultsPath : Path):
         ax.grid()
     plt.show()
 
+    colours = {
+        "aeon.HydraRegressor" : "tab:blue",
+        "aeon.MultiRocketRegressor" : "tab:orange",
+        "aeon.MultiRocketHydraRegressor" : "tab:green",
+        "aeon.TimeSeriesForestRegressor" : "tab:red",
+        "aeon.RDSTRegressor" : "tab:purple",
+        "aeon.Catch22Regressor" : "tab:brown",
+        "aeon.RocketRegressor" : "tab:pink",
+        "aeon.MiniRocketRegressor" : "tab:gray",
+        "aeon.SummaryRegressor" : "tab:olive"
+    }
+
     axis_positions = [1.0, 0.75, 0.5, 0.25, 0.0, -0.25, -0.5, -0.75, -1.0, 1.0, 0.75, 0.5, 0.25]
     fig, axs = plt.subplots(len(outputFields), 1, figsize=(12,10))
     for i in range(len(outputFields)):
@@ -534,13 +546,14 @@ def plot_cottrell_regression(csvResultsPath : Path):
         field = outputFields[i]
         field_results = results[results["field"] == field]
         axs[i].set_ylim((-2.0, 2.0))
-        axs[i].set_yticks(ticks=[0.0], labels=[epoch_utils.fieldNameToText(field)])
+        axs[i].set_yticks(ticks=[0.0], labels=[epoch_utils.fieldNameToSymbol(field)])
         for index, result in field_results.iterrows():
             if result["algorithm"] not in exclude_algos:
+                colour = colours[result["algorithm"]] if result["algorithm"] in colours else None
                 if field == "backgroundDensity":
-                    axs[i].errorbar(result["mean_denormed_prediction"] / 10**20, axis_positions[plot_position_counter], xerr=result["denormed_std"] / 10**20, label = result["algorithm"], ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
+                    axs[i].errorbar(result["mean_denormed_prediction"] / 10**20, axis_positions[plot_position_counter], xerr=result["denormed_std"] / 10**20, label = result["algorithm"], ms = 12, marker="D", color = colour, elinewidth=2.0, capsize=8.0, capthick=2.0)
                 else:
-                    axs[i].errorbar(result["mean_denormed_prediction"], axis_positions[plot_position_counter], xerr=result["denormed_std"], label = result["algorithm"], ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
+                    axs[i].errorbar(result["mean_denormed_prediction"], axis_positions[plot_position_counter], xerr=result["denormed_std"], label = result["algorithm"], ms = 12, marker="D", color = colour, elinewidth=2.0, capsize=8.0, capthick=2.0)
                 plot_position_counter += 1
         
         if field == "B0strength":
@@ -556,8 +569,8 @@ def plot_cottrell_regression(csvResultsPath : Path):
             axs[i].axvline(x = result["true_value_before_log"], color = "black", linestyle=":", lw = 2.0, label="Cottrell '93 value")
 
     axs[0].legend(loc='center', ncols = 2, bbox_to_anchor = (0.3, 2.0))
-    fig.supxlabel("Prediction", fontsize = 20)
-    fig.supylabel("Output field", fontsize = 20)
+    fig.supxlabel("Prediction", fontsize = 24)
+    fig.supylabel("Output", fontsize = 24)
     axs[0].set_xlim(0.5, 5.0)
     axs[1].set_xlim(0.0, 1.0)
     axs[2].set_xlim(0.1, 1.0)

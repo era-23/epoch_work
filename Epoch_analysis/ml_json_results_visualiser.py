@@ -114,7 +114,7 @@ def plotScatter(resultsDict : dict, metric : str = "cvR2"):
 def plotBar(resultsDict : dict, metric : str = "cvR2", errors : str = "rmseSE", dropAlgorithms : list = []): 
 
     patterns = [ "/" , ".", "\\" , "|" , "-" , "+" , "x",  "o", "O", "*" ]
-    field_names = {"B0strength" : r"$B_0$", "backgroundDensity" : r"$n_e$", "pitch" : r"$\lambda$", "beamFraction" : "alpha concentration"}
+    field_names = {"B0strength" : r"$B_0$", "backgroundDensity" : r"$n_e$", "pitch" : r"$\lambda$", "beamFraction" : r"$n_\alpha/n_e$"}
     
     # results
     results = resultsDict["results"]
@@ -150,7 +150,7 @@ def plotBar(resultsDict : dict, metric : str = "cvR2", errors : str = "rmseSE", 
         rects = ax.bar(x + offset, value, width, label=algorithm, yerr=barErrs[algorithm], edgecolor='black')
         if list(barErrs.values())[0]:
             ax.errorbar(x + offset, value, yerr=barErrs[algorithm], fmt=",", color = "k")
-        ax.bar_label(rects, padding=3, fontsize = 17, rotation=90)
+        ax.bar_label(rects, padding=3, fontsize = 20, rotation=90)
         multiplier += 1
 
     # Add some text for labels, title and custom x-axis tick labels, etc.
@@ -167,10 +167,10 @@ def plotBar(resultsDict : dict, metric : str = "cvR2", errors : str = "rmseSE", 
         ax.legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, 1.12))
     else:
         ax.legend(loc='upper left' if metric == "cvR2" else 'lower left', ncols = 1)
-    ax.set_ylim(top= 1.0 if metric == "cvR2" else np.round(np.max([v for v in barVals.values()]) + 0.2, 1))
+    ax.set_ylim(top= 1.15 if metric == "cvR2" else np.round(np.max([v for v in barVals.values()]) + 0.2, 1))
     ax.axhline(0.0, color="black", lw=0.5)
     ax.grid(axis="y")
-    ax.set_ylim(0.0, 1.1)
+    # ax.set_ylim(0.0, 1.1)
     plt.tight_layout()
 
     plt.show()
