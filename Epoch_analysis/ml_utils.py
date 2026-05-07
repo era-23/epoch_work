@@ -122,6 +122,11 @@ class TSRBattery:
     trainingTimeTotal_CPUns : int = 0
     trainingTimeTotal_CPUhours : float = 0.0
     trainingTimeMeanPerFold_CPUhours : float = 0.0
+    trainingTimeMinPerFold_CPUhours : float = 0.0
+    inferenceTimeMinPerFold_CPUns : int = 0
+    inferenceTimeMinPerFold_CPUms : float = 0.0
+    inferenceTimeMinPerFold_ClockNs : int = 0
+    inferenceTimeMinPerFold_ClockMs : float = 0.0
     inferenceTimeMeanPerFold_CPUns : int = 0
     inferenceTimeMeanPerFold_CPUms : float = 0.0
     inferenceTimeMeanPerFold_ClockNs : int = 0

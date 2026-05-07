@@ -354,8 +354,8 @@ def regress(
                 fold_inf_time_clock_start = time.perf_counter_ns()
                 fold_inference_time_start = time.process_time_ns()
                 predictions = tsr.predict(test_x)
-                fold_inf_time_clock_end = time.perf_counter_ns()
                 fold_inference_time_end = time.process_time_ns()
+                fold_inf_time_clock_end = time.perf_counter_ns()
                 fold_inference_time_ns = fold_inference_time_end - fold_inference_time_start
                 fold_inf_time_clock_ns = fold_inf_time_clock_end - fold_inf_time_clock_start
                 fold_inference_times_cpu_ns.append(fold_inference_time_ns)
@@ -462,10 +462,15 @@ def regress(
     print(f"Clock time: {clock_time / 60.0} min. Process time: {cvTimeTotal_ns / 6E10} min.")
 
     battery.cvTimeTotal_CPUhours = float(cvTimeTotal_ns) / 3.6E12
+    battery.inferenceTimeMinPerFold_CPUns = int(np.rint(np.min(fold_inference_times_cpu_ns)))
+    battery.inferenceTimeMinPerFold_CPUms = float(battery.inferenceTimeMinPerFold_CPUns) / 1E6
+    battery.inferenceTimeMinPerFold_ClockNs = int(np.rint(np.min(fold_inference_times_clock_ns)))
+    battery.inferenceTimeMinPerFold_ClockMs = float(battery.inferenceTimeMinPerFold_ClockNs) / 1E6
     battery.inferenceTimeMeanPerFold_CPUns = int(np.rint(np.mean(fold_inference_times_cpu_ns)))
     battery.inferenceTimeMeanPerFold_CPUms = float(battery.inferenceTimeMeanPerFold_CPUns) / 1E6
     battery.inferenceTimeMeanPerFold_ClockNs = int(np.rint(np.mean(fold_inference_times_clock_ns)))
     battery.inferenceTimeMeanPerFold_ClockMs = float(battery.inferenceTimeMeanPerFold_ClockNs) / 1E6
+    battery.trainingTimeMinPerFold_CPUhours = np.min(fold_training_times_ns)  / 3.6E12
     battery.trainingTimeMeanPerFold_CPUhours = np.mean(fold_training_times_ns)  / 3.6E12
     battery.trainingTimeTotal_CPUns = trainingTimeTotal_ns
     battery.trainingTimeTotal_CPUhours = float(trainingTimeTotal_ns) / 3.6E12
