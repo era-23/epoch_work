@@ -280,9 +280,16 @@ fieldNameToText_dict = {
     "pitch" : "pitch"
 }
 
-fieldNameToSymbol_dict = {
+fieldNameToSymbolWithUnit_dict = {
     "B0strength" : r"$B_0$ [T]", 
     "backgroundDensity" : r"$n_e$ [$10^{20}m^{-3}$]", 
+    "beamFraction" : r"$n_\alpha/n_e$",
+    "pitch" : r"$\lambda$",
+}
+
+fieldNameToSymbol_dict = {
+    "B0strength" : r"$B_0$", 
+    "backgroundDensity" : r"$n_e$", 
     "beamFraction" : r"$n_\alpha/n_e$",
     "pitch" : r"$\lambda$",
 }
@@ -336,6 +343,13 @@ def fieldNameToText(name : str) -> str:
         return fieldNameToText_dict[name]
     if name.strip('/') in fieldNameToText_dict:
         return fieldNameToText_dict[name.strip('/')]
+    return name
+
+def fieldNameToSymbolWithUnit(name : str) -> str:
+    if name in fieldNameToSymbolWithUnit_dict:
+        return fieldNameToSymbolWithUnit_dict[name]
+    if name.strip('/') in fieldNameToSymbolWithUnit_dict:
+        return fieldNameToSymbolWithUnit_dict[name.strip('/')]
     return name
 
 def fieldNameToSymbol(name : str) -> str:

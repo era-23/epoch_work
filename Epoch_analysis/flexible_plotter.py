@@ -169,7 +169,7 @@ def compare_spectra(folder : Path, simNumbers : list, maxXcoord : float = 50.0, 
     f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
     f.set_scientific(True)
     axBz1.set_title(f"Run {simNumbers[0]}")
-    axBz1.set_ylabel(r"$\delta B_z$ [$T^2$]")
+    axBz1.set_ylabel(r"$\delta B_z$ [$\mathrm{T}^2$]")
     axBz1.yaxis.set_major_formatter(f)
     f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
     f.set_scientific(True)
@@ -231,17 +231,17 @@ def compare_spectra(folder : Path, simNumbers : list, maxXcoord : float = 50.0, 
             axBz.plot(
                 coords.data, 
                 bzData.data, 
-                label = f"{angle_data_xr.attrs['B0angle']} degrees"
+                label = f"{angle_data_xr.attrs['B0angle']}" + r'$^\circ$'
             )
             axEx.plot(
                 coords.data, 
                 exData.data,
-                label = f"{angle_data_xr.attrs['B0angle']} degrees"
+                label = f"{angle_data_xr.attrs['B0angle']}" + r'$^\circ$'
             )
             axEy.plot(
                 coords.data, 
                 eyData.data,
-                label = f"{angle_data_xr.attrs['B0angle']} degrees"
+                label = f"{angle_data_xr.attrs['B0angle']}" + r'$^\circ$'
             )
 
         # Slice to maximum frequency
@@ -500,7 +500,7 @@ def plot_cottrell_regression(csvResultsPath : Path):
 
         for index, result in field_results.iterrows():
             if result["algorithm"] not in exclude_algos:
-                axs[i].errorbar(result["mean_denormed_prediction"], epoch_utils.fieldNameToSymbol(field), xerr=result["denormed_std"], label = result["algorithm"], ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
+                axs[i].errorbar(result["mean_denormed_prediction"], epoch_utils.fieldNameToSymbolWithUnit(field), xerr=result["denormed_std"], label = result["algorithm"], ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
         
         if field == "B0strength":
             axs[i].fill_between(x = [result["true_value_before_log"] - 0.07, result["true_value_before_log"] + 0.07], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
@@ -546,7 +546,7 @@ def plot_cottrell_regression(csvResultsPath : Path):
         field = outputFields[i]
         field_results = results[results["field"] == field]
         axs[i].set_ylim((-2.0, 2.0))
-        axs[i].set_yticks(ticks=[0.0], labels=[epoch_utils.fieldNameToSymbol(field)])
+        axs[i].set_yticks(ticks=[0.0], labels=[epoch_utils.fieldNameToSymbolWithUnit(field)])
         for index, result in field_results.iterrows():
             if result["algorithm"] not in exclude_algos:
                 colour = colours[result["algorithm"]] if result["algorithm"] in colours else None
@@ -609,7 +609,7 @@ def plot_all_predictions_for_one_algorithm(
     for i in range(len(outputFields)):
         field = outputFields[i]
         predictions : pd.DataFrame = allPredictions[allPredictions["outputQuantity"] == field]
-        plt.scatter(predictions["trueValue_normalised"].to_numpy(), predictions["predictedValue_normalised"].to_numpy(), marker = markers[i], s = 50, color = colours[i], label = epoch_utils.fieldNameToText(field))
+        plt.scatter(predictions["trueValue_normalised"].to_numpy(), predictions["predictedValue_normalised"].to_numpy(), marker = markers[i], s = 50, color = colours[i], label = epoch_utils.fieldNameToSymbol(field))
     plt.grid()
     if not noTitle:
         plt.title(f"{algorithm_name}")
@@ -618,8 +618,8 @@ def plot_all_predictions_for_one_algorithm(
         plt.yscale("log")
         plt.grid(which="both")
 
-    plt.xlabel(f"True values [norm.]")
-    plt.ylabel(f"Predictions [norm.]")
+    plt.xlabel(f"True value [norm.]")
+    plt.ylabel(f"Prediction [norm.]")
 
     # Set legend
     handles, labels = plt.gca().get_legend_handles_labels()
