@@ -168,18 +168,18 @@ def compare_spectra(folder : Path, simNumbers : list, maxXcoord : float = 50.0, 
     
     f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
     f.set_scientific(True)
-    axBz1.set_title(f"Run {simNumbers[0]}")
+    # axBz1.set_title(f"Run {simNumbers[0]}")
     axBz1.set_ylabel(r"$\delta B_z$ [$\mathrm{T}^2$]")
     axBz1.yaxis.set_major_formatter(f)
     f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
     f.set_scientific(True)
-    axBz2.set_title(f"Run {simNumbers[1]}")
+    # axBz2.set_title(f"Run {simNumbers[1]}")
     axBz2.yaxis.set_major_formatter(f)
     
     f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
     f.set_scientific(True)
     axEx1.set_title(f"Run {simNumbers[0]}")
-    axEx1.set_ylabel(r"$\delta E_x$ [$\frac{V}{m}^2$]")
+    axEx1.set_ylabel(r"$\delta E_x$ [$\frac{\mathrm{V}^2}{\mathrm{m}^2}$]")
     axEx1.yaxis.set_major_formatter(f)
     f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
     f.set_scientific(True)
@@ -188,12 +188,12 @@ def compare_spectra(folder : Path, simNumbers : list, maxXcoord : float = 50.0, 
     
     f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
     f.set_scientific(True)
-    axEy1.set_title(f"Run {simNumbers[0]}")
-    axEy1.set_ylabel(r"$\delta E_y$ [$\frac{V}{m}^2$]")
+    # axEy1.set_title(f"Run {simNumbers[0]}")
+    axEy1.set_ylabel(r"$\delta E_y$ [$\frac{\mathrm{V}^2}{\mathrm{m}^2}$]")
     axEy1.yaxis.set_major_formatter(f)
     f = ScalarFormatterForceFormat(useMathText=True, useOffset=False)
     f.set_scientific(True)
-    axEy2.set_title(f"Run {simNumbers[1]}")
+    # axEy2.set_title(f"Run {simNumbers[1]}")
     axEy2.yaxis.set_major_formatter(f)
 
     axBz1.set_xlabel(r"Frequency [$\Omega_{c, \alpha}$]")
@@ -285,11 +285,11 @@ def compare_spectra(folder : Path, simNumbers : list, maxXcoord : float = 50.0, 
             
     handles, labels = axBz1.get_legend_handles_labels()
     labels, handles = zip(*sorted(zip(labels, handles), key=lambda t: t[0]))
-    axBz2.legend(handles, labels, loc = "upper right")
-    axBz1.legend(handles, labels, loc = "upper right")
+    axEy1.legend(handles, labels, loc = "upper right")
+    axEy2.legend(handles, labels, loc = "upper right")
     # fig.tight_layout()
     fig.align_labels()
-    fig.subplots_adjust(wspace=0.15, hspace=0.25)
+    fig.subplots_adjust(wspace=0.15, hspace=0.05)
     plt.show()
 
 def dispersion_relations_for_papers(
@@ -745,7 +745,7 @@ if __name__ == "__main__":
     plt.rcParams.update({'axes.labelsize': 26.0})
     plt.rcParams.update({'xtick.labelsize': 18.0})
     plt.rcParams.update({'ytick.labelsize': 18.0})
-    plt.rcParams.update({'legend.fontsize': 16.0})
+    plt.rcParams.update({'legend.fontsize': 20.0})
 
     if args.powerSpectrum:
         if args.dataFile:
