@@ -240,10 +240,10 @@ def plotAccuracyByFrequency(resultsFile : Path):
         cottrell_min_gyros = 4.87
 
         plt.figure(figsize=(8,8))
-        plt.errorbar(B0_results["frequencyBandwidth"], B0_results["cvR2_mean"], linewidth=3.0, yerr=B0_results["cvRMSE_stderr"], label=r"$B_0$ strength")
-        plt.errorbar(pitch_results["frequencyBandwidth"], pitch_results["cvR2_mean"], linewidth=3.0, yerr=pitch_results["cvRMSE_stderr"], label=r"$\alpha$ velocity pitch")
-        plt.errorbar(density_results["frequencyBandwidth"], density_results["cvR2_mean"], linewidth=3.0, yerr=density_results["cvRMSE_stderr"], label="electron density")
-        plt.errorbar(beamFraction_results["frequencyBandwidth"], beamFraction_results["cvR2_mean"], linewidth=3.0, yerr=beamFraction_results["cvRMSE_stderr"], label=r"$\alpha$ concentration")
+        plt.errorbar(B0_results["frequencyBandwidth"], B0_results["cvR2_mean"], linewidth=3.0, yerr=B0_results["cvRMSE_stderr"], label=r"$B_0$")
+        plt.errorbar(pitch_results["frequencyBandwidth"], pitch_results["cvR2_mean"], linewidth=3.0, yerr=pitch_results["cvRMSE_stderr"], label=r"$\lambda$")
+        plt.errorbar(density_results["frequencyBandwidth"], density_results["cvR2_mean"], linewidth=3.0, yerr=density_results["cvRMSE_stderr"], label=r"$n_e$")
+        plt.errorbar(beamFraction_results["frequencyBandwidth"], beamFraction_results["cvR2_mean"], linewidth=3.0, yerr=beamFraction_results["cvRMSE_stderr"], label=r"$n_\alpha/n_e$")
         plt.ylim(bottom=0.0, top=1.0)
         if unit == "gyros":
             plt.xlabel(r"Spectra frequency bandwidth [$\Omega_{c,\alpha}$]")
@@ -252,8 +252,9 @@ def plotAccuracyByFrequency(resultsFile : Path):
             plt.xlabel("Spectra frequency bandwidth [MHz]")
             # plt.axvline(x = cottrell_freq, color = "black", linestyle="--", lw = 2.0, label="Cottrell '93 maximum")
         plt.ylabel(r"LOOCV accuracy [$R^2$]")
-        plt.legend(loc="center right")
+        plt.legend(loc="lower right")
         plt.tight_layout()
+        plt.grid()
         plt.show()
 
 def print_results(resultsFile : Path):
