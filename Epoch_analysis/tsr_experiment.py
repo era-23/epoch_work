@@ -91,7 +91,8 @@ def regress_cottrell_2(
         cottrellDatapath : Path,
         resultsFilepath : Path = None,
         includeFreqs : bool = False,
-        nThreads : int = 1
+        nThreads : int = 1,
+        lowFrequencyCleaningMethod : str = "linterpToSP",
 ):
     
     SMALL_SIZE = 10
@@ -156,21 +157,34 @@ def regress_cottrell_2(
                 coords[i] = np.linspace(truncd_gyro_coords[0], truncd_gyro_coords[-1], coords.shape[1])
 
             # If the first point is a minimum
-            if np.argmin(specs[i]) == 0: 
-                spec = specs[i]
-                first_peak = int(next(i for i,(v0,v1) in enumerate(zip(spec[:-1], spec[1:])) if v0>v1))
-                linterp_early = np.linspace(np.mean(spec), spec[first_peak], first_peak)
-                preserve_late = spec[first_peak:]
-                specs[i] = np.concatenate((linterp_early, preserve_late), axis = 0)
-            elif np.argmax(specs[i]) == 0: # Else if the first point is a maximum
-                spec = specs[i]
-                first_trough = int(next(i for i,(v0,v1) in enumerate(zip(spec[:-1], spec[1:])) if v0<v1))
-                linterp_early = np.linspace(np.mean(spec), spec[first_trough], first_trough)
-                preserve_late = spec[first_trough:]
-                specs[i] = np.concatenate((linterp_early, preserve_late), axis = 0)
-            
-            # Scale
-            # specs[i] = scaler_train.fit_transform(specs[i].reshape(-1, 1)).flatten()
+            spec = specs[i]
+            if "SP" in lowFrequencyCleaningMethod:
+                if np.argmin(specs[i]) == 0: 
+                    stationary_point = int(next(i for i,(v0,v1) in enumerate(zip(spec[:-1], spec[1:])) if v0>v1))
+                elif np.argmax(specs[i]) == 0: # Else if the first point is a maximum
+                    stationary_point = int(next(i for i,(v0,v1) in enumerate(zip(spec[:-1], spec[1:])) if v0<v1))
+                else:
+                    continue
+                after_sp = spec[stationary_point:]
+                
+                if lowFrequencyCleaningMethod == "minToSP":
+                    before_sp = np.ones(stationary_point) * np.min(after_sp)
+                elif lowFrequencyCleaningMethod == "meanToSP":
+                    before_sp = np.ones(stationary_point) * np.mean(after_sp)
+                else:
+                    before_sp = np.linspace(np.mean(spec), spec[stationary_point], stationary_point)
+                
+                specs[i] = np.concatenate((before_sp, after_sp), axis = 0)
+            else: # replace early frequencies up to less than known lowest possible harmonic (3MHz)
+                
+                replace_idx = np.argwhere(hz_coords < 2e6)[-1][-1]
+                after_sp = spec[replace_idx:]
+                if lowFrequencyCleaningMethod == "padMin":
+                    before_sp = np.ones(replace_idx) * np.min(after_sp)
+                elif lowFrequencyCleaningMethod == "padMean":
+                    before_sp = np.ones(replace_idx) * np.mean(after_sp)
+
+                specs[i] = np.concatenate((before_sp, after_sp), axis = 0)
         
         global_min = np.min([np.min(s) for s in specs])
         print(f"Global minimum : {global_min}")
@@ -210,7 +224,9 @@ def regress_cottrell_2(
     n_repeats = 20
     all_results = []
 
-    # # For debugging spectral ranges
+    print(f"Spectra in dB range from {np.min(train_x[:][0])}dB to {np.max(train_x[:][0])}dB.")
+
+    # For debugging spectral ranges
     # SMALL_SIZE = 10
     # MEDIUM_SIZE = 20
     # BIGGER_SIZE = 24
@@ -222,12 +238,14 @@ def regress_cottrell_2(
     # plt.rc('ytick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
     # plt.rc('legend', fontsize=MEDIUM_SIZE)    # legend fontsize
     # plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
-    # for i in [75, 104]:
+    # for i in [-1]:
     #     data = train_x[i][0]
+    #     avg_spec = np.mean(train_x[:][0], axis=0)
     #     plt.figure(figsize=(8, 8))
-    #     plt.plot(equally_spaced_freqs, test_x[0][0], color = "tab:blue", label = r"Cottrell '93: $B_z$")
-    #     plt.plot(equally_spaced_freqs, data, color = "tab:orange", label = r"Run 75: training $B_z$")
-    #     plt.ylabel("Spectral power [a.u.]")
+    #     plt.plot(equally_spaced_freqs, test_x[0][0], color = "tab:blue", label = r"JET pulse #26148")
+    #     plt.plot(equally_spaced_freqs, data, color = "tab:orange", label = r"PIC simulation, equal parameters")
+    #     plt.plot(equally_spaced_freqs, avg_spec, color = "tab:green", label = r"Training data mean")
+    #     plt.ylabel(r"$\delta B_z$ [dB]")
     #     plt.xlabel("Frequency [MHz]")
     #     plt.grid()
     #     plt.legend(loc="upper left")
@@ -235,15 +253,20 @@ def regress_cottrell_2(
     #     # plt.title(inputs["sim_ids"][i])
     #     plt.show()
     
-    # for simulation in inputSpectra:
-        
-    #     plt.plot(simulation[1], simulation[0], color = "blue")
-    #     plt.title("data")
-    #     plt.axhline(y = np.mean(simulation[0]), color = "red")
-    #     plt.grid(which = "major", axis = "x")
-    #     plt.show()
+    for simulation in inputSpectra:
+        plt.plot(simulation[1], simulation[0], color = "blue")
+        plt.title("data")
+        plt.axhline(y = np.mean(simulation[0]), color = "red")
+        plt.grid(which = "major", axis = "x")
+        plt.show()
 
     for output_field, output_values in outputs.items():
+
+        # ##### Debugging
+        # pct_diffs = np.array([np.abs(v - all_true_y[output_field]) for v in output_values])
+        # print(f"Closest indices to {output_field} {all_true_y[output_field]}: {pct_diffs.argsort()[:20]}")
+        # continue
+        # ##### /Debugging
 
         assert len(output_values) == inputSpectra.shape[0]
         output_values = np.array(output_values)
@@ -1370,6 +1393,14 @@ if __name__ == "__main__":
         help="Take logarithms of input spectra.",
         required = False
     )
+    parser.add_argument(
+        "--lowFrequencyCleaningMethod",
+        action="store",
+        help="Method to use for removing low frequency noise from spectra in Cottrell regression beta.",
+        required = False,
+        type=str,
+        nargs=1
+    )
 
     args = parser.parse_args()
 
@@ -1523,4 +1554,13 @@ if __name__ == "__main__":
             cottrellDatapath = args.cottrellFilepath,
             resultsFilepath=args.resultsFilepath,
             includeFreqs=args.includeFreqs,
-            nThreads = args.nThreads)
+            nThreads = args.nThreads,
+            lowFrequencyCleaningMethod=args.lowFrequencyCleaningMethod[0])
+        
+        # "--lowFrequencyCleaningMethod",
+        #             "linterpToSP",
+        #             "zeroToSP",
+        #             "meanToSP",
+        #             "levelToSP",
+        #             "padZeroes",
+        #             "padMean",
