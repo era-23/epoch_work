@@ -571,7 +571,7 @@ def plot_cottrell_regression(csvResultsPath : Path):
     axs[0].legend(loc='center', ncols = 2, bbox_to_anchor = (0.3, 2.0))
     fig.supxlabel("Prediction", fontsize = 24)
     fig.supylabel("Output", fontsize = 24)
-    axs[0].set_xlim(0.5, 5.0)
+    axs[0].set_xlim(1.0, 5.0)
     axs[1].set_xlim(0.0, 1.0)
     axs[2].set_xlim(0.1, 1.0)
     axs[3].set_xlim(1E-4, 1E-2)
@@ -745,7 +745,7 @@ if __name__ == "__main__":
     plt.rcParams.update({'axes.labelsize': 26.0})
     plt.rcParams.update({'xtick.labelsize': 18.0})
     plt.rcParams.update({'ytick.labelsize': 18.0})
-    plt.rcParams.update({'legend.fontsize': 20.0})
+    plt.rcParams.update({'legend.fontsize': 18.0})
 
     if args.powerSpectrum:
         if args.dataFile:

@@ -18,6 +18,7 @@ from sklearn.preprocessing import MinMaxScaler
 import random
 import epoch_utils
 from astropy import units as u
+import plasmapy.formulary.frequencies as ppf
 
 from dataclass_csv import DataclassWriter
 
@@ -121,7 +122,7 @@ def regress_cottrell_2(
 
     # Output data
     outputs = {outputField : [] for outputField in outputFields}
-    outputs = ml_utils.read_data(data_files, outputs, with_names = False, with_coords = False)
+    outputs = ml_utils.read_data(data_files, outputs, with_names = True, with_coords = False)
 
     if "B0angle" in outputs:
         transf = np.array(outputs["B0angle"])
@@ -140,11 +141,16 @@ def regress_cottrell_2(
 
     scaler_train = MinMaxScaler(feature_range=(0, 1))
     inputData = []
+    sim_id_to_indexNumber = {}
     for field in inputSpectraNames:
         specs = copy.deepcopy(inputs[field])
         coords = np.zeros_like(specs)
         
         for i in range(len(specs)):
+
+            # Record sim ID and index
+            sim_id_to_indexNumber[inputs["sim_ids"][i]] = i
+
             gyro_coords = inputs[f"{field}_coords"][i]
             hz_coords = inputs[f"{field}_denorm_coords"][i]
 
@@ -194,6 +200,9 @@ def regress_cottrell_2(
     if includeFreqs:
         inputData.append(coords) # Append only the last set of coordinates (they should be the same for all fields)
 
+    assert inputs["sim_ids"] == outputs["sim_ids"]
+    assert inputs["sim_ids"] == list(sim_id_to_indexNumber.keys())
+
     # Reshape into 3D numpy array of shape (n_cases, n_channels, n_timepoints)
     inputSpectra = np.swapaxes(np.array(inputData), 0, 1)
     # outputs = np.array(list(outputs.values()))
@@ -236,8 +245,49 @@ def regress_cottrell_2(
     # plt.rc('axes', labelsize=BIGGER_SIZE)    # fontsize of the x and y labels
     # plt.rc('xtick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
     # plt.rc('ytick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
-    # plt.rc('legend', fontsize=MEDIUM_SIZE)    # legend fontsize
+    # plt.rc('legend', fontsize=18)    # legend fontsize
     # plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
+
+    # # For plotting Cottrell data
+    # alpha_gyroFreq = ppf.gyrofrequency(B = 2.21 * u.T, particle = "alpha", to_hz = True).to(u.MHz).value
+    # max_freq = np.max(equally_spaced_freqs)
+    # gyro_harmonics = np.arange(int(max_freq/alpha_gyroFreq))[1:] * alpha_gyroFreq
+    # jet_idx = sim_id_to_indexNumber["137"]
+    # varyB0_idx = sim_id_to_indexNumber["137zB0"]
+    # varyBf_idx = sim_id_to_indexNumber["137zbf2"]
+    # varyDs_idx = sim_id_to_indexNumber["137zd"]
+    # varyPc_idx = sim_id_to_indexNumber["137zp"]
+    # identical_JET_data = train_x[jet_idx][0]
+    # varyB0_data = train_x[varyB0_idx][0]
+    # varyBf_data = train_x[varyBf_idx][0]
+    # varyDs_data = train_x[varyDs_idx][0]
+    # varyPc_data = train_x[varyPc_idx][0]
+    # # Debug
+    # y_min = 0.0
+    # y_max = 80.0
+    # print(f"Identical JET parameters: B0: {outputs['B0strength'][jet_idx]}, beam frac: {outputs['beamFraction'][jet_idx]}, density: {outputs['backgroundDensity'][jet_idx]}, pitch: {outputs['pitch'][jet_idx]}")
+    # print(f"Vary B0 parameters:       B0: {outputs['B0strength'][varyB0_idx]}, beam frac: {outputs['beamFraction'][varyB0_idx]}, density: {outputs['backgroundDensity'][varyB0_idx]}, pitch: {outputs['pitch'][varyB0_idx]}")
+    # print(f"Vary beamFrac parameters: B0: {outputs['B0strength'][varyBf_idx]}, beam frac: {outputs['beamFraction'][varyBf_idx]}, density: {outputs['backgroundDensity'][varyBf_idx]}, pitch: {outputs['pitch'][varyBf_idx]}")
+    # print(f"Vary density parameters:  B0: {outputs['B0strength'][varyDs_idx]}, beam frac: {outputs['beamFraction'][varyDs_idx]}, density: {outputs['backgroundDensity'][varyDs_idx]}, pitch: {outputs['pitch'][varyDs_idx]}")
+    # print(f"Vary pitch parameters:    B0: {outputs['B0strength'][varyPc_idx]}, beam frac: {outputs['beamFraction'][varyPc_idx]}, density: {outputs['backgroundDensity'][varyPc_idx]}, pitch: {outputs['pitch'][varyPc_idx]}")
+    # plt.figure(figsize=(11, 9))
+    # plt.plot(equally_spaced_freqs, test_x[0][0], color = "black", linestyle = "dashed", label = r"JET pulse #26148")
+    # plt.plot(equally_spaced_freqs, identical_JET_data, color = "tab:red", label = r"PIC, JET #26148 parameters")
+    # plt.plot(equally_spaced_freqs, varyB0_data, color = "tab:blue", label = r"PIC, #26148 with $2 \times B_0$")
+    # plt.plot(equally_spaced_freqs, varyDs_data, color = "tab:orange", label = r"PIC, #26148 with $2 \times n_e$")
+    # plt.plot(equally_spaced_freqs, varyPc_data, color = "tab:green", label = r"PIC, #26148 with $2 \times \lambda$")
+    # plt.plot(equally_spaced_freqs, varyBf_data, color = "tab:purple", label = r"PIC, #26148 with $10 \times n_\alpha/n_e$")
+    # plt.vlines(gyro_harmonics, ymin = y_min, ymax = y_max, colors="black", linestyles="dotted", alpha=0.8, label = r"$\Omega_{c,\alpha}$ harmonics")
+    # plt.ylabel(r"$\delta B_z$ [dB]")
+    # plt.xlabel("Frequency [MHz]")
+    # # plt.grid()
+    # plt.legend(loc="upper left")
+    # plt.ylim(y_min, y_max)
+    # plt.xlim(0.0, 190.0)
+    # plt.tight_layout()
+    # # plt.title(inputs["sim_ids"][i])
+    # plt.show()
+
     # for i in [-1]:
     #     data = train_x[i][0]
     #     avg_spec = np.mean(train_x[:][0], axis=0)
@@ -252,7 +302,7 @@ def regress_cottrell_2(
     #     plt.tight_layout()
     #     # plt.title(inputs["sim_ids"][i])
     #     plt.show()
-    
+
     for simulation in inputSpectra:
         plt.plot(simulation[1], simulation[0], color = "blue")
         plt.title("data")

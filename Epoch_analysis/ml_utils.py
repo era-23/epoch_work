@@ -442,14 +442,16 @@ def preprocess_plasma_features(data : dict) -> dict:
 
     return data
 
-def resample_series(series : ArrayLike, coords : ArrayLike, numSamples : int, signalName : str = None, savedir : Path = None):
+def resample_series(series : ArrayLike, coords : ArrayLike, numSamples : int, signalName : str = None, savedir : Path = None, debug = False):
 
-    print(f"Resampling signal from {len(series)} to {numSamples}....")
+    if debug:
+        print(f"Resampling signal from {len(series)} to {numSamples}....")
 
     res_coords = np.linspace(coords[0], coords[-1], numSamples, endpoint=True)
     resampled_signal_linterp = np.interp(res_coords, coords, series)
     
-    print(f"Resampled signal length: {len(resampled_signal_linterp)}")
+    if debug:
+        print(f"Resampled signal length: {len(resampled_signal_linterp)}")
 
     if savedir is not None:
 
@@ -466,9 +468,10 @@ def resample_series(series : ArrayLike, coords : ArrayLike, numSamples : int, si
     return resampled_signal_linterp, res_coords
 
 
-def truncate_series(series : ArrayLike, seriesCoordinates : ArrayLike, maxCoordinate : float, altCoordinates : ArrayLike = None):
+def truncate_series(series : ArrayLike, seriesCoordinates : ArrayLike, maxCoordinate : float, altCoordinates : ArrayLike = None, debug = False):
 
-    print(f"Truncting signal from maximum coordinate of {seriesCoordinates[-1]} to first {maxCoordinate}....")
+    if debug:
+        print(f"Truncting signal from maximum coordinate of {seriesCoordinates[-1]} to first {maxCoordinate}....")
 
     cutoffIndex = np.searchsorted(seriesCoordinates, maxCoordinate)
     truncatedSeries = series[:cutoffIndex]

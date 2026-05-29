@@ -338,10 +338,10 @@ def combine_spectra(dataDirectory : Path, outputDirectory : Path):
 
     outputDataDirectory = outputDirectory / "data"
     if not os.path.exists(outputDataDirectory):
-        os.mkdir(outputDataDirectory)
+        os.makedirs(outputDataDirectory)
     outputPlotDirectory = outputDirectory / "plots"
     if not os.path.exists(outputPlotDirectory):
-        os.mkdir(outputPlotDirectory)
+        os.makedirs(outputPlotDirectory)
 
     # Each simulation (at one angle)
     for filename in individual_data_filenames:
