@@ -5,7 +5,7 @@ import json
 import pandas as pd
 from matplotlib import pyplot as plt
 import numpy as np
-from latextable import texttable
+import latextable
 import ml_utils
 import epoch_utils
 
@@ -175,6 +175,77 @@ def plotBar(resultsDict : dict, metric : str = "cvR2", errors : str = "rmseSE", 
 
     plt.show()
 
+def plot_individual_spectra_results(folder):
+
+    SMALL_SIZE = 10
+    MEDIUM_SIZE = 14
+    BIGGER_SIZE = 18
+
+    plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
+    plt.rc('axes', titlesize=BIGGER_SIZE)     # fontsize of the axes title
+    plt.rc('axes', labelsize=BIGGER_SIZE)    # fontsize of the x and y labels
+    plt.rc('xtick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
+    plt.rc('ytick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
+    plt.rc('legend', fontsize=MEDIUM_SIZE)    # legend fontsize
+    plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
+    
+    # Get data
+    json_files = glob.glob(str(folder / "*.json"))
+    all_res = []
+    for file in json_files:
+        with open(file, "r") as f:
+            js = json.load(f)
+            df = pd.DataFrame(js["results"])
+            spectra = js["inputSpectra"]
+            if len(spectra) > 1:
+                df["spectra"] = "All"
+            else:
+                df["spectra"] = spectra[0]
+            all_res.append(df)
+    res_df : pd.DataFrame = pd.concat(all_res)
+    
+    # Plot
+    # Results for one field
+    fields = sorted(set(res_df["output"]))
+
+    for field in fields:
+        print(f"Plotting results for {field}")
+        field_res : pd.DataFrame = res_df[res_df["output"] == field]
+        algos = sorted(set(field_res["algorithm"]))
+        algos.remove("aeon.DummyRegressor")
+        spectra = sorted(set(field_res["spectra"]))
+        res_by_algo = {s : [] for s in spectra}
+        for spectrum in spectra:
+            for algo in algos:
+                res = field_res[(field_res["spectra"] == spectrum) & (field_res["algorithm"] == algo)]
+                res_by_algo[spectrum].append(float(res["cvR2_mean"]))
+        
+        y = np.arange(len(algos))  # the label locations
+        width = 1.0/(len(spectra) + 1)  # the width of the bars
+        multiplier = 0
+
+        fig, ax = plt.subplots()
+        fig.set_figheight(12)
+        fig.set_figwidth(20)
+
+        for spectrum, result in res_by_algo.items():
+            offset = width * multiplier
+            rects = ax.barh(y + offset, result, width, label=spectrum)
+            ax.bar_label(rects, padding=3)
+            multiplier += 1
+
+        # Add some text for labels, title and custom x-axis tick labels, etc.
+        ax.set_xlabel('R2')
+        ax.set_title(field)
+        ax.grid(axis="y", which="both")
+        yLabels = [a.replace("aeon.", "").replace("Regressor", "") for a in algos]
+        ax.set_yticks(y + (0.5 * (len(spectra) -1) * width), yLabels)
+        handles, labels = ax.get_legend_handles_labels()
+        ax.legend(handles[::-1], labels[::-1], loc='upper left', ncols=1)
+        plt.tight_layout()
+        plt.show()
+
+
 def plotResults(resultsFile : Path, metric : str = "cvR2", errors : str = "rmseSE", dropAlgorithms : list = []):
     with open(resultsFile, "r") as f:
         parser = json.load(f)
@@ -190,30 +261,29 @@ def latexTable(resultsFile : Path, experimentName : str):
         fields = parser["outputFields"]
         algorithms = parser["algorithms"]
         metrics_displayNames = {
-            "cvR2_mean" : "$R^2$", 
-            "cvRMSE_mean" : "RMSE", 
-            "cvRMSE_var" : "RMSE var", 
-            "cvRMSE_stderr" : "RMSE S.E.", 
-            "cvMAE_mean" : "MAE", 
-            "cvMAPE_mean" : "MAPE"
+            "cvR2_mean" : r"$\mathbf{R}^2$", 
+            "cvRMSE_mean" : r"\textbf{RMSE}", 
+            "cvRMSE_var" : r"\textbf{RMSE var}", 
+            "cvRMSE_stderr" : r"\textbf{RMSE S.E.}", 
+            "cvMAE_mean" : r"\textbf{MAE}"
         }
         num_metrics = len(metrics_displayNames.keys())
-        
+
         # Metrics on top, algorithms down side
-        table = texttable.Texttable()
-        table.set_cols_align(["l"] + (["r"] * num_metrics))
-        # Header
-        table.add_row(["Algorithm"] + [v for v in metrics_displayNames.values()])
         for field in fields:
-            table.add_row([field] + ([""] * num_metrics))
+            table = latextable.texttable.Texttable()
+            table.set_cols_align(["l"] + (["r"] * num_metrics))
+            # Header
+            table.add_row([r'\textbf{' + "Algorithm}"] + [v for v in metrics_displayNames.values()])
             for algo in algorithms:
                 result = results_df[(results_df["output"] == field) & (results_df["algorithm"] == algo)]
                 assert len(result) == 1
                 table.add_row([algo] + [float(result[m].iloc[0]) for m in metrics_displayNames.keys()])
-                break
-            break
 
-        print(table.draw())
+            # print(table.draw())
+            print("%--------------------------------------------------------------------------------------------")
+            print("%Latex:")
+            print(latextable.draw_latex(table, caption="All LOOCV predictions.", label=f"tab:appendix_{field}Preds"))
 
 def plotAccuracyByFrequency(resultsFile : Path):
     with open(resultsFile, "r") as f:
@@ -302,6 +372,12 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
+        "--individualSpectra",
+        action="store_true",
+        help="Plot results for individual spectra simultaneously.",
+        required = False
+    )
+    parser.add_argument(
         "--accuracyByFrequency",
         action="store_true",
         help="Plot accuracy by freqency.",
@@ -364,3 +440,5 @@ if __name__ == "__main__":
         plotAccuracyByFrequency(args.file)
     if args.print:
         print_results(args.file)
+    if args.individualSpectra:
+        plot_individual_spectra_results(args.folder)

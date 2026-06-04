@@ -11,7 +11,7 @@ import xrft
 import epoch_utils as eu
 from scipy.stats import linregress
 from scipy.signal import find_peaks
-from sklearn.metrics import root_mean_squared_error
+from sklearn.metrics import root_mean_squared_error, r2_score
 import pycatch22
 import plasmapy.formulary.frequencies as ppf
 import plasmapy.particles as ppp
@@ -19,15 +19,18 @@ import astropy.units as u
 
 def estimate_B0_from_spectra(combined_directory : Path, fields : list, particle : str = "He-4 2+"):
 
-    plt.rcParams.update({'axes.titlesize': 32.0})
-    plt.rcParams.update({'axes.labelsize': 36.0})
-    plt.rcParams.update({'xtick.labelsize': 28.0})
-    plt.rcParams.update({'ytick.labelsize': 28.0})
-    plt.rcParams.update({'legend.fontsize': 24.0})
+    plt.rcParams.update({'axes.titlesize': 20.0})
+    plt.rcParams.update({'axes.labelsize': 20.0})
+    plt.rcParams.update({'xtick.labelsize': 20.0})
+    plt.rcParams.update({'ytick.labelsize': 20.0})
+    plt.rcParams.update({'legend.fontsize': 20.0})
 
     combined_statsFiles = glob.glob(str(combined_directory / "data" / "*_combined_stats.nc"))
     originalB0s = {f : [] for f in fields}
-    recoveredB0s = {f : [] for f in fields}
+    recoveredB0s_max = {f : [] for f in fields}
+    recoveredB0s_firstPeak = {f : [] for f in fields}
+    recoveredB0s_peakSeparation = {f : [] for f in fields}
+    recoveredB0s_hybrid = {f : [] for f in fields}
     variedParams = {"pitch" : [], "backgroundDensity" : [], "beamFraction" : []}
 
     for simFile in combined_statsFiles:
@@ -53,38 +56,70 @@ def estimate_B0_from_spectra(combined_directory : Path, fields : list, particle 
             # plt.show()
             
             og_spec : xr.DataArray = xrft.xrft.fft(data, true_amplitude=False, true_phase=True, window=None)
-            spec = np.abs(og_spec)
-            # print(spec.coords["freq_frequency"])           
+            spec : xr.DataArray = np.abs(og_spec)
+            # print(spec.coords["freq_frequency"])
             spec = spec.sel(freq_frequency = slice(0.0, None))
-            spec = spec.isel(freq_frequency = slice(int(0.1*len(spec.coords["freq_frequency"])), None))
+            spec = spec.where(spec.freq_frequency >= float(0.11*spec.freq_frequency.max().data), other=0.0)
+            # spec = spec.isel(freq_frequency = slice(int(0.13*len(spec.coords["freq_frequency"])), None))
+            
+            # Max freq method
             maxFreqFreq = float(spec.idxmax().data)
             maxFreq = 1.0 / maxFreqFreq
             maxPower = spec.max().data
-            # print(f"Max: {maxPower}, Max index: {spec.argmax().data}, Max coord: {maxFreqFreq * 1/gyrofrequency_in_SI.unit} Max coord in OG units: {maxFreq * gyrofrequency_in_SI.unit}")
-            assert spec.coords["freq_frequency"][-1] == np.max(spec.coords["freq_frequency"])
-            # plt.scatter(maxFreqFreq, maxPower, color = "red", marker = "x", label = "peak power")
-            # spec.plot()
-            # plt.legend()
-            # plt.show()
-
             # Recover B0
             recovered_B0 = (maxFreq * ppp.alpha.mass) / ppp.alpha.charge
-            # print(f"{simName}: Original B0: {data_xr.B0strength * u.T}, recovered B0 : {recovered_B0}")
-            if abs(recovered_B0.value - data_xr.B0strength) > 1.0:
-                print("-------------------------------------------------------")
-                print(f"{field}: Poor revoery of B0: {simName} -- error = {recovered_B0.value - data_xr.B0strength}")
-                print(f"{simName} parameters: B0 {data_xr.B0strength}, pitch {data_xr.pitch}, density {data_xr.backgroundDensity}, beam frac {data_xr.beamFraction}.")
-                print(f"Percentiles: B0 {int(np.rint(((data_xr.B0strength - 1.0) / 4.0) * 100.0))}, pitch {int(np.rint(((data_xr.pitch - 0.01) / (0.99-0.01)) * 100.0))}, density {int(np.rint(((np.log10(data_xr.backgroundDensity) - 19) / 1.0) * 100.0))} beam frac {int(np.rint(((np.log10(data_xr.beamFraction) + 2) / -2.0) * 100.0))}")
-                print("-------------------------------------------------------")
+
+            # Peak finding method
+            p, pd = find_peaks(spec.data, height=float(0.1*spec.max().data), prominence=float(0.1*spec.max().data), distance = 0.1*len(spec))
+            peakFreqFreq = float(spec.freq_frequency[p[0]])
+            peakFreq = 1.0/peakFreqFreq
+            recovered_B0_2 = (peakFreq * ppp.alpha.mass) / ppp.alpha.charge
+
+            # Peak separation method
+            sepFreqFreq = float(spec.freq_frequency[p[0]])
+            sepFreq = 1.0 / sepFreqFreq
+            if len(p) > 1:
+                seps = []
+                for i in range(1, len(p)):
+                    seps.append(float(spec.freq_frequency[p[i]]) - float(spec.freq_frequency[p[i-1]]))
+                sepFreq = 1.0 / np.mean(seps)
+            recovered_B0_3 = (sepFreq * ppp.alpha.mass) / ppp.alpha.charge
+            
+            # # print(f"Max: {maxPower}, Max index: {spec.argmax().data}, Max coord: {maxFreqFreq * 1/gyrofrequency_in_SI.unit} Max coord in OG units: {maxFreq * gyrofrequency_in_SI.unit}")
+            # assert spec.coords["freq_frequency"][-1] == np.max(spec.coords["freq_frequency"])
+            # plt.scatter(maxFreqFreq, maxPower, color = "red", marker = "x", label = "Max power")
+            # plt.scatter(spec.freq_frequency[p].data, spec[p].data, color = "green", marker = "+", label = "Power peaks")
+            # spec.plot()
+            # plt.legend()
+            # plt.title(f"True B0: {known_B0:.3f}, Max B0: {recovered_B0.value:.3f}, Peak B0: {recovered_B0_2.value:.3f}, Sep B0: {recovered_B0_3.value:.3f}")
+            # plt.show()
+            
+            # # print(f"{simName}: Original B0: {data_xr.B0strength * u.T}, recovered B0 : {recovered_B0}")
+            # if abs(recovered_B0.value - data_xr.B0strength) > 1.0:
+            #     print("-------------------------------------------------------")
+            #     print(f"{field}: Poor recovery of B0: {simName} -- error = {recovered_B0.value - data_xr.B0strength}")
+            #     print(f"{simName} parameters: B0 {data_xr.B0strength}, pitch {data_xr.pitch}, density {data_xr.backgroundDensity}, beam frac {data_xr.beamFraction}.")
+            #     print(f"Percentiles: B0 {int(np.rint(((data_xr.B0strength - 1.0) / 4.0) * 100.0))}, pitch {int(np.rint(((data_xr.pitch - 0.01) / (0.99-0.01)) * 100.0))}, density {int(np.rint(((np.log10(data_xr.backgroundDensity) - 19) / 1.0) * 100.0))} beam frac {int(np.rint(((np.log10(data_xr.beamFraction) + 2) / -2.0) * 100.0))}")
+            #     print("-------------------------------------------------------")
 
             # Record
-            recoveredB0s[field].append(recovered_B0.value)
+            recoveredB0s_max[field].append(recovered_B0.value)
+            recoveredB0s_firstPeak[field].append(recovered_B0_2.value)
+            recoveredB0s_peakSeparation[field].append(recovered_B0_3.value)
+            recoveredB0s_hybrid[field].append(np.mean([recovered_B0_3.value, recovered_B0_2.value]))
             # data_nc[field].recovered_B0 = recovered_B0
 
         data_xr.close()
         data_nc.close()
 
-    plt.figure(figsize=(8.5,8.5))
+    # Stats
+    for field in fields:
+        print(f"{field}: Max peak B0 recovery R2:        {r2_score(originalB0s[field], recoveredB0s_max[field])}")
+        print(f"{field}: First peak B0 recovery R2:      {r2_score(originalB0s[field], recoveredB0s_firstPeak[field])}")
+        print(f"{field}: Peak separation B0 recovery R2: {r2_score(originalB0s[field], recoveredB0s_peakSeparation[field])}")
+        print(f"{field}: Hybrid B0 recovery R2:          {r2_score(originalB0s[field], recoveredB0s_hybrid[field])}")
+
+    plt.figure(figsize=(8,6))
     
     for field in fields:
 
@@ -92,7 +127,7 @@ def estimate_B0_from_spectra(combined_directory : Path, fields : list, particle 
         mk = "o" if "Bz" in field else "x" if "Ex" in field else "+"
 
         ogs = originalB0s[field]
-        recs = recoveredB0s[field]
+        recs = recoveredB0s_hybrid[field]
         absErrors = np.abs(np.array(recs) - np.array(ogs))
         squared_errors = (np.array(recs) - np.array(ogs))**2
         
@@ -100,16 +135,16 @@ def estimate_B0_from_spectra(combined_directory : Path, fields : list, particle 
         result = linregress(ogs, recs)
         print(f"Plotting predictions vs true values for {field}")
         print(f"{field}: B0 r2 = {result.rvalue**2:.3f}, S.E. = {result.stderr:.3f}, rmse = {root_mean_squared_error(ogs, recs)}")
-        threshold = 0.25
-        print(f"{field}: {sum(v > threshold for v in absErrors)}/{len(absErrors)} predictions are outside of {threshold}T.")
+        threshold = 0.2
+        print(f"{field}: {sum(v <= threshold for v in absErrors)}/{len(absErrors)} predictions are within {threshold}T.")
         
         # plt.title(f"{field}: B0\n(r2 = {result.rvalue**2:.3f}, S.E. = {result.stderr:.3f})")
         plt.scatter(ogs, recs, color = colour, alpha = 0.9, marker = mk, s = 100, label = f"{eu.fieldNameToText(field)}")
         sortB0 = sorted(ogs)
         
     plt.plot(sortB0, sortB0, color = "black", alpha = 0.9, linestyle = "dashed", label = "ideal prediction")
-    plt.xlabel("Original B0 [T]")
-    plt.ylabel("Recovered B0 [T]")
+    plt.xlabel(r"Original $B_0$ [T]")
+    plt.ylabel(r"Recovered $B_0$ [T]")
     plt.grid()
     plt.legend()
     plt.tight_layout()

@@ -263,6 +263,10 @@ fieldNameToText_dict = {
     "/Electric_Field_Ey/power/powerByFrequency_ICEmetric_harmonicPeakMeanRatio" : "Ey: harm. peak:mean pwr",
     "Electric_Field_Ey/power/powerByFrequency_ICEmetric_harmonicPeakMeanRatio" : "Ey: harm. peak:mean pwr",
 
+    "Magnetic_Field_Bz/power/frequencyPowerSpectrum" : r"$\delta B_z$",
+    "Electric_Field_Ex/power/frequencyPowerSpectrum" : r"$\delta E_x$",
+    "Electric_Field_Ey/power/frequencyPowerSpectrum" : r"$\delta E_y$",
+
     "Magnetic_Field_Bz" : r"$B_z$",
     "/Magnetic_Field_Bz" : r"$B_z$",
     "Electric_Field_Ex" : r"$E_x$",
@@ -338,6 +342,12 @@ fieldNameToUnit_dict = {
     "Energy/ICEmetric_energyTransfer" : "% original F.I.",
 }
 
+algorithmNameShort_dict = {
+    "aeon.RandomIntervalSpectralEnsembleRegressor" : "RISERegressor",
+    "aeon.KNeighborsTimeSeriesRegressor" : "KNNRegressor",
+    # "aeon.MultiRockey" : "aeon.RISERegressor",
+}
+
 def fieldNameToText(name : str) -> str:
     if name in fieldNameToText_dict:
         return fieldNameToText_dict[name]
@@ -365,6 +375,13 @@ def fieldNameToUnit(name : str) -> str:
     if name.strip('/') in fieldNameToUnit_dict:
         return fieldNameToUnit_dict[name.strip('/')]
     return ""
+
+def algorithmNameToShort(name : str) -> str:
+    if name in algorithmNameShort_dict:
+        return algorithmNameShort_dict[name]
+    if name.strip('/') in algorithmNameShort_dict:
+        return algorithmNameShort_dict[name.strip('/')]
+    return name.strip("aeon.")
 
 def correlate_and_plot_iciness_vs_baseline(
         iciness_by_metric : dict, 
