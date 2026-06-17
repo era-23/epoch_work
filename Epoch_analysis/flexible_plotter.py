@@ -363,11 +363,12 @@ def dispersion_relations_for_papers(
 
 def energy_plots_for_papers(
         folder : Path, 
+        outputFolder : Path = None,
         maxTime : float = None,
         displayPlots : bool = True,
         doLog : bool = False,
-        noTitle : bool = True,
-        equateAxes : bool = True,
+        noTitle : bool = False,
+        equateAxes : bool = False,
         compareTracesBeta : bool = False
 ):
     plt.rcParams.update({'axes.titlesize': 32.0})
@@ -376,7 +377,7 @@ def energy_plots_for_papers(
     plt.rcParams.update({'ytick.labelsize': 28.0})
     plt.rcParams.update({'legend.fontsize': 20.0})
 
-    angles = glob.glob(str(folder / "data"/ "9*"))
+    angles = glob.glob(str(folder / "9*"))
     upperBound = float("-inf")
     lowerBound = float("inf")
     energyTraces = {}
@@ -393,7 +394,7 @@ def energy_plots_for_papers(
     for angle in angles:
         
         # Get simulation stats files
-        simFiles = glob.glob(str(Path(angle) / "*_stats.nc"))
+        simFiles = glob.glob(str(Path(angle) / "data" / "*_stats.nc"))
 
         for s in simFiles:
             stats = xr.open_datatree(
@@ -425,7 +426,7 @@ def energy_plots_for_papers(
     for statsFile, tracesByField in energyTraces.items():
         
         simNumber = Path(statsFile).name.split("_")[1]
-        angle = Path(statsFile).parent.name
+        angle = Path(statsFile).parent.parent.name
 
         if compareTracesBeta:
             sameSim = [s for s in energyTraces.keys() if f"run_{simNumber}" in s and f"data/{angle}/" not in s][0]
@@ -434,7 +435,7 @@ def energy_plots_for_papers(
             sameAngleTraces = energyTraces[sameAngle]
 
         # Initialise plotting
-        fig, ax = plt.subplots(figsize=(12, 8))
+        fig, ax = plt.subplots(figsize=(15, 8))
         filename = Path(f"run_{simNumber}_angle_{angle}_percentage_energy_change.png")
         totalDeltaED = np.zeros_like(tracesByField["/Energy/backgroundIonMeanEnergyDensity"])
         
@@ -460,9 +461,10 @@ def energy_plots_for_papers(
             ax.set_yscale("symlog")
         ax.grid()
         if not noTitle:
-            ax.set_title(f"Run {simNumber} Angle {angle}: Percentage change in ED relative to fast ion energy")
+            ax.set_title(f"Run {simNumber} Angle {angle}: Change in ED relative to initial FI energy")
         fig.tight_layout()
-        fig.savefig(folder / filename)
+        if outputFolder is not None:
+            fig.savefig(outputFolder / filename)
         if displayPlots:
             plt.show()
         plt.close("all")
@@ -758,7 +760,7 @@ if __name__ == "__main__":
     if args.dispersion:
         dispersion_relations_for_papers(args.dataFolder, args.outputFolder, args.sims[0], field=args.fields[0], maxK=args.maxK, maxW=args.maxW)
     if args.energy:
-        energy_plots_for_papers(args.dataFolder)
+        energy_plots_for_papers(args.dataFolder, args.outputFolder)
     if args.cottrell:
         plot_cottrell_regression(args.dataFile)
     if args.predictions:
