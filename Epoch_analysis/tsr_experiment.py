@@ -119,6 +119,16 @@ def cottrell_data_plots(
     min_l = np.min(spec_lengths)
     print(f"Max spec length: {np.max(spec_lengths)} min spec length: {min_l}")
 
+    # Resample short traces if needed
+    for field in inputSpectraNames:
+        if len(set(spec_lengths)) > 1: # All elements not equal
+            for i in range(len(spec_lengths)):
+                if len(inputs[field][i]) < np.max(spec_lengths):
+                    trace = inputs[field][i]
+                    resamp_series, resamp_coords = ml_utils.resample_series(trace, inputs[f"{field}_denorm_coords"][i], np.max(spec_lengths))
+                    inputs[field][i] = resamp_series
+                    inputs[f"{field}_denorm_coords"][i] = resamp_coords
+
     # Get Cottrell data
     cottrell_data = pd.read_csv(cottrellDatapath)
     max_frequency = float((cottrell_data["Frequency (MHz)"].max() * u.MHz).to(u.Hz).value)
@@ -180,8 +190,8 @@ def cottrell_data_plots(
             # specs[i] = scaler_01.fit_transform((10.0*np.log10(specs[i])).reshape(-1, 1)).flatten()
             ##### Scale 0-1
         
-        global_min = np.min([np.min(s) for s in specs])
-        # global_min = np.float64(5E-13)
+        # global_min = np.min([np.min(s) for s in specs])
+        global_min = np.float64(2.2308287782833357e-12)
         print(f"Global minimum : {global_min}")
         specs = 10.0 * np.log10(specs / global_min)
         # specs = np.log10(specs)
@@ -226,7 +236,7 @@ def cottrell_data_plots(
     plt.rc('axes', labelsize=BIGGER_SIZE)    # fontsize of the x and y labels
     plt.rc('xtick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
     plt.rc('ytick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
-    plt.rc('legend', fontsize=14)    # legend fontsize
+    plt.rc('legend', fontsize=18)    # legend fontsize
     plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
 
     ## For plotting Cottrell data
@@ -234,24 +244,27 @@ def cottrell_data_plots(
     max_freq = np.max(equally_spaced_freqs)
     gyro_harmonics = np.arange(int(max_freq/alpha_gyroFreq))[1:] * alpha_gyroFreq
     jet_idx = sim_id_to_indexNumber["137"]
+    jet2_idx = sim_id_to_indexNumber["137zLong1xBF"]
     # jet2_idx = sim_id_to_indexNumber["137z2"]
-    varyBf2_idx = sim_id_to_indexNumber["137zbf2"]
-    varyBf4_idx = sim_id_to_indexNumber["137zbf4"]
-    varyBf8_idx = sim_id_to_indexNumber["137zbf8"]
-    varyBf10_idx = sim_id_to_indexNumber["137zbf10"]
-    varyBf16_idx = sim_id_to_indexNumber["137zbf16"]
+    # varyBf2_idx = sim_id_to_indexNumber["137zbf2"]
+    varyBf2_idx = sim_id_to_indexNumber["137zLong2xBF"]
+    # varyBf4_idx = sim_id_to_indexNumber["137zbf4"]
+    varyBf4_idx = sim_id_to_indexNumber["137zLong4xBF"]
+    # varyBf8_idx = sim_id_to_indexNumber["137zbf8"]
+    # varyBf10_idx = sim_id_to_indexNumber["137zbf10"]
+    # varyBf16_idx = sim_id_to_indexNumber["137zbf16"]
     # varyB0_idx = sim_id_to_indexNumber["137zB0"]
     # varyBf_idx = sim_id_to_indexNumber["137zbf10"]
     # varyDs_idx = sim_id_to_indexNumber["137zd"]
     # varyPc_idx = sim_id_to_indexNumber["137zp"]
     sf = 1.0
     identical_JET_data = train_x[jet_idx][0] * sf
-    # identical_JET_data_2 = train_x[jet2_idx][0] * sf
+    identical_JET_data_2 = train_x[jet2_idx][0] * sf
     varyBf2_data = train_x[varyBf2_idx][0] * sf
     varyBf4_data = train_x[varyBf4_idx][0] * sf
-    varyBf8_data = train_x[varyBf8_idx][0] * sf
-    varyBf10_data = train_x[varyBf10_idx][0] * sf
-    varyBf16_data = train_x[varyBf16_idx][0] * sf
+    # varyBf8_data = train_x[varyBf8_idx][0] * sf
+    # varyBf10_data = train_x[varyBf10_idx][0] * sf
+    # varyBf16_data = train_x[varyBf16_idx][0] * sf
     # varyB0_data = train_x[varyB0_idx][0] * sf
     # varyBf_data = train_x[varyBf_idx][0] * sf
     # varyDs_data = train_x[varyDs_idx][0] * sf
@@ -264,14 +277,14 @@ def cottrell_data_plots(
     # varyPc_data = scaler_01.fit_transform(np.log10(train_x[varyPc_idx][0]).reshape(-1,1)).flatten()
     # Debug
     y_min = 0.0
-    y_max = 90.0
+    y_max = 65.0
     print(f"Identical JET parameters: B0: {outputs['B0strength'][jet_idx]}, beam frac: {outputs['beamFraction'][jet_idx]}, density: {outputs['backgroundDensity'][jet_idx]}, pitch: {outputs['pitch'][jet_idx]}")
-    # print(f"Identical JET parameters, 2nd seed: B0: {outputs['B0strength'][jet_idx]}, beam frac: {outputs['beamFraction'][jet_idx]}, density: {outputs['backgroundDensity'][jet_idx]}, pitch: {outputs['pitch'][jet_idx]}")
-    print(f"2x beamFrac parameters:   B0: {outputs['B0strength'][varyBf2_idx]}, beam frac: {outputs['beamFraction'][varyBf2_idx]}, density: {outputs['backgroundDensity'][varyBf2_idx]}, pitch: {outputs['pitch'][varyBf2_idx]}")
-    print(f"4x beamFrac parameters:   B0: {outputs['B0strength'][varyBf4_idx]}, beam frac: {outputs['beamFraction'][varyBf4_idx]}, density: {outputs['backgroundDensity'][varyBf4_idx]}, pitch: {outputs['pitch'][varyBf4_idx]}")
-    print(f"8x beamFrac parameters:   B0: {outputs['B0strength'][varyBf8_idx]}, beam frac: {outputs['beamFraction'][varyBf8_idx]}, density: {outputs['backgroundDensity'][varyBf8_idx]}, pitch: {outputs['pitch'][varyBf8_idx]}")
-    print(f"10x beamFrac parameters:  B0: {outputs['B0strength'][varyBf10_idx]}, beam frac: {outputs['beamFraction'][varyBf10_idx]}, density: {outputs['backgroundDensity'][varyBf10_idx]}, pitch: {outputs['pitch'][varyBf10_idx]}")
-    print(f"16x beamFrac parameters:  B0: {outputs['B0strength'][varyBf16_idx]}, beam frac: {outputs['beamFraction'][varyBf16_idx]}, density: {outputs['backgroundDensity'][varyBf16_idx]}, pitch: {outputs['pitch'][varyBf16_idx]}")
+    print(f"Identical JET parameters, long time: B0: {outputs['B0strength'][jet2_idx]}, beam frac: {outputs['beamFraction'][jet2_idx]}, density: {outputs['backgroundDensity'][jet2_idx]}, pitch: {outputs['pitch'][jet2_idx]}")
+    print(f"2x beamFrac parameters, long time:   B0: {outputs['B0strength'][varyBf2_idx]}, beam frac: {outputs['beamFraction'][varyBf2_idx]}, density: {outputs['backgroundDensity'][varyBf2_idx]}, pitch: {outputs['pitch'][varyBf2_idx]}")
+    print(f"4x beamFrac parameters, long time:   B0: {outputs['B0strength'][varyBf4_idx]}, beam frac: {outputs['beamFraction'][varyBf4_idx]}, density: {outputs['backgroundDensity'][varyBf4_idx]}, pitch: {outputs['pitch'][varyBf4_idx]}")
+    # print(f"8x beamFrac parameters:   B0: {outputs['B0strength'][varyBf8_idx]}, beam frac: {outputs['beamFraction'][varyBf8_idx]}, density: {outputs['backgroundDensity'][varyBf8_idx]}, pitch: {outputs['pitch'][varyBf8_idx]}")
+    # print(f"10x beamFrac parameters:  B0: {outputs['B0strength'][varyBf10_idx]}, beam frac: {outputs['beamFraction'][varyBf10_idx]}, density: {outputs['backgroundDensity'][varyBf10_idx]}, pitch: {outputs['pitch'][varyBf10_idx]}")
+    # print(f"16x beamFrac parameters:  B0: {outputs['B0strength'][varyBf16_idx]}, beam frac: {outputs['beamFraction'][varyBf16_idx]}, density: {outputs['backgroundDensity'][varyBf16_idx]}, pitch: {outputs['pitch'][varyBf16_idx]}")
 
     # print(f"Vary B0 parameters:       B0: {outputs['B0strength'][varyB0_idx]}, beam frac: {outputs['beamFraction'][varyB0_idx]}, density: {outputs['backgroundDensity'][varyB0_idx]}, pitch: {outputs['pitch'][varyB0_idx]}")
     # print(f"Vary beamFrac parameters: B0: {outputs['B0strength'][varyBf_idx]}, beam frac: {outputs['beamFraction'][varyBf_idx]}, density: {outputs['backgroundDensity'][varyBf_idx]}, pitch: {outputs['pitch'][varyBf_idx]}")
@@ -279,21 +292,21 @@ def cottrell_data_plots(
     # print(f"Vary pitch parameters:    B0: {outputs['B0strength'][varyPc_idx]}, beam frac: {outputs['beamFraction'][varyPc_idx]}, density: {outputs['backgroundDensity'][varyPc_idx]}, pitch: {outputs['pitch'][varyPc_idx]}")
     plt.figure(figsize=(11, 9))
     plt.plot(equally_spaced_freqs, test_x[0][0], color = "black", linestyle = "dashed", label = r"JET pulse #26148")
-    plt.plot(equally_spaced_freqs, identical_JET_data, color = "tab:red", label = r"PIC, JET #26148 parameters")
-    plt.plot(equally_spaced_freqs, varyBf2_data, color = "tab:blue", label = r"PIC, #26148 with $2 \times n_\alpha/n_e$")
-    plt.plot(equally_spaced_freqs, varyBf4_data, color = "tab:orange", label = r"PIC, #26148 with $4 \times n_\alpha/n_e$")
-    plt.plot(equally_spaced_freqs, varyBf8_data, color = "tab:green", label = r"PIC, #26148 with $8 \times n_\alpha/n_e$")
-    plt.plot(equally_spaced_freqs, varyBf10_data, color = "tab:purple", label = r"PIC, #26148 with $10 \times n_\alpha/n_e$")
-    plt.plot(equally_spaced_freqs, varyBf16_data, color = "tab:brown", label = r"PIC, #26148 with $16 \times n_\alpha/n_e$")
+    plt.plot(equally_spaced_freqs, identical_JET_data, color = "tab:red", label = r"PIC, JET #26148 parameters ($16\tau_{c,\alpha}$)")
+    plt.plot(equally_spaced_freqs, identical_JET_data_2, color = "tab:blue", label = r"PIC, JET #26148 parameters ($64\tau_{c,\alpha}$)")
+    # plt.plot(equally_spaced_freqs, varyBf2_data, color = "tab:blue", label = r"PIC, #26148 with $2 \times n_\alpha/n_e$ (long)")
+    # plt.plot(equally_spaced_freqs, varyBf4_data, color = "tab:orange", label = r"PIC, #26148 with $4 \times n_\alpha/n_e$ (long)")
+    # plt.plot(equally_spaced_freqs, varyBf8_data, color = "tab:green", label = r"PIC, #26148 with $8 \times n_\alpha/n_e$")
+    # plt.plot(equally_spaced_freqs, varyBf10_data, color = "tab:purple", label = r"PIC, #26148 with $10 \times n_\alpha/n_e$")
+    # plt.plot(equally_spaced_freqs, varyBf16_data, color = "tab:brown", label = r"PIC, #26148 with $16 \times n_\alpha/n_e$")
     # plt.plot(equally_spaced_freqs, varyB0_data, color = "tab:blue", label = r"PIC, #26148 with $2 \times B_0$")
     # plt.plot(equally_spaced_freqs, varyDs_data, color = "tab:orange", label = r"PIC, #26148 with $2 \times n_e$")
     # plt.plot(equally_spaced_freqs, varyPc_data, color = "tab:green", label = r"PIC, #26148 with $2 \times \lambda$")
     # plt.plot(equally_spaced_freqs, varyBf_data, color = "tab:purple", label = r"PIC, #26148 with $2 \times n_\alpha/n_e$")
-    # plt.plot(equally_spaced_freqs, identical_JET_data_2, color = "tab:blue", linestyle = "dashdot", label = r"PIC, JET #26148 parameters, new random seed")
     plt.vlines(gyro_harmonics, ymin = y_min, ymax = y_max, colors="black", linestyles="dotted", alpha=0.8, label = r"$\Omega_{c,\alpha}$ harmonics")
     plt.ylabel(r"$\delta B_z$ [dB]")
     plt.xlabel("Frequency [MHz]")
-    plt.grid(axis="y")
+    plt.grid()
     plt.legend(loc="upper left")
     plt.ylim(y_min, y_max)
     plt.xlim(0.0, 190.0)

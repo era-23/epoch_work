@@ -261,11 +261,14 @@ def run_energy_analysis(
     fig, ax = plt.subplots(figsize=(12, 8))
     filename = Path(f"{simName}_percentage_energy_change.png")
 
+    timeCoords = np.nan_to_num(timeCoords)
+
     # Iterate deltas
     for variable, deltaED in deltaEnergies.items():
         
         # Smooth curve
         # smoothDeltaED = make_smoothing_spline(timeCoords, deltaED, lam=1.0)
+        deltaED = np.nan_to_num(deltaED)
         smoothDeltaED = make_smoothing_spline(timeCoords, deltaED, lam = 0.01)
         smoothDeltaData = smoothDeltaED(timeCoords)
         
