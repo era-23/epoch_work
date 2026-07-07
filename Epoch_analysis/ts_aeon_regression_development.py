@@ -316,7 +316,8 @@ def regress(
 
             # CV Folds
             all_test_indices = []
-            all_R2s = []
+            all_train_R2s = []
+            all_test_R2s = []
             all_test_points = []
             all_predictions = []
             all_test_points_denormed = []
@@ -370,8 +371,11 @@ def regress(
                 print(f"    Predictions:  {predictions} (normalised), {preds_denormed} (original)")
                 print(f"    Ground truth: {test_y} (normalised), {test_y_denormed} (original)")
                 score = tsr.score(test_x, test_y, metric='r2')
-                all_R2s.append(score)
+                all_test_R2s.append(score)
                 skl_rmse = root_mean_squared_error(test_y, predictions)
+                training_r2 = tsr.score(train_x, train_y, metric='r2')
+                all_train_R2s.append(training_r2)
+                print(f"    training r2:  {training_r2}")
                 print(f"    knn r2:       {score}")
                 print(f"    sklearn rmse: {skl_rmse} (actuals S.D.: {np.std(test_y)})")
 
@@ -401,14 +405,19 @@ def regress(
                     allPredictionsRecord.append(predRecord)
 
             rmse, rmse_var, rmse_se = ml_utils.root_mean_squared_error(all_predictions, all_test_points)
-            r2 = np.mean(all_R2s)
-            r2_sem = sem(all_R2s)
-            r2_var = np.var(all_R2s)
+            r2 = np.mean(all_test_R2s)
+            r2_sem = sem(all_test_R2s)
+            r2_var = np.var(all_test_R2s)
 
             if math.isnan(r2):
                 # Recalculate based on r2 over folds (primarily for LOOCV)
                 r2 = r2_score(all_test_points, all_predictions)
-            summary_str = f"{output_field} -- {algorithm}: Mean r2 = {r2:.5f}+-{r2_sem:.5f}, mean RMSE: {rmse:.5f}+-{rmse_se:.5f}"
+
+            mean_training_r2 = np.mean(all_train_R2s)
+            train_r2_sem = sem(all_train_R2s)
+            train_r2_var = np.var(all_train_R2s)
+            
+            summary_str = f"{output_field} -- {algorithm}: Mean test r2 = {r2:.5f}+-{r2_sem:.5f}, mean test RMSE = {rmse:.5f}+-{rmse_se:.5f}, mean train r2 = {mean_training_r2}+-{train_r2_sem}"
             print("--------------------------------------------------------------------------------------------------------------------------")
             print(summary_str)
             logger.info(summary_str)
@@ -427,6 +436,9 @@ def regress(
             mape_all = mean_absolute_percentage_error(y_true=all_test_points, y_pred=all_predictions, multioutput="raw_values")
             result.cvMAPE_var = np.var(mape_all)
             result.cvMAPE_stderr = sem(mape_all)
+            result.trainR2_mean = mean_training_r2
+            result.trainR2_stderr = train_r2_sem
+            result.trainR2_var = train_r2_var
 
             battery.results.append(result)
 

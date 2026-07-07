@@ -152,6 +152,9 @@ class TSRResult:
     cvMAPE_mean : float = 0.0
     cvMAPE_var : float = 0.0
     cvMAPE_stderr : float = 0.0
+    trainR2_mean : float = 0.0
+    trainR2_var : float = 0.0
+    trainR2_stderr : float = 0.0
 
 @dataclass
 class TSRPrediction:
@@ -291,7 +294,7 @@ def get_algorithm(name, nThreads = 1, **kwargs):
     # AEON
     # Unequal length data series
         case "aeon.Catch22Regressor":
-            return aeon_feature.Catch22Regressor(n_jobs=nThreads)
+            return aeon_feature.Catch22Regressor(n_jobs=nThreads, catch24=True)
         case "aeon.DummyRegressor":
             return aeon_reg.DummyRegressor()
         case "aeon.KNeighborsTimeSeriesRegressor":

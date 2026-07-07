@@ -10,6 +10,8 @@ from plasmapy.formulary import lengths as ppl
 from plasmapy.formulary import speeds as pps
 from plasmapy.formulary import frequencies as ppf
 from astropy import units as u
+from sdf_xarray import SDFPreprocess
+import xarray as xr
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -340,11 +342,23 @@ def calculate_number_of_particle_pushes(
 
     return num_particle_pushes.value
 
+def check_sdf_files(directory : Path):
+    # Read dataset
+    ds = xr.open_mfdataset(
+        str(directory / "*.sdf"),
+        data_vars='minimal', 
+        coords='minimal', 
+        compat='override', 
+        preprocess=SDFPreprocess()
+    )
+
+    print(ds["Derived_Average_Particle_Energy_deuteron"][1].head().values)
+
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser("parser")
     parser.add_argument(
-        "--file",
+        "--dir",
         action="store",
         help="Directory containing input deck.",
         required = True,
@@ -352,5 +366,6 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    plot_particle_push_scaling(args.file)
+    # plot_particle_push_scaling(args.file)
     # debug_input_deck(args.dir)
+    check_sdf_files(args.dir)

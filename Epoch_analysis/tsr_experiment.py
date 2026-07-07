@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 import csv
 from matplotlib import ticker
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import RidgeCV
 import ml_utils
 import matplotlib.pyplot as plt
 import numpy as np
@@ -1024,13 +1026,17 @@ def regress_scanArgs(
         outputFields : list,
         logFields : list,
         algorithms : list,
+        includeFreqs : bool = True,
         normalise : bool = True,
-        iceMetricsToUse : list = None,
+        logInputs : bool = True,
         resultsFilepath : Path = None,
         doPlot : bool = True,
         noTitle : bool = False,
-        hydraTypeArgs : list = [{"n_kernels" : 8, "n_groups" : 64}],
-        mRocketTypeArgs : list = [{"n_kernels" : 10000, "max_dilations_per_kernel" : 32}],
+        hydraTypeArgs : list = [{"n_kernels" : 8, "n_groups" : 64}, {"n_kernels" : 8, "n_groups" : 32}, {"n_kernels" : 8, "n_groups" : 16}],
+        mRocketTypeArgs : list = [{"n_kernels" : 10000}, {"n_kernels" : 5000}, {"n_kernels" : 2000}, {"n_kernels" : 1000}],
+        rocketTypeArgs : list = [],
+        rdstTypeArgs : list = [{"max_shapelets" : 10000}, {"max_shapelets" : 5000}, {"max_shapelets" : 2000}, {"max_shapelets" : 1000}, {"alpha_similarity" : 0.6}, {"alpha_similarity" : 0.7}, {"alpha_similarity" : 0.8}],
+        c22TypeArgs : list = [],
         nThreads : int = 1
 ):
     # Initialise results objects
@@ -1049,7 +1055,7 @@ def regress_scanArgs(
 
     # Input data
     inputs = {name : [] for name in inputSpectraNames}
-    inputs = ml_utils.read_data(data_files, inputs, with_names = True, with_coords = True, with_iciness = False)
+    inputs = ml_utils.read_data(data_files, inputs, with_names = True, with_coords = True, denorm_coords = True)
     battery.inputSpectra = np.array(inputSpectraNames)
 
     # Output data
@@ -1072,12 +1078,21 @@ def regress_scanArgs(
     inputData = []
     for field in inputSpectraNames:
         specs = inputs[field]
+        coords = inputs[f"{field}_denorm_coords"]
         for i in range(len(specs)):
             if len(specs[i]) > min_l:
-                truncd_series, truncd_coords = ml_utils.truncate_series(specs[i], inputs[f"{field}_coords"][i], max_common_coord)
-                resamp_series, _ = ml_utils.resample_series(truncd_series, truncd_coords, min_l, f"{field.split('/')[0]}_run_{inputs['sim_ids'][i]}", directory / "spectra_homogenisation/")
+                truncd_series, truncd_coords = ml_utils.truncate_series(specs[i], inputs[f"{field}_denorm_coords"][i], max_common_coord)
+                resamp_series, resamp_coords = ml_utils.resample_series(truncd_series, truncd_coords, min_l, f"{field.split('/')[0]}_run_{inputs['sim_ids'][i]}", directory / "spectra_homogenisation/")
                 specs[i] = resamp_series
-        inputData.append(specs) 
+                coords[i] = resamp_coords
+        spec_data = specs
+        if logInputs:
+            for i in range(len(spec_data)):
+                trace = spec_data[i] 
+                spec_data[i] = [np.log10(trace[1]) if trace[1] != 0.0 else 0.0] + np.log10(trace[1:]).tolist()
+        inputData.append(spec_data)
+    if includeFreqs:
+        inputData.append(coords) # Append only the last set of coordinates (they should be the same for all fields)
 
     # Reshape into 3D numpy array of shape (n_cases, n_channels, n_timepoints)
     inputSpectra = np.swapaxes(np.array(inputData), 0, 1)
@@ -1136,8 +1151,27 @@ def regress_scanArgs(
 
             if algorithm in ["aeon.HydraRegressor", "aeon.MultiRocketHydraRegressor"]:
                 algoArgs = hydraTypeArgs
-            else:
+            elif algorithm == "aeon.MultiRocketRegressor":
                 algoArgs = mRocketTypeArgs
+            elif algorithm == "aeon.RocketRegressor":
+                algoArgs = rocketTypeArgs
+                # Try higher alpha constraints to heavily penalise large coefficients
+                strong_ridge = RidgeCV(alphas=[10.0, 100.0, 1000.0])
+                algoArgs.append({"estimator" : strong_ridge})
+            elif algorithm == "aeon.RDSTRegressor":
+                algoArgs = rdstTypeArgs
+            elif algorithm == "aeon.Catch22Regressor":
+                algoArgs = c22TypeArgs
+                strong_ridge = RidgeCV(alphas=[10.0, 100.0, 1000.0])
+                shallow_forest = RandomForestRegressor(
+                    n_estimators=150,
+                    max_depth=3,
+                    min_samples_leaf=8,
+                    max_features="sqrt", # Only look at ~4-5 features per split
+                    random_state=42
+                )
+                algoArgs.append({"estimator" : strong_ridge})
+                algoArgs.append({"estimator" : shallow_forest})
 
             for argSet in algoArgs:
 
@@ -1154,6 +1188,8 @@ def regress_scanArgs(
                 # CV Folds
                 all_test_indices = []
                 all_test_points = []
+                all_train_R2s = []
+                all_test_R2s = []
                 all_predictions = []
                 all_test_points_denormed = []
                 all_predictions_denormed = []
@@ -1170,13 +1206,12 @@ def regress_scanArgs(
                     test_y = output_values[test]
 
                     # Renormalise for each split
-                    if normalise:
-                        train_y, scaler = ml_utils.normalise_data(train_y)
-                        test_y, _ = ml_utils.normalise_data(test_y, scaler = scaler)
-                        # print(f"scaler mean: {scaler.mean_}")
-                        # print(f"1.0 in normalised RMSE units is {scaler.inverse_transform([[1.0]])} in original {output_field} units (may be logged).")
+                    train_y, scaler = ml_utils.normalise_data(train_y)
+                    test_y, _ = ml_utils.normalise_data(test_y, scaler = scaler)
+                    print(f"scaler mean: {scaler.mean_}")
+                    print(f"1.0 in normalised RMSE units is {scaler.inverse_transform([[1.0]])} in original {output_field} units (may be logged).")
 
-                    # print("    Training model....")
+                    print("    Training model....")
                     # Fit
                     tsr.fit(train_x, train_y)
                     fold_end_training_time = time.process_time_ns()
@@ -1206,6 +1241,11 @@ def regress_scanArgs(
                         test_y_denormed = 10.0**test_y_denormed
                     print(f"    Predictions:  {predictions} (normalised), {preds_denormed} (original)")
                     print(f"    Ground truth: {test_y} (normalised), {test_y_denormed} (original)")
+                    score = tsr.score(test_x, test_y, metric='r2')
+                    all_test_R2s.append(score)
+                    skl_rmse = root_mean_squared_error(test_y, predictions)
+                    training_r2 = tsr.score(train_x, train_y, metric='r2')
+                    all_train_R2s.append(training_r2)
                     # print(f"    knn r2:       {score}")
                     # print(f"    sklearn rmse: {skl_rmse} (actuals S.D.: {np.std(test_y)})")
 
@@ -1235,12 +1275,25 @@ def regress_scanArgs(
                         allPredictionsRecord.append(predRecord)
 
                 rmse, rmse_var, rmse_se = ml_utils.root_mean_squared_error(all_predictions, all_test_points)
-                r2 = r2_score(all_test_points, all_predictions)
+                r2 = np.mean(all_test_R2s)
+                r2_sem = sem(all_test_R2s)
+                r2_var = np.var(all_test_R2s)
+
+                if math.isnan(r2):
+                    # Recalculate based on r2 over folds (primarily for LOOCV)
+                    r2 = r2_score(all_test_points, all_predictions)
+
+                mean_training_r2 = np.mean(all_train_R2s)
+                train_r2_sem = sem(all_train_R2s)
+                train_r2_var = np.var(all_train_R2s)
+                
                 summary_str = f"{output_field} -- {algorithm}: Mean r2 = {r2:.5f}, mean RMSE: {rmse:.5f}+-{rmse_se:.5f}"
                 # print("--------------------------------------------------------------------------------------------------------------------------")
                 print(summary_str)
                 print("--------------------------------------------------------------------------------------------------------------------------")
                 result.cvR2_mean = r2
+                result.cvR2_var = r2_var
+                result.cvR2_stderr = r2_sem
                 result.cvRMSE_mean = rmse
                 result.cvRMSE_var = rmse_var
                 result.cvRMSE_stderr = rmse_se
@@ -1252,6 +1305,9 @@ def regress_scanArgs(
                 mape_all = mean_absolute_percentage_error(y_true=all_test_points, y_pred=all_predictions, multioutput="raw_values")
                 result.cvMAPE_var = np.var(mape_all)
                 result.cvMAPE_stderr = sem(mape_all)
+                result.trainR2_mean = mean_training_r2
+                result.trainR2_stderr = train_r2_sem
+                result.trainR2_var = train_r2_var
 
                 battery.results.append(result)
 
@@ -1624,6 +1680,12 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
+        "--scanArgs",
+        action="store_true",
+        help="Run experiments with different Regressor arguments.",
+        required = False
+    )
+    parser.add_argument(
         "--cottrellFilepath",
         action="store",
         help="Filepath of Cottrell 93 data to regress against.",
@@ -1690,30 +1752,31 @@ if __name__ == "__main__":
     #     {"n_kernels" : 10000, "max_dilations_per_kernel" : 96},
     # ]
 
-    # regress_scanArgs(
-    #     directory = args.dir, 
-    #     inputSpectraNames = [
-    #         "Magnetic_Field_Bz/power/powerByFrequency",
-    #         "Electric_Field_Ex/power/powerByFrequency",
-    #         "Electric_Field_Ey/power/powerByFrequency"
-    #     ], 
-    #     outputFields = [
-    #         "B0strength", 
-    #         "pitch", 
-    #         "backgroundDensity", 
-    #         "beamFraction"
-    #     ], 
-    #     logFields = [
-    #         "backgroundDensity", 
-    #         "beamFraction"
-    #     ], 
-    #     algorithms = ["aeon.HydraRegressor", "aeon.RocketRegressor", "aeon.MiniRocketRegressor", "aeon.MultiRocketRegressor", "aeon.MultiRocketHydraRegressor"], 
-    #     resultsFilepath=args.resultsFilepath,
-    #     doPlot=True,
-    #     noTitle=True,
-    #     hydraTypeArgs = hydra_type_nkernels_nGroups,
-    #     mRocketTypeArgs = mRocket_type_nKernels_maxDilations,
-    #     nThreads = args.nThreads)
+    if args.scanArgs:
+        regress_scanArgs(
+            directory = args.dataDir, 
+            inputSpectraNames = [
+                "Magnetic_Field_Bz/power/frequencyPowerSpectrum",
+                "Electric_Field_Ex/power/frequencyPowerSpectrum",
+                "Electric_Field_Ey/power/frequencyPowerSpectrum",
+            ], 
+            outputFields = [
+                "B0strength", 
+                "pitch", 
+                "backgroundDensity", 
+                "beamFraction"
+            ], 
+            logFields = [
+                "backgroundDensity", 
+                "beamFraction"
+            ], 
+            algorithms = args.algorithms, 
+            resultsFilepath=args.resultsFilepath,
+            doPlot=False,
+            noTitle=True,
+            # hydraTypeArgs = hydra_type_nkernels_nGroups,
+            # mRocketTypeArgs = mRocket_type_nKernels_maxDilations,
+            nThreads = args.nThreads)
     
     if args.frequency:
         regress_scanFrequencies(
