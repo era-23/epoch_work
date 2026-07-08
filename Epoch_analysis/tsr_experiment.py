@@ -1032,10 +1032,10 @@ def regress_scanArgs(
         resultsFilepath : Path = None,
         doPlot : bool = True,
         noTitle : bool = False,
-        hydraTypeArgs : list = [{"n_kernels" : 8, "n_groups" : 64}, {"n_kernels" : 8, "n_groups" : 32}, {"n_kernels" : 8, "n_groups" : 16}],
-        mRocketTypeArgs : list = [{"n_kernels" : 10000}, {"n_kernels" : 5000}, {"n_kernels" : 2000}, {"n_kernels" : 1000}],
+        hydraTypeArgs : list = [],
+        mRocketTypeArgs : list = [],
         rocketTypeArgs : list = [],
-        rdstTypeArgs : list = [{"max_shapelets" : 10000}, {"max_shapelets" : 5000}, {"max_shapelets" : 2000}, {"max_shapelets" : 1000}, {"alpha_similarity" : 0.6}, {"alpha_similarity" : 0.7}, {"alpha_similarity" : 0.8}],
+        rdstTypeArgs : list = [],
         c22TypeArgs : list = [],
         nThreads : int = 1
 ):
@@ -1172,6 +1172,8 @@ def regress_scanArgs(
                 )
                 algoArgs.append({"estimator" : strong_ridge})
                 algoArgs.append({"estimator" : shallow_forest})
+            else:
+                algoArgs = [{}]
 
             for argSet in algoArgs:
 
@@ -1311,19 +1313,19 @@ def regress_scanArgs(
 
                 battery.results.append(result)
 
-                if doPlot:
-                    plot_predictions(
-                        algorithm_name = algorithm,
-                        field = output_field,
-                        sim_ids = all_test_indices, 
-                        truth = all_test_points_denormed,
-                        preds = all_predictions_denormed,
-                        r2 = result.cvR2_mean,
-                        rmse = result.cvRMSE_mean,
-                        saveFolder = resultsFilepath.parent / "predictions" / algorithm, 
-                        doLog = output_field in logFields,
-                        noTitle = noTitle
-                    )
+                # if doPlot:
+                #     plot_predictions(
+                #         algorithm_name = algorithm,
+                #         field = output_field,
+                #         sim_ids = all_test_indices, 
+                #         truth = all_test_points_denormed,
+                #         preds = all_predictions_denormed,
+                #         r2 = result.cvR2_mean,
+                #         rmse = result.cvRMSE_mean,
+                #         saveFolder = resultsFilepath.parent / "predictions" / algorithm, 
+                #         doLog = output_field in logFields,
+                #         noTitle = noTitle
+                #     )
     
     clock_time_end = time.time()
     cv_time_end = time.process_time_ns()
@@ -1342,10 +1344,10 @@ def regress_scanArgs(
 
     # Write results and all predictions
     ml_utils.write_ML_result_to_file(battery, resultsFilepath)
-    if len(allPredictionsRecord) > 0:
-        with open(resultsFilepath.parent / "predictions" / f"{resultsFilepath.name.replace('.json', '').replace('.', '')}_predictions.csv", "w") as f:
-            w = DataclassWriter(f, allPredictionsRecord, ml_utils.TSRPrediction)
-            w.write()
+    # if len(allPredictionsRecord) > 0:
+    #     with open(resultsFilepath.parent / "predictions" / f"{resultsFilepath.name.replace('.json', '').replace('.', '')}_predictions.csv", "w") as f:
+    #         w = DataclassWriter(f, allPredictionsRecord, ml_utils.TSRPrediction)
+    #         w.write()
 
 def regress_scanFrequencies(
         dataDirectory : Path,
@@ -1774,8 +1776,11 @@ if __name__ == "__main__":
             resultsFilepath=args.resultsFilepath,
             doPlot=False,
             noTitle=True,
-            # hydraTypeArgs = hydra_type_nkernels_nGroups,
-            # mRocketTypeArgs = mRocket_type_nKernels_maxDilations,
+            hydraTypeArgs = [{"n_kernels" : 8, "n_groups" : 64}, {"n_kernels" : 8, "n_groups" : 32}, {"n_kernels" : 8, "n_groups" : 16}],
+            mRocketTypeArgs = [{"n_kernels" : 10000}, {"n_kernels" : 5000}, {"n_kernels" : 2000}, {"n_kernels" : 1000}],
+            rocketTypeArgs = [],
+            rdstTypeArgs = [{"max_shapelets" : 10000}, {"max_shapelets" : 5000}, {"max_shapelets" : 2000}, {"max_shapelets" : 1000}, {"alpha_similarity" : 0.6}, {"alpha_similarity" : 0.7}, {"alpha_similarity" : 0.8}],
+            c22TypeArgs = [],
             nThreads = args.nThreads)
     
     if args.frequency:
