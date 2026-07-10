@@ -589,6 +589,13 @@ def write_spectral_features_to_csv(csvFile : Path, featureSet : list):
         for instance in featureSet:
             writer.writerow(instance.__dict__)
 
+def is_jsonable(x):
+    try:
+        json.dumps(x)
+        return True
+    except TypeError:
+        return False
+
 def __encode_ML_result_to_JSON_dict(result : GPResults | TSRBattery) -> dict:
     results_dict = dc.asdict(result)
     for name, val in results_dict.items():
@@ -598,6 +605,8 @@ def __encode_ML_result_to_JSON_dict(result : GPResults | TSRBattery) -> dict:
             for name2, val2 in val.items():
                 if isinstance(val2, np.ndarray):
                     val[name2] = val2.tolist()
+                if not is_jsonable(val[name2]):
+                    val[name2] = type(val[name2]).__name__
     return results_dict
 
 def write_ML_result_to_file(result : GPResults | TSRBattery, filepath : Path):

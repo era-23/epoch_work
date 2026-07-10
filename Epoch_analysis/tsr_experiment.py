@@ -1044,11 +1044,15 @@ def regress_scanArgs(
     allPredictionsRecord = []
     battery.package = "Aeon"
 
-    if directory.name != "data":
-        data_dir = directory / "data"
-    else:
-        data_dir = directory
+
+    data_dir = directory
     data_files = glob.glob(str(data_dir / "*.nc")) 
+    if len(data_files) < 1:
+        data_dir = directory / "data"
+        data_files = glob.glob(str(data_dir / "*.nc"))
+        if len(data_files) < 1:
+            print(f"No files found in {directory} or {directory / 'data'}")
+            raise RuntimeError(f"No files found in {directory} or {directory / 'data'}")
     battery.directory = str(directory.resolve())
     battery.algorithms = algorithms
     battery.normalised = normalise
@@ -1183,9 +1187,13 @@ def regress_scanArgs(
                 result = ml_utils.TSRResult()
                 result.output = output_field
                 result.algorithm = algorithm
-                result.algorithmArgs = argSet
                 
                 tsr = ml_utils.get_algorithm(algorithm, nThreads, **argSet)
+
+                for argName, argVal in argSet.items():
+                    if not ml_utils.is_jsonable(argVal):
+                        argSet[argName] = type(argVal).__name__
+                result.algorithmArgs = argSet
 
                 # CV Folds
                 all_test_indices = []
@@ -1243,8 +1251,8 @@ def regress_scanArgs(
                         test_y_denormed = 10.0**test_y_denormed
                     print(f"    Predictions:  {predictions} (normalised), {preds_denormed} (original)")
                     print(f"    Ground truth: {test_y} (normalised), {test_y_denormed} (original)")
-                    score = tsr.score(test_x, test_y, metric='r2')
-                    all_test_R2s.append(score)
+                    # score = tsr.score(test_x, test_y, metric='r2')
+                    # all_test_R2s.append(score)
                     skl_rmse = root_mean_squared_error(test_y, predictions)
                     training_r2 = tsr.score(train_x, train_y, metric='r2')
                     all_train_R2s.append(training_r2)
@@ -1277,13 +1285,7 @@ def regress_scanArgs(
                         allPredictionsRecord.append(predRecord)
 
                 rmse, rmse_var, rmse_se = ml_utils.root_mean_squared_error(all_predictions, all_test_points)
-                r2 = np.mean(all_test_R2s)
-                r2_sem = sem(all_test_R2s)
-                r2_var = np.var(all_test_R2s)
-
-                if math.isnan(r2):
-                    # Recalculate based on r2 over folds (primarily for LOOCV)
-                    r2 = r2_score(all_test_points, all_predictions)
+                r2 = r2_score(all_test_points, all_predictions)
 
                 mean_training_r2 = np.mean(all_train_R2s)
                 train_r2_sem = sem(all_train_R2s)
@@ -1294,8 +1296,6 @@ def regress_scanArgs(
                 print(summary_str)
                 print("--------------------------------------------------------------------------------------------------------------------------")
                 result.cvR2_mean = r2
-                result.cvR2_var = r2_var
-                result.cvR2_stderr = r2_sem
                 result.cvRMSE_mean = rmse
                 result.cvRMSE_var = rmse_var
                 result.cvRMSE_stderr = rmse_se
