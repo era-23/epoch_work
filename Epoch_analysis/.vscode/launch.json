@@ -912,7 +912,9 @@
             "args": [
                 "--dir",
                     // "/home/era536/Documents/Epoch/Data/sept_25/JET_test/"
-                    "/home/era536/Documents/Epoch/Data/2026_analysis/jet_analogue/long_beamFracs/patched_1x/sim_output/run_90/"
+                    // "/home/era536/Documents/Epoch/Data/2026_analysis/jet_analogue/long_beamFracs/patched_1x/sim_output/run_90/"
+                    // "/home/era536/Documents/Epoch/Data/2026_analysis/jet_analogue/debugging/halton_fix/run_90/"
+                    "/home/era536/Documents/Epoch/Data/2026_analysis/jet_analogue/debugging/no_dF_fix/run_90/"
             ]
         },
         {

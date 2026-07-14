@@ -352,7 +352,7 @@ def check_sdf_files(directory : Path):
         preprocess=SDFPreprocess()
     )
 
-    print(ds["Derived_Average_Particle_Energy_deuteron"][1].head().values)
+    print(ds["Derived_Average_Particle_Energy_alpha"][9].head().values)
 
 if __name__ == "__main__":
     
