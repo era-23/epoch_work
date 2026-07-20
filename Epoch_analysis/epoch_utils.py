@@ -1667,7 +1667,7 @@ def process_growth_rates(
         tkSpectrum : xr.DataArray,
         fieldRoot : nc.Dataset,
         plotFieldFolder : Path,
-        simFolder : Path,
+        simName : str,
         field : str,
         gammaWindowPctMin : float,
         gammaWindowPctMax : float,
@@ -1688,8 +1688,8 @@ def process_growth_rates(
         gammaPlotFolder = plotFieldFolder / "growth_rates"
         if not os.path.exists(gammaPlotFolder):
             os.mkdir(gammaPlotFolder)
-        plot_growth_rates(tkSpectrum, field, best_pos_gammas, numGrowthRatesToPlot, "peak", saveGrowthRatePlots, displayPlots, noTitle, gammaPlotFolder, simFolder.name, debug)
-        plot_growth_rates(tkSpectrum, field, best_neg_gammas, numGrowthRatesToPlot, "total", saveGrowthRatePlots, displayPlots, noTitle, gammaPlotFolder, simFolder.name, debug)
+        plot_growth_rates(tkSpectrum, field, best_pos_gammas, numGrowthRatesToPlot, "peak", saveGrowthRatePlots, displayPlots, noTitle, gammaPlotFolder, simName, debug)
+        plot_growth_rates(tkSpectrum, field, best_neg_gammas, numGrowthRatesToPlot, "total", saveGrowthRatePlots, displayPlots, noTitle, gammaPlotFolder, simName, debug)
 
     # Positive growth
     posGammaNc = growthRateStatsRoot.groups["positive"]
