@@ -2189,3 +2189,17 @@ def combine_angles(
             combined_xarrayDataset[var_name] += next_dataset[var_name]
 
     return combined_xarrayDataset
+
+# Helper function for recording energy stats in dataset
+def write_stats(energy_stats, prefix, array_data, delta_data, time_coords):
+    setattr(energy_stats, f"{prefix}_start", array_data[0])
+    setattr(energy_stats, f"{prefix}_end", array_data[-1])
+    
+    idx_max = np.nanargmax(array_data)
+    setattr(energy_stats, f"{prefix}_max", array_data[idx_max])
+    setattr(energy_stats, f"{prefix}_timeMax", time_coords[idx_max])
+    
+    idx_min = np.nanargmin(array_data)
+    setattr(energy_stats, f"{prefix}_min", array_data[idx_min])
+    setattr(energy_stats, f"{prefix}_timeMin", time_coords[idx_min])
+    setattr(energy_stats, f"{prefix}_delta", delta_data[-1])
