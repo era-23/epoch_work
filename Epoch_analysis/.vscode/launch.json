@@ -994,7 +994,7 @@
             "args": [
                 "--dir", "/home/era536/Documents/Epoch/Data/2026_analysis/new_batch_processing_development/sim_output_small/",
                 "--outputDir", "/home/era536/Documents/Epoch/Data/2026_analysis/new_batch_processing_development/analysis_test/",
-                "--beta",
+                // "--beta",
                 // "--initFolders",
                 "--fields",
                     "Magnetic_Field_Bz",
@@ -1006,7 +1006,7 @@
                 // "--numGrowthRatesToPlot", "1",
                 // "--minGammaFitWindow", "9.9",
                 // "--maxGammaFitWindow", "10.1",
-                "--runNumber", "1",
+                "--runNumber", "2",
                 // "--saveGammaPlots",
                 // "--displayPlots",
                 // "--bigLabels",
