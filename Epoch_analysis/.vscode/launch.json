@@ -993,13 +993,13 @@
             "justMyCode": false,
             "args": [
                 "--dir", "/home/era536/Documents/Epoch/Data/2026_analysis/new_batch_processing_development/sim_output/",
-                "--outputDir", "/home/era536/Documents/Epoch/Data/2026_analysis/new_batch_processing_development/analysis/",
+                "--outputDir", "/home/era536/Documents/Epoch/Data/2026_analysis/new_batch_processing_development/analysis_comparison/",
                 "--beta",
                 "--initFolders",
                 "--fields",
                     "Magnetic_Field_Bz",
-                    "Electric_Field_Ex",
-                    "Electric_Field_Ey",
+                    // "Electric_Field_Ex",
+                    // "Electric_Field_Ey",
                 // "--growthRates",
                 // "--bispectra",
                 "--maxK", "100.0",
@@ -1015,6 +1015,8 @@
                 // "--noTitle",
                 // "--noLegend",
                 "--debug",
+                "--mciStartThresholdPct", "0.05",
+                "--saturationVariationThresholdPct", "0.01"
             ]
         },
         {

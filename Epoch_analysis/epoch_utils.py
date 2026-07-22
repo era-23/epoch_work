@@ -17,19 +17,13 @@ from plasmapy.formulary import lengths as ppl
 from plasmapy.formulary import speeds as pps
 from plasmapy.particles import Particle, alpha
 from dataclasses import dataclass
-
 from numpy.typing import ArrayLike
 from collections.abc import Sequence
 from warnings import warn
 from inference.pdf.hdi import sample_hdi
 from inference.pdf.kde import GaussianKDE, KDE2D
-
-from scipy.stats import linregress
-
 from matplotlib import colormaps
-
 from scipy import constants
-import astropy.units as u
 
 @dataclass
 class LinearGrowthRate:
@@ -405,7 +399,7 @@ def correlate_and_plot_iciness_vs_baseline(
         plotBaseline = np.array(baseline_data) # Baseline
         
         # Raw data
-        res = linregress(plotBaseline, iciness)
+        res = stats.linregress(plotBaseline, iciness)
 
         if doPlot:
             fig = plt.figure(figsize=(12,12))
@@ -437,7 +431,7 @@ def correlate_and_plot_iciness_vs_baseline(
         results.append(result)
 
         # Log-log
-        res = linregress(np.log10(plotBaseline), np.log10(iciness))
+        res = stats.linregress(np.log10(plotBaseline), np.log10(iciness))
 
         if doPlot:
             fig = plt.figure(figsize=(12,12))
@@ -470,7 +464,7 @@ def correlate_and_plot_iciness_vs_baseline(
         results.append(result)
 
         # x log
-        res = linregress(np.log10(plotBaseline), iciness)
+        res = stats.linregress(np.log10(plotBaseline), iciness)
         if doPlot:
             fig = plt.figure(figsize=(12,12))
             if title:
@@ -500,7 +494,7 @@ def correlate_and_plot_iciness_vs_baseline(
         results.append(result)
         
         # y log
-        res = linregress(plotBaseline, np.log10(iciness))
+        res = stats.linregress(plotBaseline, np.log10(iciness))
         if doPlot:
             fig = plt.figure(figsize=(12,12))
             if title:
@@ -605,6 +599,7 @@ def calculate_simulation_metadata(
         outputNcRoot : nc.Dataset,
         fastSpecies : str = 'He-4 2+',
         bkgdSpecies : str = 'D+',
+        spaceCoordinateName : str = "X_Grid_mid",
         debug = False) -> tuple[float, float]:
     
     beam = False
@@ -646,10 +641,10 @@ def calculate_simulation_metadata(
     if 'pixels_per_k' in inputDeck['constant'].keys(): 
         pixels_per_k = inputDeck['constant']['pixels_per_k']
         est_min_cells = int(np.ceil((pixels_per_k * ion_gyroperiod_s.value * alfven_velocity.value) / grid_spacing))
-    num_cells = dataset["X_Grid_mid"].size
+    num_cells = dataset[spaceCoordinateName].size
     outputNcRoot.numCells = num_cells
 
-    sim_L = float(dataset['Magnetic_Field_Bz'].coords["X_Grid_mid"][-1]) * u.m
+    sim_L = float(dataset['Magnetic_Field_Bz'].coords[spaceCoordinateName][-1]) * u.m
     outputNcRoot.simLength_m = sim_L
     outputNcRoot.spaceSamplingFreq_Pm = num_cells/sim_L
     outputNcRoot.spaceNyquistFreq_Pm = num_cells/(2.0 *sim_L)
@@ -796,10 +791,11 @@ def create_omega_k_plots(
         display : bool,
         debug):
 
+    print("Generating w-k plots....")
+
     if not os.path.exists(saveDirectory):
         os.makedirs(saveDirectory)
 
-    print("Generating w-k plots....")
     field = fieldNameToText(field)
     spec = fftSpectrum.load() # Load complex data
 
@@ -1054,6 +1050,8 @@ def create_power_spectra(
         fieldStats : nc.Dataset,
         debug : bool = False
 ):
+    print("Creating power spectra...")
+
     # Get power spectrum
     ps = xrft.power_spectrum(fieldData, scaling = "spectrum", window = 'hann', window_correction=True, detrend = "constant") # PS over space and time
     ps = ps.rename(freq_time = "frequency")
@@ -1126,6 +1124,8 @@ def create_t_k_spectrum(
         debug : bool = False
 ) -> xr.DataArray :
     
+    print("Creating t-k spectrum...")
+
     tk_spec = originalFftSpectrum.where(originalFftSpectrum.frequency>0.0, 0.0)
     original_zero_freq_amplitude = tk_spec.sel(wavenumber=0.0)
     # Double spectrum to conserve E
@@ -2165,3 +2165,27 @@ def add_field_from_input_deck_to_dataFile(inputDeckFolder : Path, dataFileFolder
             # Set value. NOTE: Only works on root group attributes at present
             data_nc.setncattr(parsed_field[-1], field_value)
             data_nc.close()
+
+def combine_angles(
+        runID : str,
+        datasets : dict, # Dictionary of xarray datasets, by angle, for one simulation
+        combinedStatsFile : nc.Dataset # NetCDF dataset
+) -> xr.Dataset:
+    """
+    Combines raw data from several angled netCDF datasets and returns the combined xarray dataset
+    """
+
+    print(f"Combining data from angles {list(datasets.keys())} of run ID {runID}...")
+
+    combinedStatsFile.B0angle = list(datasets.keys()) # Might be illegal
+    allDatasets = list(datasets.values())
+    combined_xarrayDataset : xr.Dataset = copy.deepcopy(allDatasets[0])
+
+    for i in range(1, len(allDatasets) - 1):
+
+        next_dataset = allDatasets[i]
+        # Combine energy and field densities
+        for var_name in combined_xarrayDataset.data_vars:
+            combined_xarrayDataset[var_name] += next_dataset[var_name]
+
+    return combined_xarrayDataset

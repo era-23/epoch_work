@@ -1,16 +1,6 @@
 import argparse
 import os
-from pathlib import Path
-from matplotlib import pyplot as plt
-from sdf_xarray import SDFPreprocess
-from scipy import constants
-from scipy.interpolate import make_smoothing_spline
-from scipy.signal import find_peaks
-from scipy.spatial.distance import pdist
-from plasmapy.formulary import frequencies as ppf
-from plasmapy.formulary import speeds as pps
-from plasmapy.formulary import lengths as ppl
-import astropy.units as u
+import time
 import epoch_utils as e_utils
 import netCDF4 as nc
 import xarray as xr
@@ -19,9 +9,14 @@ import epydeck
 import numpy as np
 import shutil as sh
 import warnings
-import copy
-warnings.simplefilter(action='ignore', category=FutureWarning)
 import xrft  # noqa: E402
+from pathlib import Path
+from matplotlib import pyplot as plt
+from sdf_xarray import SDFPreprocess
+from scipy import constants
+from scipy.interpolate import make_smoothing_spline
+from scipy.signal import find_peaks
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 global debug
 
@@ -469,6 +464,300 @@ def run_energy_analysis(
         plt.show()
     plt.close("all")
 
+def run_energy_analysis_beta_2(
+    dataset : xr.Dataset,
+    inputDeck : dict,
+    simName : str,
+    savePlotsFolder : Path,
+    statsFile : nc.Dataset,
+    log : bool = False,
+    displayPlots : bool = False,
+    noTitle : bool = False,
+    noLegend : bool = False,
+    backgroundSpeciesName : str = "deuteron",
+    fastSpeciesName : str = "alpha",
+    mci_threshold_pct = 0.05,
+    saturation_variation_threshold_pct = 0.01,
+    debug : bool = False
+) -> tuple:
+    print("Analyzing energy profile...")
+
+    threshold_indices = {
+        "MCI_start": None, "peak_growth": None, "linear_saturation": None,
+        "nonlinear_restitution": None, "nonlinear_saturation": None
+    }
+    dE_dt = None
+
+    constants_deck = inputDeck.get("constant", {})
+    beam = constants_deck.get("frac_beam", 0.0) > 0.0
+
+    time_data = dataset.coords["time"].values
+
+    # 1. NetCDF Setup
+    if "Energy" not in statsFile.groups:
+        energyStats = statsFile.createGroup("Energy")
+        energyStats.createDimension("time", time_data.size)
+        time_var = energyStats.createVariable("time", "f8", ("time",))
+        bed = energyStats.createVariable("backgroundIonMeanEnergyDensity", "f8", ("time",))
+        eed = energyStats.createVariable("electronMeanEnergyDensity", "f8", ("time",))
+        efd = energyStats.createVariable("electricFieldMeanEnergyDensity", "f8", ("time",))
+        mfd = energyStats.createVariable("magneticFieldMeanEnergyDensity", "f8", ("time",))
+    else:
+        energyStats = statsFile.groups["Energy"]
+        time_var = energyStats.variables["time"]
+        bed = energyStats.variables["backgroundIonMeanEnergyDensity"]
+        eed = energyStats.variables["electronMeanEnergyDensity"]
+        efd = energyStats.variables["electricFieldMeanEnergyDensity"]
+        mfd = energyStats.variables["magneticFieldMeanEnergyDensity"]
+    
+    time_var[:] = time_data
+    energyStats.long_name = "Particle and field energy data"
+
+    # 2. Physics & Densities
+    bkgd_density = constants_deck['background_density']
+    frac_beam = constants_deck['frac_beam']
+    fast_ion_charge_e = constants_deck['fast_ion_charge_e']
+    background_ion_charge_e = constants_deck['background_ion_charge_e']
+
+    background_ion_density = (bkgd_density - (frac_beam * bkgd_density * fast_ion_charge_e)) / background_ion_charge_e
+    electron_density = bkgd_density
+
+    # Extract spatial means directly as NumPy arrays (No redundant .load())
+    backgroundIonKEdensity_mean = dataset[f'Derived_Average_Particle_Energy_{backgroundSpeciesName}'].mean(dim="x_space").values * background_ion_density
+    bed[:] = backgroundIonKEdensity_mean
+
+    electronKEdensity_mean = dataset['Derived_Average_Particle_Energy_electron'].mean(dim="x_space").values * electron_density
+    eed[:] = electronKEdensity_mean
+
+    E_sq = dataset['Electric_Field_Ex']**2 + dataset['Electric_Field_Ey']**2 + dataset['Electric_Field_Ez']**2
+    electricFieldDensity_mean = ((constants.epsilon_0 * E_sq) / 2.0).mean(dim="x_space").values
+    efd[:] = electricFieldDensity_mean
+
+    B_sq = dataset['Magnetic_Field_Bx']**2 + dataset['Magnetic_Field_By']**2 + dataset['Magnetic_Field_Bz']**2
+    magneticFieldEnergyDensity_mean = (B_sq / (2.0 * constants.mu_0)).mean(dim="x_space").values
+    mfd[:] = magneticFieldEnergyDensity_mean
+
+    # Energy Deltas
+    deltaMeanMagneticEnergyDensity = magneticFieldEnergyDensity_mean - magneticFieldEnergyDensity_mean[0]
+    deltaMeanElectricEnergyDensity = electricFieldDensity_mean - electricFieldDensity_mean[0]
+    deltaBackgroundIonKE_density = backgroundIonKEdensity_mean - backgroundIonKEdensity_mean[0]
+    deltaElectronKE_density = electronKEdensity_mean - electronKEdensity_mean[0]
+
+    totalAbsoluteMeanEnergyDensity = backgroundIonKEdensity_mean + electronKEdensity_mean + magneticFieldEnergyDensity_mean + electricFieldDensity_mean
+    totalDeltaMeanEnergyDensity = deltaBackgroundIonKE_density + deltaElectronKE_density + deltaMeanMagneticEnergyDensity + deltaMeanElectricEnergyDensity
+    timeCoords = time_data
+
+    if beam:
+        fastIonDensity = bkgd_density * frac_beam
+        fastIonKEdensity_mean = dataset[f'Derived_Average_Particle_Energy_{fastSpeciesName}'].mean(dim="x_space").values * fastIonDensity
+        
+        fed = energyStats.createVariable("fastIonMeanEnergyDensity", "f8", ("time",)) if "fastIonMeanEnergyDensity" not in energyStats.variables else energyStats.variables["fastIonMeanEnergyDensity"]
+        fed[:] = fastIonKEdensity_mean
+        
+        deltaFastIonKE_density = fastIonKEdensity_mean - fastIonKEdensity_mean[0]
+        totalAbsoluteMeanEnergyDensity += fastIonKEdensity_mean
+        totalDeltaMeanEnergyDensity += deltaFastIonKE_density
+
+    # Helper function for recording stats without duplicate argmax/argmin passes
+    def write_stats(prefix, array_data, delta_data):
+        setattr(energyStats, f"{prefix}_start", array_data[0])
+        setattr(energyStats, f"{prefix}_end", array_data[-1])
+        
+        idx_max = np.nanargmax(array_data)
+        setattr(energyStats, f"{prefix}_max", array_data[idx_max])
+        setattr(energyStats, f"{prefix}_timeMax", timeCoords[idx_max])
+        
+        idx_min = np.nanargmin(array_data)
+        setattr(energyStats, f"{prefix}_min", array_data[idx_min])
+        setattr(energyStats, f"{prefix}_timeMin", timeCoords[idx_min])
+        setattr(energyStats, f"{prefix}_delta", delta_data[-1])
+
+    write_stats("backgroundIonEnergyDensity", backgroundIonKEdensity_mean, deltaBackgroundIonKE_density)
+    write_stats("electronEnergyDensity", electronKEdensity_mean, deltaElectronKE_density)
+    write_stats("electricFieldEnergyDensity", electricFieldDensity_mean, deltaMeanElectricEnergyDensity)
+    write_stats("magneticFieldEnergyDensity", magneticFieldEnergyDensity_mean, deltaMeanMagneticEnergyDensity)
+    if beam:
+        write_stats("fastIonEnergyDensity", fastIonKEdensity_mean, deltaFastIonKE_density)
+
+    # Global Conservation
+    energyStats.totalEnergyDensity_start = float(totalAbsoluteMeanEnergyDensity[0])
+    energyStats.totalEnergyDensity_end = float(totalAbsoluteMeanEnergyDensity[-1])
+    pctConservation = float(100.0 * ((totalAbsoluteMeanEnergyDensity[-1] - totalAbsoluteMeanEnergyDensity[0]) / totalAbsoluteMeanEnergyDensity[0]))
+    energyStats.totalEnergyDensityConservation_pct = pctConservation
+
+    deltaEnergies = {
+        "backgroundIonMeanEnergyDensity": deltaBackgroundIonKE_density,
+        "electronMeanEnergyDensity": deltaElectronKE_density,
+        "magneticFieldMeanEnergyDensity": deltaMeanMagneticEnergyDensity,
+        "electricFieldMeanEnergyDensity": deltaMeanElectricEnergyDensity
+    }
+    percentageBaseline = float(fastIonKEdensity_mean[0]) if beam else float(totalAbsoluteMeanEnergyDensity[0])
+    if beam:
+        deltaEnergies["fastIonMeanEnergyDensity"] = deltaFastIonKE_density
+
+    maxPeakIndices, minTroughIndices, pctEnergies = {}, {}, {}
+    
+    # Calculate Data Prominence across all series
+    all_deltas = np.array(list(deltaEnergies.values()))
+    prominence = 0.02 * (np.max(all_deltas) - np.min(all_deltas))
+
+    fig, ax = plt.subplots(figsize=(12, 8))
+    timeCoords = np.nan_to_num(timeCoords)
+    totalED = np.zeros_like(timeCoords)
+
+    for variable, deltaED in deltaEnergies.items():
+        deltaED = np.nan_to_num(deltaED)
+        totalED += deltaED
+        
+        smoothDeltaED = make_smoothing_spline(timeCoords, deltaED, lam=0.01)
+        smoothDeltaData = smoothDeltaED(timeCoords)
+        
+        ed_peaks, _ = find_peaks(smoothDeltaData, distance=50, prominence=prominence)
+        ed_troughs, _ = find_peaks(-smoothDeltaData, distance=50, prominence=prominence)
+        ed_troughs = np.array([int(t) for t in ed_troughs if smoothDeltaData[t] < 0.0])
+
+        percentageED = 100.0 * (deltaED / percentageBaseline)
+        pctEnergies[variable] = percentageED
+        smoothPctData = 100.0 * (smoothDeltaData / percentageBaseline)
+
+        hasPeaks, hasTroughs = ed_peaks.size > 0, ed_troughs.size > 0
+        energyStats[variable].maxAtSimEnd = int((len(smoothDeltaData) - 1) - np.argmax(smoothDeltaData) < 5)
+        energyStats[variable].minAtSimEnd = int((len(smoothDeltaData) - 1) - np.argmin(smoothDeltaData) < 5)
+
+        if "fastIon" in variable:
+            dE_dt = np.diff(smoothPctData) / np.diff(timeCoords)
+
+            mci_start_idxs = np.nonzero(smoothPctData < -mci_threshold_pct)[0]
+            if mci_start_idxs.size > 0:
+                threshold_indices["MCI_start"] = int(mci_start_idxs[0])
+            
+            if threshold_indices["MCI_start"] is not None:
+                mci_start = threshold_indices["MCI_start"]
+                stationaries = np.where(np.diff(np.sign(dE_dt[mci_start:])))[0]
+                if stationaries.size > 0:
+                    threshold_indices["linear_saturation"] = mci_start + int(stationaries[0])
+                if stationaries.size > 1:
+                    threshold_indices["nonlinear_restitution"] = mci_start + int(stationaries[1])
+
+                threshold_indices["peak_growth"] = int(np.argmin(dE_dt))
+
+                # VECTORIZED SATURATION DETECTION (Replaces Python loop)
+                if threshold_indices["linear_saturation"] is not None:
+                    rev_data = smoothPctData[::-1]
+                    running_max = np.maximum.accumulate(rev_data)
+                    running_min = np.minimum.accumulate(rev_data)
+                    variation = running_max - running_min
+                    
+                    sat_mask = np.where(variation > saturation_variation_threshold_pct)[0]
+                    if sat_mask.size > 0:
+                        threshold_indices["nonlinear_saturation"] = len(smoothPctData) - int(sat_mask[0])
+
+            # Write NetCDF Attributes
+            fast_ion_var = energyStats["fastIonMeanEnergyDensity"]
+            for threshold, idx in threshold_indices.items():
+                fast_ion_var.setncattr(f"{threshold}_idx", idx if idx is not None else "None")
+                fast_ion_var.setncattr(f"{threshold}_time", timeCoords[idx] if idx is not None else "None")
+                if idx is not None:
+                    ax.scatter(timeCoords[idx], smoothPctData[idx], marker="x", s=100.0, label=threshold)
+
+        # Plot formatting
+        colour = next((e_utils.E_TRACE_SPECIES_COLOUR_MAP[c] for c in e_utils.E_TRACE_SPECIES_COLOUR_MAP if c in variable), None)
+        lbl = e_utils.SPECIES_NAME_MAP.get(variable, variable)
+        ax.plot(timeCoords, percentageED, alpha=0.5, color=colour)
+        ax.plot(timeCoords, smoothPctData, label=lbl, linestyle="--", color=colour)
+
+        energyStats[variable].hasPeaks = int(hasPeaks)
+        energyStats[variable].hasTroughs = int(hasTroughs)
+
+        if hasPeaks:
+            energyStats[variable].peakIndices = ed_peaks
+            energyStats[variable].peakValues_delta = smoothDeltaData[ed_peaks]
+            energyStats[variable].peakValues_pct = smoothPctData[ed_peaks]
+            energyStats[variable].peakTimes = timeCoords[ed_peaks].tolist()
+            ax.scatter(timeCoords[ed_peaks], smoothPctData[ed_peaks], marker="x", color="black")
+            
+            # Vectorized Max Peak Search (Replaces List Comprehension)
+            maxPeakIndices[variable] = ed_peaks[np.argmax(smoothPctData[ed_peaks])]
+
+        if hasTroughs:
+            energyStats[variable].troughIndices = ed_troughs
+            energyStats[variable].troughValues_delta = smoothDeltaData[ed_troughs]
+            energyStats[variable].troughValues_pct = smoothPctData[ed_troughs]
+            energyStats[variable].troughTimes = timeCoords[ed_troughs].tolist()
+            ax.scatter(timeCoords[ed_troughs], smoothPctData[ed_troughs], marker="+", color="black")
+            
+            # Vectorized Min Trough Search (Replaces List Comprehension)
+            minTroughIndices[variable] = ed_troughs[np.argmin(smoothPctData[ed_troughs])]
+
+    # Plot total & regions
+    totalPercentage = 100.0 * (totalED / percentageBaseline)
+    ax.plot(timeCoords, totalPercentage, label="Total", color="black")
+
+    if threshold_indices["MCI_start"] is not None:
+        end_p = timeCoords[-1] if threshold_indices["linear_saturation"] is None else timeCoords[threshold_indices["linear_saturation"]]
+        ax.axvspan(timeCoords[threshold_indices["MCI_start"]], end_p, color="green", alpha=0.1, label="linear MCI growth")
+    if threshold_indices["linear_saturation"] is not None and threshold_indices["nonlinear_restitution"] is not None:
+        ax.axvspan(timeCoords[threshold_indices["linear_saturation"]], timeCoords[threshold_indices["nonlinear_restitution"]], color="blue", alpha=0.1, label="alpha re-energisation")
+    if threshold_indices["nonlinear_saturation"] is not None:
+        ax.axvspan(timeCoords[threshold_indices["nonlinear_saturation"]], timeCoords[-1], color="red", alpha=0.1, label="NL saturation")
+
+    if not noLegend: ax.legend()
+    ax.set_xlabel(r"Time [$\tau_{ci}$]")
+    ax.set_ylabel("Change in energy density [%]")
+    if log: ax.set_yscale("symlog")
+    ax.grid()
+    if not noTitle:
+        ax.set_title(f"{simName}: Percentage change in ED relative to " + ("fast ion energy" if beam else "total starting energy"))
+    fig.tight_layout()
+    fig.savefig(savePlotsFolder / f"{simName}_percentage_energy_change.png")
+    if displayPlots: plt.show()
+    plt.close("all")
+
+    # Inter-Regime Energy Transfer Calculations
+    if beam:
+        fastVar, backIonVar, elecVar = "fastIonMeanEnergyDensity", "backgroundIonMeanEnergyDensity", "electronMeanEnergyDensity"
+        energyStats.hasOverallFastIonGain = int(bool(deltaEnergies[fastVar][-1] > 0.0) or energyStats[fastVar].hasPeaks)
+        energyStats.hasOverallBkgdIonGain = int(bool(deltaEnergies[backIonVar][-1] > 0.0))
+        energyStats.hasOverallBkgdElectronGain = int(bool(deltaEnergies[elecVar][-1] > 0.0))
+
+        if fastVar in minTroughIndices:
+            tr_idx = minTroughIndices[fastVar]
+            energyStats.bkgdIonChangeAtFastIonTrough = float(deltaEnergies[backIonVar][tr_idx])
+            energyStats.bkgdIonChangeAtFastIonTrough_pct = float(pctEnergies[backIonVar][tr_idx])
+            energyStats.bkgdElectronChangeAtFastIonTrough = float(deltaEnergies[elecVar][tr_idx])
+            energyStats.bkgdElectronChangeAtFastIonTrough_pct = float(pctEnergies[elecVar][tr_idx])
+
+        if backIonVar in maxPeakIndices:
+            pk_idx = maxPeakIndices[backIonVar]
+            energyStats.fastIonChangeAtBkgdIonPeak = float(deltaEnergies[fastVar][pk_idx])
+            energyStats.fastIonChangeAtBkgdIonPeak_pct = float(pctEnergies[fastVar][pk_idx])
+
+        if elecVar in maxPeakIndices:
+            el_idx = maxPeakIndices[elecVar]
+            energyStats.fastIonChangeAtBkgdElectronPeak = float(deltaEnergies[fastVar][el_idx])
+            energyStats.fastIonChangeAtBkgdElectronPeak_pct = float(pctEnergies[fastVar][el_idx])
+
+    # Absolute Energy Plot
+    fig, ax = plt.subplots(figsize=(12, 8))
+    if beam: ax.plot(timeCoords, deltaFastIonKE_density, label="Fast ion", color="red")
+    ax.plot(timeCoords, deltaBackgroundIonKE_density, label="Bkgd ion", color="orange")
+    ax.plot(timeCoords, deltaElectronKE_density, label="Bkgd electron", color="blue")
+    ax.plot(timeCoords, deltaMeanMagneticEnergyDensity, label="B-field", color="purple", linestyle="--")
+    ax.plot(timeCoords, deltaMeanElectricEnergyDensity, label="E-field", color="green", linestyle="--")
+    ax.plot(timeCoords, totalDeltaMeanEnergyDensity, label="Total", color="black")
+    ax.set_xlabel(r'Time [$\tau_{ci}$]')
+    ax.set_ylabel(r"Change in energy density [$J/m^3$]")
+    if log: ax.set_yscale("symlog")
+    if not noTitle: ax.set_title(f"{simName}: Absolute energy in particles and EM fields", wrap=True)
+    if not noLegend: ax.legend()
+    ax.grid()
+    fig.tight_layout()
+    fig.savefig(savePlotsFolder / f"{simName}_absolute_energy_change.png")
+    if displayPlots: plt.show()
+    plt.close("all")
+
+    return threshold_indices, dE_dt
+
 def run_energy_analysis_beta(
     dataset : xr.Dataset,
     inputDeck : dict,
@@ -480,7 +769,9 @@ def run_energy_analysis_beta(
     noTitle : bool = False,
     noLegend : bool = False,
     backgroundSpeciesName : str = "deuteron",
-    fastSpeciesName : str = "alpha"
+    fastSpeciesName : str = "alpha",
+    mci_threshold_pct = 0.05,
+    saturation_variation_threshold_pct = 0.01
 ) -> tuple:
     print("Analyzing energy profile...")
 
@@ -702,7 +993,7 @@ def run_energy_analysis_beta(
             dE_dt = np.diff(smoothPctData)/np.diff(timeCoords)
 
             # Find start of instability
-            mci_start_idxs = np.nonzero(smoothPctData < -0.05) # Deviation by >0.05%
+            mci_start_idxs = np.nonzero(smoothPctData < -mci_threshold_pct) # Deviation by >0.05%
             if len(mci_start_idxs) > 0 and len(mci_start_idxs[0]) > 0:
                 threshold_indices["MCI_start"] = int(mci_start_idxs[0][0])
             if threshold_indices["MCI_start"] is not None:
@@ -719,7 +1010,7 @@ def run_energy_analysis_beta(
                 # Find saturation region
                 if threshold_indices["linear_saturation"] is not None: # If linear saturation was identified (NL restitution is optional)
                     for i in range(1, len(smoothPctData)):
-                        if abs(smoothPctData[-i:].max() - smoothPctData[-i:].min()) > 0.01:
+                        if abs(smoothPctData[-i:].max() - smoothPctData[-i:].min()) > saturation_variation_threshold_pct:
                             threshold_indices["nonlinear_saturation"] = len(smoothPctData) - i
                             break
             
@@ -898,47 +1189,14 @@ def run_energy_analysis_beta(
 
     return threshold_indices, dE_dt
 
-def combine_angles(
-        datasets : dict, # Dictionary of xarray datasets, by angle, for one simulation
-        combinedStatsFile : nc.Dataset, # NetCDF dataset
-        fastIonSpecies : str = 'He-4 2+',
-        backgroundIonSpecies : str = 'D+',
-) -> xr.Dataset:
-    """
-    Combines raw data from the above datasets into a combined stats file
-    """
-
-    combinedStatsFile.B0angle = list(datasets.keys()) # Might be illegal
-    allDatasets = list(datasets.values())
-    combined_xarrayDataset = copy.deepcopy(allDatasets[0])
-
-    backgroundSpeciesName= "deuteron" if backgroundIonSpecies == "D+" else "proton"
-    fastSpeciesName= "alpha" if fastIonSpecies == 'He-4 2+' else "ion_ring_beam"
-
-    for i in range(1, len(allDatasets) - 1):
-
-        next_dataset = allDatasets[i]
-        # Combine energy and field densities
-        ##### Energy is access from xarray like 
-        ##### background_ion_KE : xr.DataArray = dataset[f'Derived_Average_Particle_Energy_{backgroundSpeciesName}'].load()
-        ##### Ex : xr.DataArray = dataset['Electric_Field_Ex'].load()
-        combined_xarrayDataset[f'Derived_Average_Particle_Energy_{backgroundSpeciesName}'] += next_dataset[f'Derived_Average_Particle_Energy_{backgroundSpeciesName}']
-        combined_xarrayDataset[f'Derived_Average_Particle_Energy_{fastSpeciesName}'] += next_dataset[f'Derived_Average_Particle_Energy_{fastSpeciesName}']
-        combined_xarrayDataset['Derived_Average_Particle_Energy_electron'] += next_dataset['Derived_Average_Particle_Energy_electron']
-        combined_xarrayDataset['Electric_Field_Ex'] += next_dataset[f'Electric_Field_Ex']
-        combined_xarrayDataset['Electric_Field_Ey'] += next_dataset[f'Electric_Field_Ey']
-        combined_xarrayDataset['Magnetic_Field_Bz'] += next_dataset[f'Magnetic_Field_Bz']
-
-    return combined_xarrayDataset
-
 def process_simulation_batch_beta(
         simulationDataFolder : Path,
         analysisOutputFolder : Path,
         fields : list = [],
         maxK : float = 100.0,
         maxW : float = None,
-        growthRates : bool = True,
-        bispectra : bool = True,
+        growthRates : bool = False,
+        bispectra : bool = False,
         gammaWindowTciMin : float = 0.5,
         gammaWindowTciMax : float = None,
         fastIonSpecies : str = 'He-4 2+',
@@ -948,7 +1206,8 @@ def process_simulation_batch_beta(
         noLegend : bool = False,
         displayPlots = False,
         saveGrowthRatePlots = False,
-        numGrowthRatesToPlot : int = 0
+        numGrowthRatesToPlot : int = 0,
+        mci_thresholds : dict = {"mci_threshold_pct" : 0.05, "saturation_variation_threshold_pct" : 0.01}
     ):
         
     """
@@ -1022,11 +1281,10 @@ def process_simulation_batch_beta(
     #         -> plots
     #             -> fields, e.g. Magnetic_Field_Bz, energy
     
+    times = []
     for sim_name, angles in run_folders_dict.items():
 
-        print(f"Analyzing simulation '{sim_name}' with angles {[angles.keys()]}")
-
-        # angles = {angle_val : simulation_folder}
+        print(f"Analyzing simulation '{sim_name}' with angles {list(angles.keys())}")
 
         angle_datasets = {}
 
@@ -1061,6 +1319,7 @@ def process_simulation_batch_beta(
 
             # Energy analysis
             energyPlotFolder = plotsFolder / "energy"
+            start = time.perf_counter_ns()
             _, _ = run_energy_analysis_beta(
                 ds, 
                 inputDeck, 
@@ -1071,14 +1330,24 @@ def process_simulation_batch_beta(
                 noTitle=noTitle, 
                 noLegend=noLegend, 
                 backgroundSpeciesName= "deuteron" if backgroundIonSpecies == "D+" else "proton",
-                fastSpeciesName= "alpha" if fastIonSpecies == 'He-4 2+' else "ion_ring_beam")
+                fastSpeciesName= "alpha" if fastIonSpecies == 'He-4 2+' else "ion_ring_beam",
+                mci_threshold_pct=mci_thresholds["mci_threshold_pct"],
+                saturation_variation_threshold_pct=mci_thresholds["saturation_variation_threshold_pct"])
+            end = time.perf_counter_ns()
+            times.append(end - start)
 
             if "all" in fields:
                 fields = [str(f) for f in ds.data_vars.keys() if str(f).startswith("Electric_Field") or str(f).startswith("Magnetic_Field")]
             
+            assert np.allclose([float(ds.coords['x_space'][2] - ds.coords['x_space'][1])], [float(ds.coords['x_space'][-2] - ds.coords['x_space'][-3])])
+            assert np.allclose([float(ds.coords['time'][2] - ds.coords['time'][1])], [float(ds.coords['time'][-2] - ds.coords['time'][-3])])
+            dx = float(ds.coords['x_space'][2] - ds.coords['x_space'][1])
+            dy = float(ds.coords['time'][2] - ds.coords['time'][1])
+            ds = ds.load()
+
             for field in fields:
 
-                print(f"Analyzing field '{field}'...")
+                print(f"Analyzing simulation {sim_name}, angle {angle_name}, field '{field}'...")
                 plotFieldFolder = Path(os.path.join(plotsFolder, field))
 
                 # For field-specific stats
@@ -1087,10 +1356,6 @@ def process_simulation_batch_beta(
                 fieldStats.baseUnit = field_unit
                 field_mag = float(np.abs(ds[field].sum()))
                 fieldStats.totalMagnitude = field_mag
-                assert np.allclose([float(ds.coords['x_space'][2] - ds.coords['x_space'][1])], [float(ds.coords['x_space'][-2] - ds.coords['x_space'][-3])])
-                assert np.allclose([float(ds.coords['time'][2] - ds.coords['time'][1])], [float(ds.coords['time'][-2] - ds.coords['time'][-3])])
-                dx = float(ds.coords['x_space'][2] - ds.coords['x_space'][1])
-                dy = float(ds.coords['time'][2] - ds.coords['time'][1])
                 parseval_field = float((np.abs(ds[field])**2).sum()) * dx * dy
                 fieldStats.parsevalField = parseval_field
                 if debug:
@@ -1110,15 +1375,13 @@ def process_simulation_batch_beta(
                 del(squared_delta)
 
                 # Take FFT
-                ds = ds.load()
                 original_spec : xr.DataArray = xrft.xrft.fft(ds[field], true_amplitude=True, true_phase=True, window=None)
                 original_spec = original_spec.rename(freq_time="frequency", freq_x_space="wavenumber")
                 # Remove zero-frequency component
                 original_spec = original_spec.where(original_spec.wavenumber!=0.0, None)
-
-                tk_spec = e_utils.create_t_k_spectrum(original_spec, fieldStats, maxK, load=True, debug=debug)
-
+                
                 # Dispersion relations
+                tk_spec = e_utils.create_t_k_spectrum(original_spec, fieldStats, maxK, load=True, debug=debug)
                 wavenumberToFrequencyTable = e_utils.create_omega_k_plots(original_spec, fieldStats, field, field_unit, plotFieldFolder, sim_name, inputDeck, backgroundIonSpecies, fastIonSpecies, maxK=maxK, maxW=maxW, display=displayPlots, debug=debug)
                 e_utils.create_power_spectra(ds[field], fieldStats, debug)
                 e_utils.create_t_k_plot(tk_spec, field, field_unit, plotFieldFolder, sim_name, maxK, displayPlots)
@@ -1129,42 +1392,49 @@ def process_simulation_batch_beta(
                 # Linear growth rates
                 if growthRates:
                     e_utils.process_growth_rates(tk_spec, fieldStats, plotFieldFolder, sim_name, field, gammaWindowTciMin, gammaWindowTciMax, saveGrowthRatePlots, numGrowthRatesToPlot, wavenumberToFrequencyTable, displayPlots, noTitle, debug)
-
-                statsRoot.close()
-
-                angle_datasets[angle_name] = ds
+            
+            statsRoot.close()
+            angle_datasets[angle_name] = ds
 
         # All datasets are still in angle_folders
         combinedStats_filepath = os.path.join(str(analysisOutputFolder), "sum", "data", f"{sim_name}_combined_stats.nc")
         statsRoot = nc.Dataset(combinedStats_filepath, "a", format="NETCDF4")
-        ion_gyroperiod, alfven_velocity = e_utils.calculate_simulation_metadata(inputDeck, angle_datasets[0], statsRoot, fastIonSpecies, backgroundIonSpecies)
-        ds = combine_angles(angle_datasets, statsRoot)
+        ion_gyroperiod, alfven_velocity = e_utils.calculate_simulation_metadata(inputDeck, angle_datasets["90"], statsRoot, spaceCoordinateName="x_space", fastSpecies=fastIonSpecies, bkgdSpecies=backgroundIonSpecies)
+        ds = e_utils.combine_angles(sim_name, angle_datasets, statsRoot)
 
-        for _, orig_ds in angle_datasets:
+        for _, orig_ds in angle_datasets.items():
             orig_ds.close()
 
         plotsFolder = analysisOutputFolder / "sum" / "plots"
 
         # Energy analysis
-        energyPlotFolder = analysisOutputFolder / angle_name / "plots" / "energy"
+        energyPlotFolder = plotsFolder / "energy"
         transition_indices, dE_dt = run_energy_analysis_beta(
             ds, 
             inputDeck, 
-            sim_name, 
+            f"{sim_name}_combined", 
             energyPlotFolder, 
             statsRoot, 
             displayPlots = displayPlots, 
             noTitle=noTitle, 
             noLegend=noLegend, 
             backgroundSpeciesName= "deuteron" if backgroundIonSpecies == "D+" else "proton",
-            fastSpeciesName= "alpha" if fastIonSpecies == 'He-4 2+' else "ion_ring_beam")
+            fastSpeciesName= "alpha" if fastIonSpecies == 'He-4 2+' else "ion_ring_beam",
+            mci_threshold_pct=mci_thresholds["mci_threshold_pct"],
+            saturation_variation_threshold_pct=mci_thresholds["saturation_variation_threshold_pct"])
+        
+        assert np.allclose([float(ds.coords['x_space'][2] - ds.coords['x_space'][1])], [float(ds.coords['x_space'][-2] - ds.coords['x_space'][-3])])
+        assert np.allclose([float(ds.coords['time'][2] - ds.coords['time'][1])], [float(ds.coords['time'][-2] - ds.coords['time'][-3])])
+        dx = float(ds.coords['x_space'][2] - ds.coords['x_space'][1])
+        dy = float(ds.coords['time'][2] - ds.coords['time'][1])
+        ds = ds.load()
 
         if "all" in fields:
             fields = [str(f) for f in ds.data_vars.keys() if str(f).startswith("Electric_Field") or str(f).startswith("Magnetic_Field")]
-        
+
         for field in fields:
 
-            print(f"Analyzing field '{field}'...")
+            print(f"Analyzing combined simulation {sim_name} (all angles), field '{field}'...")
             plotFieldFolder = Path(os.path.join(plotsFolder, field))
 
             # For field-specific stats
@@ -1173,10 +1443,6 @@ def process_simulation_batch_beta(
             fieldStats.baseUnit = field_unit
             field_mag = float(np.abs(ds[field].sum()))
             fieldStats.totalMagnitude = field_mag
-            assert np.allclose([float(ds.coords['x_space'][2] - ds.coords['x_space'][1])], [float(ds.coords['x_space'][-2] - ds.coords['x_space'][-3])])
-            assert np.allclose([float(ds.coords['time'][2] - ds.coords['time'][1])], [float(ds.coords['time'][-2] - ds.coords['time'][-3])])
-            dx = float(ds.coords['x_space'][2] - ds.coords['x_space'][1])
-            dy = float(ds.coords['time'][2] - ds.coords['time'][1])
             parseval_field = float((np.abs(ds[field])**2).sum()) * dx * dy
             fieldStats.parsevalField = parseval_field
             if debug:
@@ -1196,16 +1462,14 @@ def process_simulation_batch_beta(
             del(squared_delta)
 
             # Take FFT
-            ds = ds.load()
             original_spec : xr.DataArray = xrft.xrft.fft(ds[field], true_amplitude=True, true_phase=True, window=None)
             original_spec = original_spec.rename(freq_time="frequency", freq_x_space="wavenumber")
             # Remove zero-frequency component
             original_spec = original_spec.where(original_spec.wavenumber!=0.0, None)
 
-            tk_spec = e_utils.create_t_k_spectrum(original_spec, fieldStats, maxK, load=True, debug=debug)
-
             # Dispersion relations
-            wavenumberToFrequencyTable = e_utils.create_omega_k_plots(original_spec, fieldStats, field, field_unit, plotFieldFolder, sim_name, inputDeck, backgroundIonSpecies, fastIonSpecies, maxK=maxK, maxW=maxW, display=displayPlots, debug=debug)
+            tk_spec = e_utils.create_t_k_spectrum(original_spec, fieldStats, maxK, load=True, debug=debug)
+            wavenumberToFrequencyTable = e_utils.create_omega_k_plots(original_spec, fieldStats, field, field_unit, plotFieldFolder, f"{sim_name}_combined", inputDeck, backgroundIonSpecies, fastIonSpecies, maxK=maxK, maxW=maxW, display=displayPlots, debug=debug)
             e_utils.create_power_spectra(ds[field], fieldStats, debug)
             e_utils.create_t_k_plot(tk_spec, field, field_unit, plotFieldFolder, sim_name, maxK, displayPlots)
 
@@ -1216,8 +1480,11 @@ def process_simulation_batch_beta(
             if growthRates:
                 e_utils.process_growth_rates(tk_spec, fieldStats, plotFieldFolder, sim_name, field, gammaWindowTciMin, gammaWindowTciMax, saveGrowthRatePlots, numGrowthRatesToPlot, wavenumberToFrequencyTable, displayPlots, noTitle, debug)
 
+        print(f"Completed analysis of {sim_name}, closing...")
         ds.close()
         statsRoot.close()
+
+    print(f"Average energy analysis (beta 2) time (s): {np.mean(times) / 1e9}.")
 
 def process_simulation_batch(
         directory : Path,
@@ -1474,6 +1741,20 @@ if __name__ == "__main__":
         type=float
     )
     parser.add_argument(
+        "--mciStartThresholdPct",
+        action="store",
+        help="Percentage of energy variation from baseline required to trigger recording of the MCI.",
+        required = False,
+        type=float
+    )
+    parser.add_argument(
+        "--saturationVariationThresholdPct",
+        action="store",
+        help="Maximum variation in energy percentage from a time t to the end of the simulation to record the MCI as saturated at time t.",
+        required = False,
+        type=float
+    )
+    parser.add_argument(
         "--runNumber",
         action="store",
         help="Run number to analyse (folder must be in directory and named \'run_##\' where ## is runNumber).",
@@ -1568,12 +1849,15 @@ if __name__ == "__main__":
             growthRates=args.growthRates,
             bispectra = args.bispectra,
             numGrowthRatesToPlot=args.numGrowthRatesToPlot, 
-            # displayPlots=args.displayPlots,
-            displayPlots=True,
+            displayPlots=args.displayPlots,
             bigLabels=args.bigLabels,
             noTitle=args.noTitle,
             noLegend=args.noLegend,
-            saveGrowthRatePlots=args.saveGammaPlots
+            saveGrowthRatePlots=args.saveGammaPlots,
+            mci_thresholds = {
+                "mci_threshold_pct" : args.mciStartThresholdPct if args.mciStartThresholdPct is not None else 0.05, 
+                "saturation_variation_threshold_pct" : args.saturationVariationThresholdPct if args.saturationVariationThresholdPct is not None else 0.01
+            }
         )
     else: # Classic
 
