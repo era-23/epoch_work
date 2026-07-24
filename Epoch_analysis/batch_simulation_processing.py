@@ -64,8 +64,8 @@ def run_energy_analysis(
     print("Analyzing energy profile...")
 
     threshold_indices = {
-        "MCI_start": None, "peak_growth": None, "linear_saturation": None,
-        "nonlinear_restitution": None, "nonlinear_saturation": None
+        "MCI_start": None, "MCI_peak_growth": None, "MCI_linear_saturation": None,
+        "MCI_nonlinear_restitution": None, "MCI_nonlinear_saturation": None
     }
     dE_dt = None
 
@@ -202,14 +202,14 @@ def run_energy_analysis(
                 mci_start = threshold_indices["MCI_start"]
                 stationaries = np.where(np.diff(np.sign(dE_dt[mci_start:])))[0]
                 if stationaries.size > 0:
-                    threshold_indices["linear_saturation"] = mci_start + int(stationaries[0])
+                    threshold_indices["MCI_linear_saturation"] = mci_start + int(stationaries[0])
                 if stationaries.size > 1:
-                    threshold_indices["nonlinear_restitution"] = mci_start + int(stationaries[1])
+                    threshold_indices["MCI_nonlinear_restitution"] = mci_start + int(stationaries[1])
 
-                threshold_indices["peak_growth"] = int(np.argmin(dE_dt))
+                threshold_indices["MCI_peak_growth"] = int(np.argmin(dE_dt))
 
                 # VECTORIZED SATURATION DETECTION (Replaces Python loop)
-                if threshold_indices["linear_saturation"] is not None:
+                if threshold_indices["MCI_linear_saturation"] is not None:
                     rev_data = smoothPctData[::-1]
                     running_max = np.maximum.accumulate(rev_data)
                     running_min = np.minimum.accumulate(rev_data)
@@ -217,7 +217,7 @@ def run_energy_analysis(
                     
                     sat_mask = np.where(variation > saturation_variation_threshold_pct)[0]
                     if sat_mask.size > 0:
-                        threshold_indices["nonlinear_saturation"] = len(smoothPctData) - int(sat_mask[0])
+                        threshold_indices["MCI_nonlinear_saturation"] = len(smoothPctData) - int(sat_mask[0])
 
             # Write NetCDF Attributes
             fast_ion_var = energyStats["fastIonMeanEnergyDensity"]
@@ -261,12 +261,12 @@ def run_energy_analysis(
     ax.plot(timeCoords, totalPercentage, label="Total", color="black")
 
     if threshold_indices["MCI_start"] is not None:
-        end_p = timeCoords[-1] if threshold_indices["linear_saturation"] is None else timeCoords[threshold_indices["linear_saturation"]]
+        end_p = timeCoords[-1] if threshold_indices["MCI_linear_saturation"] is None else timeCoords[threshold_indices["MCI_linear_saturation"]]
         ax.axvspan(timeCoords[threshold_indices["MCI_start"]], end_p, color="green", alpha=0.1, label="linear MCI growth")
-    if threshold_indices["linear_saturation"] is not None and threshold_indices["nonlinear_restitution"] is not None:
-        ax.axvspan(timeCoords[threshold_indices["linear_saturation"]], timeCoords[threshold_indices["nonlinear_restitution"]], color="blue", alpha=0.1, label="alpha re-energisation")
-    if threshold_indices["nonlinear_saturation"] is not None:
-        ax.axvspan(timeCoords[threshold_indices["nonlinear_saturation"]], timeCoords[-1], color="red", alpha=0.1, label="NL saturation")
+    if threshold_indices["MCI_linear_saturation"] is not None and threshold_indices["MCI_nonlinear_restitution"] is not None:
+        ax.axvspan(timeCoords[threshold_indices["MCI_linear_saturation"]], timeCoords[threshold_indices["MCI_nonlinear_restitution"]], color="blue", alpha=0.1, label="alpha re-energisation")
+    if threshold_indices["MCI_nonlinear_saturation"] is not None:
+        ax.axvspan(timeCoords[threshold_indices["MCI_nonlinear_saturation"]], timeCoords[-1], color="red", alpha=0.1, label="NL saturation")
 
     if not noLegend: 
         ax.legend()
@@ -333,6 +333,57 @@ def run_energy_analysis(
 
     return threshold_indices, dE_dt
 
+def run_spectral_analysis(
+        field_da : xr.DataArray, 
+        fieldStats : nc.Dataset, 
+        field_name : str,
+        field_unit : str,
+        maxK : float,
+        maxW : float,
+        plotFieldFolder : Path,
+        sim_name : str,
+        inputDeck : dict,
+        backgroundIonSpecies : str,
+        fastIonSpecies : str,
+        displayPlots : bool,
+        bispectra : bool,
+        growthRates : bool,
+        gammaWindowTciMin : float, 
+        gammaWindowTciMax : float, 
+        saveGrowthRatePlots : bool, 
+        numGrowthRatesToPlot : int,
+        noTitle : bool,
+        timeStart : float = None,
+        timeEnd : float = None
+    ):
+
+    print(f"Running spectral analysis for {sim_name}...")
+
+    sim_name = f"{sim_name}_time{(timeStart if timeStart is not None else 0.0):.3f}:{f'{timeEnd:.3f}' if timeEnd is not None else 'end'}"
+    data = field_da.sel(time=slice(timeStart, timeEnd))
+    original_spec = xrft.fft(data, true_amplitude=True, true_phase=True, window=None)
+    original_spec = original_spec.rename(freq_time="frequency", freq_x_space="wavenumber")
+    original_spec = original_spec.where(original_spec.wavenumber != 0.0, None)
+
+    tk_spec = e_utils.create_t_k_spectrum(original_spec, fieldStats, maxK, load=True, debug=debug)
+    wavenumberToFrequencyTable = e_utils.create_omega_k_plots(
+        original_spec, fieldStats, field_name, field_unit, plotFieldFolder, 
+        f"{sim_name}_combined", inputDeck, backgroundIonSpecies, fastIonSpecies, 
+        maxK=maxK, maxW=maxW, display=displayPlots, debug=debug
+    )
+    e_utils.create_power_spectra(data, fieldStats, debug)
+    e_utils.create_t_k_plot(tk_spec, field_name, field_unit, plotFieldFolder, sim_name, maxK, displayPlots)
+
+    if bispectra:
+        e_utils.bispectral_analysis(tk_spec, sim_name, field_name, displayPlots, plotFieldFolder, maxK=maxK)
+
+    if growthRates:
+        e_utils.process_growth_rates(
+            tk_spec, fieldStats, plotFieldFolder, sim_name, field_name, 
+            gammaWindowTciMin, gammaWindowTciMax, saveGrowthRatePlots, 
+            numGrowthRatesToPlot, wavenumberToFrequencyTable, displayPlots, noTitle, debug
+        )
+
 def process_single_angle(
     angle_name: str,
     sim_folder: Path,
@@ -355,7 +406,7 @@ def process_single_angle(
     noLegend: bool,
     debug: bool
 ):
-    # 1. Read Dataset efficiently
+    # Read Dataset
     ds = xr.open_mfdataset(
         str(sim_folder / "*.sdf"),
         data_vars='minimal', 
@@ -383,7 +434,7 @@ def process_single_angle(
         energyPlotFolder = plotsFolder / "energy"
         energyPlotFolder.mkdir(parents=True, exist_ok=True)
 
-        # Execute optimized energy analysis
+        # Energy analysis
         run_energy_analysis(
             ds, 
             inputDeck, 
@@ -410,7 +461,7 @@ def process_single_angle(
         dx = float(x_coords[2] - x_coords[1])
         dy = float(time_coords[2] - time_coords[1])
 
-        # Pre-load dataset
+        # Spectral analysis on each field
         ds_loaded = ds.load()
         for field in em_fields:
             plotFieldFolder = plotsFolder / field
@@ -418,7 +469,7 @@ def process_single_angle(
 
             fieldStats = statsRoot.createGroup(field)
             field_da = ds_loaded[field]
-            field_arr = field_da.values  # Direct NumPy array for zero-overhead calculations
+            field_arr = field_da.values
             
             field_unit = field_da.units
             fieldStats.baseUnit = field_unit
@@ -439,32 +490,13 @@ def process_single_angle(
             fieldStats.parsevalFieldDelta = parseval_fieldDelta
             fieldStats.meanDelta = float(np.mean(delta))
             
-            del delta  # Free memory immediately
+            del delta  # Free memory
 
             # FFT Execution
-            original_spec = xrft.fft(field_da, true_amplitude=True, true_phase=True, window=None)
-            original_spec = original_spec.rename(freq_time="frequency", freq_x_space="wavenumber")
-            original_spec = original_spec.where(original_spec.wavenumber != 0.0, None)
-
-            # Spectrum & Dispersion Analysis
-            tk_spec = e_utils.create_t_k_spectrum(original_spec, fieldStats, maxK, load=True, debug=debug)
-            wavenumberToFrequencyTable = e_utils.create_omega_k_plots(
-                original_spec, fieldStats, field, field_unit, plotFieldFolder, 
-                sim_name, inputDeck, backgroundIonSpecies, fastIonSpecies, 
-                maxK=maxK, maxW=maxW, display=displayPlots, debug=debug
-            )
-            e_utils.create_power_spectra(field_da, fieldStats, debug)
-            e_utils.create_t_k_plot(tk_spec, field, field_unit, plotFieldFolder, sim_name, maxK, displayPlots)
-
-            if bispectra:
-                e_utils.bispectral_analysis(tk_spec, sim_name, field, displayPlots, plotFieldFolder, maxK=maxK)
-
-            if growthRates:
-                e_utils.process_growth_rates(
-                    tk_spec, fieldStats, plotFieldFolder, sim_name, field, 
-                    gammaWindowTciMin, gammaWindowTciMax, saveGrowthRatePlots, 
-                    numGrowthRatesToPlot, wavenumberToFrequencyTable, displayPlots, noTitle, debug
-                )
+            run_spectral_analysis(field_da, fieldStats, field, field_unit, maxK, maxW,
+                plotFieldFolder, sim_name, inputDeck, backgroundIonSpecies, fastIonSpecies,
+                displayPlots, bispectra, growthRates, gammaWindowTciMin, gammaWindowTciMax,
+                saveGrowthRatePlots, numGrowthRatesToPlot, noTitle)
 
     return angle_name, ds_loaded
 
@@ -495,7 +527,7 @@ def process_simulation_batch(
     if not displayPlots:
         plt.switch_backend("Agg")  # Non-interactive / headless
 
-    # 1. Resolve Angle Folders Once
+    # Resolve angle folders
     angle_folders = list(simulationDataFolder.glob("9*"))
     if not angle_folders:
         raise ValueError("Can't identify angle folders")
@@ -503,10 +535,10 @@ def process_simulation_batch(
     # Determine CPU cores automatically if num_workers is not explicitly provided
     if num_workers is None:
         try:
-            # Respects CPU quotas/limits (e.g., inside Docker or HPC clusters)
+            # Respect CPU quotas/limits
             num_workers = len(os.sched_getaffinity(0))
         except AttributeError:
-            # Fallback for OSs without sched_getaffinity (e.g., Windows/macOS)
+            # Fallback for OSs without sched_getaffinity
             num_workers = os.cpu_count() or 1
 
     print(f"Using {min(num_workers, len(angle_folders))} processing elements...")
@@ -524,7 +556,6 @@ def process_simulation_batch(
                 run_folders_dict[sim_name] = {}
             run_folders_dict[sim_name][angle_val] = sf
 
-    # 2. Configure Matplotlib Global Styling
     fontsize_config = {
         'axes.titlesize': 26.0 if bigLabels else 18.0,
         'axes.labelsize': 24.0 if bigLabels else 16.0,
@@ -533,6 +564,12 @@ def process_simulation_batch(
         'legend.fontsize': 18.0 if bigLabels else 14.0
     }
     plt.rcParams.update(fontsize_config)
+
+    # Phase names
+    preMci_name = "pre_MCI"
+    linearGrowth_name = "linear_MCI"
+    nonlinear_name = "nonlinear_MCI"
+    nlSaturation_name = "saturated_MCI"
 
     if debug:
         times = []
@@ -544,7 +581,7 @@ def process_simulation_batch(
 
         angle_datasets = {}
 
-        # 3. Process individual angles in Parallel using ProcessPoolExecutor
+        # Process individual angles in parallel
         with ProcessPoolExecutor(max_workers=min(num_workers, len(angles))) as executor:
             futures = [
                 executor.submit(
@@ -562,7 +599,7 @@ def process_simulation_batch(
                 angle_name, ds_loaded = future.result()
                 angle_datasets[angle_name] = ds_loaded
 
-        # 4. Process Combined Angles
+        # Process combined angles
         combinedStats_filepath = analysisOutputFolder / "sum" / "data" / f"{sim_name}_combined_stats.nc"
         combinedStats_filepath.parent.mkdir(parents=True, exist_ok=True)
         
@@ -604,6 +641,8 @@ def process_simulation_batch(
                 target_fields = fields
 
             for field in target_fields:
+
+                ##### Field analysis over all time
                 plotFieldFolder = plotsFolder / field
                 plotFieldFolder.mkdir(parents=True, exist_ok=True)
 
@@ -625,28 +664,82 @@ def process_simulation_batch(
                 fieldStats.meanDelta = float(np.mean(delta))
                 del delta
 
-                original_spec = xrft.fft(field_da, true_amplitude=True, true_phase=True, window=None)
-                original_spec = original_spec.rename(freq_time="frequency", freq_x_space="wavenumber")
-                original_spec = original_spec.where(original_spec.wavenumber != 0.0, None)
+                # FFT Execution
+                run_spectral_analysis(field_da, fieldStats, field, field_unit, maxK, maxW,
+                    plotFieldFolder, sim_name, inputDeck, backgroundIonSpecies, fastIonSpecies,
+                    displayPlots, bispectra, growthRates, gammaWindowTciMin, gammaWindowTciMax,
+                    saveGrowthRatePlots, numGrowthRatesToPlot, noTitle)
+                
+                # Need to run this multiple times according to the thresholds identified in the energy analysis (transition_indices)
+                # Transition indices are: "MCI_start", "MCI_peak_growth", "MCI_linear_saturation", "MCI_nonlinear_restitution", "MCI_nonlinear_saturation"
+                # ### If MCI start:
+                # Process "Pre-MCI phase" up to MCI start
+                # ### If MCI_start and MCI_linear_saturation:
+                # Process "linear MCI growth phase" between MCI_start and MCI_linear_saturation
+                # ### If "MCI_linear_saturation" and "MCI_nonlinear_saturation":
+                # Process "nonlinear phase" between linear and nonlinear saturation
+                # ### If "MCI_nonlinear_saturation":
+                # ### Process "nonlinear saturated phase" from nonlinear saturation to end
 
-                tk_spec = e_utils.create_t_k_spectrum(original_spec, fieldStats, maxK, load=True, debug=debug)
-                wavenumberToFrequencyTable = e_utils.create_omega_k_plots(
-                    original_spec, fieldStats, field, field_unit, plotFieldFolder, 
-                    f"{sim_name}_combined", inputDeck, backgroundIonSpecies, fastIonSpecies, 
-                    maxK=maxK, maxW=maxW, display=displayPlots, debug=debug
-                )
-                e_utils.create_power_spectra(field_da, fieldStats, debug)
-                e_utils.create_t_k_plot(tk_spec, field, field_unit, plotFieldFolder, sim_name, maxK, displayPlots)
+                # Record idx/times
+                for phaseName, phase_idx in transition_indices:
+                    setattr(fieldStats, f"{phaseName}_idx", phase_idx)
+                    setattr(fieldStats, f"{phaseName}_time", time_coords[phase_idx])
 
-                if bispectra:
-                    e_utils.bispectral_analysis(tk_spec, sim_name, field, displayPlots, plotFieldFolder, maxK=maxK)
+                # Process
+                if transition_indices["MCI_start"] is not None:
+                    # Process pre-MCI growth phase
+                    preMciStats = fieldStats.createGroup(preMci_name)
+                    preMciPlotFolder = plotFieldFolder / preMci_name
+                    preMciPlotFolder.mkdir(parents=True, exist_ok=True)
 
-                if growthRates:
-                    e_utils.process_growth_rates(
-                        tk_spec, fieldStats, plotFieldFolder, sim_name, field, 
-                        gammaWindowTciMin, gammaWindowTciMax, saveGrowthRatePlots, 
-                        numGrowthRatesToPlot, wavenumberToFrequencyTable, displayPlots, noTitle, debug
-                    )
+                    timeEnd = time_coords[transition_indices["MCI_start"]]
+
+                    run_spectral_analysis(field_da, preMciStats, field, field_unit, maxK, maxW,
+                        preMciPlotFolder, sim_name + "_preMCI", inputDeck, backgroundIonSpecies, fastIonSpecies,
+                        displayPlots, bispectra, growthRates, gammaWindowTciMin, gammaWindowTciMax,
+                        saveGrowthRatePlots, numGrowthRatesToPlot, noTitle, timeEnd=timeEnd)
+
+                    if transition_indices["MCI_linear_saturation"] is not None:
+                        # Process linear MCI growth phase
+                        linearMciStats = fieldStats.createGroup(linearGrowth_name)
+
+                        linearMciPlotFolder = plotFieldFolder / linearGrowth_name
+                        linearMciPlotFolder.mkdir(parents=True, exist_ok=True)
+
+                        timeStart = time_coords[transition_indices["MCI_start"]]
+                        timeEnd = time_coords[transition_indices["MCI_linear_saturation"]]
+
+                        run_spectral_analysis(field_da, linearMciStats, field, field_unit, maxK, maxW,
+                            linearMciPlotFolder, sim_name + "_linearMCI", inputDeck, backgroundIonSpecies, fastIonSpecies,
+                            displayPlots, bispectra, growthRates, gammaWindowTciMin, gammaWindowTciMax,
+                            saveGrowthRatePlots, numGrowthRatesToPlot, noTitle, timeStart=timeStart, timeEnd=timeEnd)
+
+                        if transition_indices["MCI_nonlinear_saturation"] is not None:
+                            # Process NL phase
+                            nonlinearMciStats = fieldStats.createGroup(nonlinear_name)
+                            nonlinearMciPlotFolder = plotFieldFolder / nonlinear_name
+                            nonlinearMciPlotFolder.mkdir(parents=True, exist_ok=True)
+
+                            timeStart = time_coords[transition_indices["MCI_linear_saturation"]]
+                            timeEnd = time_coords[transition_indices["MCI_nonlinear_saturation"]]
+
+                            run_spectral_analysis(field_da, nonlinearMciStats, field, field_unit, maxK, maxW,
+                                nonlinearMciPlotFolder, sim_name + "_linearMCI", inputDeck, backgroundIonSpecies, fastIonSpecies,
+                                displayPlots, bispectra, growthRates, gammaWindowTciMin, gammaWindowTciMax,
+                                saveGrowthRatePlots, numGrowthRatesToPlot, noTitle, timeStart=timeStart, timeEnd=timeEnd)
+                            
+                            # Process NL saturation
+                            saturatedMciStats = fieldStats.createGroup(nlSaturation_name)
+                            saturatedMciPlotFolder = plotFieldFolder / nlSaturation_name
+                            saturatedMciPlotFolder.mkdir(parents=True, exist_ok=True)
+
+                            timeStart = time_coords[transition_indices["MCI_nonlinear_saturation"]]
+
+                            run_spectral_analysis(field_da, saturatedMciStats, field, field_unit, maxK, maxW,
+                                saturatedMciPlotFolder, sim_name + "_linearMCI", inputDeck, backgroundIonSpecies, fastIonSpecies,
+                                displayPlots, bispectra, growthRates, gammaWindowTciMin, gammaWindowTciMax,
+                                saveGrowthRatePlots, numGrowthRatesToPlot, noTitle, timeStart=timeStart)
 
         # Explicit cleanup of Xarray objects
         for orig_ds in angle_datasets.values():
@@ -788,24 +881,6 @@ if __name__ == "__main__":
         "--saveGammaPlots",
         action="store_true",
         help="Save max growth rate plots to file.",
-        required = False
-    )
-    parser.add_argument(
-        "--classic",
-        action="store_true",
-        help="Use classic (original) batch processing.",
-        required = False
-    )
-    parser.add_argument(
-        "--beta",
-        action="store_true",
-        help="Use beta (new) batch processing.",
-        required = False
-    )
-    parser.add_argument(
-        "--clean",
-        action="store_true",
-        help="Delete existing analysis and re-write files. Otherwise will append to existing output files.",
         required = False
     )
     parser.add_argument(
