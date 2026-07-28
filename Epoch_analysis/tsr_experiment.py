@@ -1,7 +1,6 @@
 import argparse
 import copy
 import glob
-import math
 import os
 from pathlib import Path
 import csv
@@ -14,13 +13,13 @@ import numpy as np
 import pandas as pd
 import time
 from scipy.stats import sem
-from sklearn.model_selection import RepeatedKFold, LeaveOneOut
+from sklearn.model_selection import LeaveOneOut
 from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error, root_mean_squared_error, r2_score
 from sklearn.preprocessing import MinMaxScaler
-import random
 import epoch_utils
 from astropy import units as u
 import plasmapy.formulary.frequencies as ppf
+import math
 
 from dataclass_csv import DataclassWriter
 
@@ -1382,7 +1381,7 @@ def regress_scanFrequencies(
     battery.directory = str(dataDirectory.resolve())
     battery.algorithms = algorithms
 
-    if not ("data" in dataDirectory.name):
+    if "data" not in dataDirectory.name:
         data_dir = dataDirectory / "data"
     else:
         data_dir = dataDirectory
@@ -1616,6 +1615,297 @@ def regress_scanFrequencies(
             w = DataclassWriter(f, allPredictionsRecord, ml_utils.TSRPrediction)
             w.write()
 
+def regress_non_ts(
+        directory : Path,
+        inputSpectraNames : list,
+        outputFields : list,
+        logFields : list,
+        algorithms : list,
+        includeFreqs : bool = True,
+        scaleInputs : bool = False,
+        logInputs : bool = True,
+        resultsFilepath : Path = None,
+        doPlot : bool = True,
+        noTitle : bool = False
+):
+    # Initialise results objects
+    battery = ml_utils.TSRBattery()
+    allPredictionsRecord = []
+    battery.package = "Aeon"
+
+    if directory.name != "data":
+        data_dir = directory / "data"
+    else:
+        data_dir = directory
+    data_files = glob.glob(str(data_dir / "*.nc")) 
+    battery.directory = str(directory.resolve())
+    battery.algorithms = algorithms
+    battery.normalised = True
+    battery.scaledInputs = scaleInputs
+
+    # Input data
+    inputs = {name : [] for name in inputSpectraNames}
+    inputs = ml_utils.read_data(data_files, inputs, with_names = True, with_coords = True, with_iciness = False, denorm_coords = True)
+    battery.inputSpectra = np.array(inputSpectraNames)
+
+    # Output data
+    outputs = {outputField : [] for outputField in outputFields}
+    outputs = ml_utils.read_data(data_files, outputs, with_names = False, with_coords = False)
+    battery.outputFields = np.array(outputFields)
+    battery.numOutputs = len(outputs.keys())
+
+    if "B0angle" in outputs:
+        transf = np.array(outputs["B0angle"])
+        outputs["B0angle"] = np.abs(transf - 90.0) 
+
+    spec_lengths = []
+    for field in inputSpectraNames:
+        spec_lengths.extend([len(s) for s in inputs[field]])
+    min_l = np.min(spec_lengths)
+    print(f"Max spec length: {np.max(spec_lengths)} min spec length: {min_l}")
+    max_common_coord = np.max([c[-1] for c in [inputs[f"{inputSpectrumName}_denorm_coords"] for inputSpectrumName in inputSpectraNames]])
+    
+    scaler_train = MinMaxScaler(feature_range=(0, 1))
+    inputData = []
+    for field in inputSpectraNames:
+        specs = inputs[field]
+        coords = inputs[f"{field}_denorm_coords"]
+        for i in range(len(specs)):
+            if len(specs[i]) > min_l:
+                truncd_series, truncd_coords = ml_utils.truncate_series(specs[i], inputs[f"{field}_denorm_coords"][i], max_common_coord)
+                resamp_series, resamp_coords = ml_utils.resample_series(truncd_series, truncd_coords, min_l, f"{field.split('/')[0]}_run_{inputs['sim_ids'][i]}", directory / "spectra_homogenisation/")
+                specs[i] = resamp_series
+                coords[i] = resamp_coords
+        spec_data = specs if not scaleInputs else [scaler_train.fit_transform(s.reshape(-1, 1)).flatten()for s in specs]
+        if logInputs:
+            for i in range(len(spec_data)):
+                trace = spec_data[i] 
+                spec_data[i] = [np.log10(trace[1]) if trace[1] != 0.0 else 0.0] + np.log10(trace[1:]).tolist()
+        inputData.append(spec_data)
+    if includeFreqs:
+        inputData.append(coords) # Append only the last set of coordinates (they should be the same for all fields)
+
+    # Reshape into 2D numpy array of shape (n_cases, n_timepoints * n_channels)
+    raw_X = np.array(inputData).swapaxes(0, 1)
+    inputSpectra = raw_X.reshape(raw_X.shape[0], -1)
+
+    logFields = np.intersect1d(outputFields, logFields)
+    battery.logFields = np.array(logFields)
+    battery.original_output_means = dict.fromkeys(outputFields)
+    battery.original_output_stdevs = dict.fromkeys(outputFields)
+
+    battery.equalLengthTimeseries = True
+    battery.numObservations = raw_X.shape[0]
+    battery.numInputDimensions = raw_X.shape[1]
+    battery.numTimepointsIfEqual = raw_X.shape[2]
+    battery.multivariate = battery.numInputDimensions > 1
+
+    battery.cvStrategy = "LeaveOneOut"
+    battery.cvFolds = battery.numObservations
+    battery.cvRepeats = 1
+    battery.results = []
+
+    trainingTimeTotal_ns = 0
+    cvTimeTotal_ns = 0
+    fold_training_times_ns = []
+    fold_inference_times_cpu_ns = []
+    fold_inference_times_clock_ns = []
+
+    # Dumb hack
+    best_results = {"backgroundDensity" : 0.435279, "beamFraction" : 0.316314, "B0strength" : 0.024969, "pitch" : 0.589228}
+
+    clock_time_start = time.time()
+    cv_time_start = time.process_time_ns()
+    for output_field, output_values in outputs.items():
+        
+        assert len(output_values) == inputSpectra.shape[0]
+        case_indices = np.arange(len(output_values))
+        output_values = np.array(output_values)
+        cv = LeaveOneOut()
+        tt_split = list(enumerate(cv.split(case_indices)))
+
+        if output_field in logFields:
+            output_values = np.log10(output_values)
+
+        # Record denormalisation parameters
+        _, scaler = ml_utils.normalise_data(output_values)
+        print(f"Original data mean: {np.mean(output_values)}, original data SD: {np.std(output_values)}")
+        print(f"Mean (0.0) in normalised RMSE units is {scaler.mean_} in original {output_field} units (or {10**scaler.mean_} in log space).")
+        print(f"SD in normalised RMSE units is {np.sqrt(scaler.var_)} in original {output_field} units (or {10**np.sqrt(scaler.var_)} in log space).")
+        print(f"Best RMSE = {best_results[output_field]}, which denormalises to {scaler.inverse_transform([[best_results[output_field]]])[0][0] - scaler.mean_[0]}, or {10**scaler.inverse_transform([[best_results[output_field]]])[0][0]} in log space.")
+        print(f"ALT LOG: Best RMSE high = {10**(scaler.mean_[0] + (np.sqrt(scaler.var_) * best_results[output_field]))}")
+        print(f"ALT LOG: Best RMSE low = {10**(scaler.mean_[0] - (np.sqrt(scaler.var_) * best_results[output_field]))}")
+        battery.original_output_means[output_field] = scaler.mean_
+        battery.original_output_stdevs[output_field] = np.sqrt(scaler.var_)
+
+        for algorithm in algorithms:
+            print(f"Building {algorithm} model for {output_field} from {inputSpectraNames}....")
+            
+            # Results
+            result = ml_utils.TSRResult()
+            result.output = output_field
+            result.algorithm = algorithm
+            
+            tsr = ml_utils.get_algorithm(algorithm)
+
+            # CV Folds
+            all_test_indices = []
+            all_train_R2s = []
+            all_test_points = []
+            all_predictions = []
+            all_test_points_denormed = []
+            all_predictions_denormed = []
+            
+            for fold, (train, test) in tt_split:
+                fold_start_training_time = time.process_time_ns()
+                print(f"Fold: {fold} (test indices: {test})....")
+                # print(f"    Train indices: {train}")
+                # print(f"    Test indices:  {test}")
+
+                train_x = [inputSpectra[t] for t in train]
+                train_y = output_values[train]
+                test_x = [inputSpectra[t] for t in test]
+                test_y = output_values[test]
+
+                # Renormalise for each split
+                train_y, scaler = ml_utils.normalise_data(train_y)
+                test_y, _ = ml_utils.normalise_data(test_y, scaler = scaler)
+                print(f"scaler mean: {scaler.mean_}")
+                print(f"1.0 in normalised RMSE units is {scaler.inverse_transform([[1.0]])} in original {output_field} units (may be logged).")
+
+                print("    Training model....")
+                # Fit
+                tsr.fit(train_x, train_y)
+                fold_end_training_time = time.process_time_ns()
+                
+                # Timing
+                fold_time_ns = fold_end_training_time - fold_start_training_time
+                fold_training_times_ns.append(fold_time_ns)
+                trainingTimeTotal_ns += fold_time_ns
+                print(f"Fold training time: {fold_time_ns / 1E9} s")
+
+                # Predict
+                fold_inf_time_clock_start = time.perf_counter_ns()
+                fold_inference_time_start = time.process_time_ns()
+                predictions = tsr.predict(test_x)
+                fold_inference_time_end = time.process_time_ns()
+                fold_inf_time_clock_end = time.perf_counter_ns()
+                fold_inference_time_ns = fold_inference_time_end - fold_inference_time_start
+                fold_inf_time_clock_ns = fold_inf_time_clock_end - fold_inf_time_clock_start
+                fold_inference_times_cpu_ns.append(fold_inference_time_ns)
+                fold_inference_times_clock_ns.append(fold_inf_time_clock_ns)
+                print(f"Fold inference time: {fold_inference_time_ns} CPU ns or {fold_inf_time_clock_ns} clock ns.")
+
+                preds_denormed = ml_utils.denormalise_data(predictions, scaler)
+                test_y_denormed = ml_utils.denormalise_data(test_y, scaler)
+                if output_field in logFields:
+                    preds_denormed = 10.0**preds_denormed
+                    test_y_denormed = 10.0**test_y_denormed
+                print(f"    Predictions:  {predictions} (normalised), {preds_denormed} (original)")
+                print(f"    Ground truth: {test_y} (normalised), {test_y_denormed} (original)")
+                score = tsr.score(test_x, test_y)
+                skl_rmse = root_mean_squared_error(test_y, predictions)
+                training_r2 = tsr.score(train_x, train_y)
+                all_train_R2s.append(training_r2)
+                print(f"    training r2:  {training_r2}")
+                print(f"    knn r2:       {score}")
+                print(f"    sklearn rmse: {skl_rmse} (actuals S.D.: {np.std(test_y)})")
+
+                all_test_indices.extend(test.tolist())
+                all_test_points.extend(test_y.tolist())
+                all_test_points_denormed.extend(test_y_denormed)
+                all_predictions.extend(list(predictions))
+                all_predictions_denormed.extend(preds_denormed)
+
+                # Log predictions
+                testLens = [len(predictions), len(test), len(test_y), len(test_y_denormed), len(predictions), len(preds_denormed)]
+                assert len(set(testLens)) == 1 # All lists have equal length
+                for i in range(len(predictions)):
+                    predRecord = ml_utils.TSRPrediction(
+                        algorithm=algorithm,
+                        inputChannels=np.array(inputSpectraNames),
+                        outputQuantity=output_field,
+                        datapoint_ID=test[i],
+                        fold_ID=fold,
+                        trueValue_normalised=test_y[i],
+                        trueValue_denormalised=test_y_denormed[i][0],
+                        trueValue_denormalised_log10=np.log10(test_y_denormed[i][0]),
+                        predictedValue_normalised=predictions[i],
+                        predictedValue_denormalised=preds_denormed[i][0],
+                        predictedValue_denormalised_log10=np.log10(preds_denormed[i][0])
+                    )
+                    allPredictionsRecord.append(predRecord)
+
+            rmse, rmse_var, rmse_se = ml_utils.root_mean_squared_error(all_predictions, all_test_points)
+            r2 = r2_score(all_test_points, all_predictions)
+
+            mean_training_r2 = np.mean(all_train_R2s)
+            train_r2_sem = sem(all_train_R2s)
+            train_r2_var = np.var(all_train_R2s)
+            
+            summary_str = f"{output_field} -- {algorithm}: Mean test r2 = {r2:.5f}, mean test RMSE = {rmse:.5f}+-{rmse_se:.5f}, mean train r2 = {mean_training_r2}+-{train_r2_sem}"
+            print("--------------------------------------------------------------------------------------------------------------------------")
+            print(summary_str)
+            print("--------------------------------------------------------------------------------------------------------------------------")
+            result.cvR2_mean = r2
+            result.cvRMSE_mean = rmse
+            result.cvRMSE_var = rmse_var
+            result.cvRMSE_stderr = rmse_se
+            result.cvMAE_mean = mean_absolute_error(y_true=all_test_points, y_pred=all_predictions, multioutput="uniform_average")
+            mae_all = mean_absolute_error(y_true=all_test_points, y_pred=all_predictions, multioutput="raw_values")
+            result.cvMAE_var = np.var(mae_all)
+            result.cvMAE_stderr = sem(mae_all)
+            result.cvMAPE_mean = mean_absolute_percentage_error(y_true=all_test_points, y_pred=all_predictions, multioutput="uniform_average")
+            mape_all = mean_absolute_percentage_error(y_true=all_test_points, y_pred=all_predictions, multioutput="raw_values")
+            result.cvMAPE_var = np.var(mape_all)
+            result.cvMAPE_stderr = sem(mape_all)
+            result.trainR2_mean = mean_training_r2
+            result.trainR2_stderr = train_r2_sem
+            result.trainR2_var = train_r2_var
+
+            battery.results.append(result)
+
+            if doPlot:
+                plot_predictions(
+                    algorithm_name = algorithm,
+                    field = output_field,
+                    sim_ids = all_test_indices, 
+                    truth = all_test_points_denormed,
+                    preds = all_predictions_denormed,
+                    r2 = result.cvR2_mean,
+                    rmse = result.cvRMSE_mean,
+                    saveFolder = resultsFilepath.parent / "predictions" / algorithm, 
+                    doLog = output_field in logFields,
+                    noTitle = noTitle
+                )
+    
+    clock_time_end = time.time()
+    cv_time_end = time.process_time_ns()
+    cvTimeTotal_ns = cv_time_end - cv_time_start
+    clock_time = clock_time_end - clock_time_start
+    print(f"Clock time: {clock_time / 60.0} min. Process time: {cvTimeTotal_ns / 6E10} min.")
+
+    battery.cvTimeTotal_CPUhours = float(cvTimeTotal_ns) / 3.6E12
+    battery.inferenceTimeMinPerFold_CPUns = int(np.rint(np.min(fold_inference_times_cpu_ns)))
+    battery.inferenceTimeMinPerFold_CPUms = float(battery.inferenceTimeMinPerFold_CPUns) / 1E6
+    battery.inferenceTimeMinPerFold_ClockNs = int(np.rint(np.min(fold_inference_times_clock_ns)))
+    battery.inferenceTimeMinPerFold_ClockMs = float(battery.inferenceTimeMinPerFold_ClockNs) / 1E6
+    battery.inferenceTimeMeanPerFold_CPUns = int(np.rint(np.mean(fold_inference_times_cpu_ns)))
+    battery.inferenceTimeMeanPerFold_CPUms = float(battery.inferenceTimeMeanPerFold_CPUns) / 1E6
+    battery.inferenceTimeMeanPerFold_ClockNs = int(np.rint(np.mean(fold_inference_times_clock_ns)))
+    battery.inferenceTimeMeanPerFold_ClockMs = float(battery.inferenceTimeMeanPerFold_ClockNs) / 1E6
+    battery.trainingTimeMinPerFold_CPUhours = np.min(fold_training_times_ns)  / 3.6E12
+    battery.trainingTimeMeanPerFold_CPUhours = np.mean(fold_training_times_ns)  / 3.6E12
+    battery.trainingTimeTotal_CPUns = trainingTimeTotal_ns
+    battery.trainingTimeTotal_CPUhours = float(trainingTimeTotal_ns) / 3.6E12
+
+    # Write results and all predictions
+    ml_utils.write_ML_result_to_file(battery, resultsFilepath)
+    if len(allPredictionsRecord) > 0:
+        with open(resultsFilepath.parent / "predictions" / f"{resultsFilepath.name.replace('.json', '').replace('.', '')}_predictions.csv", "w") as f:
+            w = DataclassWriter(f, allPredictionsRecord, ml_utils.TSRPrediction)
+            w.write()
+
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser("parser")
@@ -1688,6 +1978,12 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
+        "--benchmarkNonTS",
+        action="store_true",
+        help="Run experiments benchmarking against non-time-series algorithms.",
+        required = False
+    )
+    parser.add_argument(
         "--cottrellFilepath",
         action="store",
         help="Filepath of Cottrell 93 data to regress against.",
@@ -1753,6 +2049,30 @@ if __name__ == "__main__":
     #     {"n_kernels" : 10000, "max_dilations_per_kernel" : 64},
     #     {"n_kernels" : 10000, "max_dilations_per_kernel" : 96},
     # ]
+
+    if args.benchmarkNonTS:
+        regress_non_ts(
+            directory = args.dataDir, 
+            inputSpectraNames = [
+                "Magnetic_Field_Bz/power/frequencyPowerSpectrum",
+                "Electric_Field_Ex/power/frequencyPowerSpectrum",
+                "Electric_Field_Ey/power/frequencyPowerSpectrum",
+            ], 
+            outputFields = [
+                "B0strength", 
+                "pitch", 
+                "backgroundDensity", 
+                "beamFraction"
+            ], 
+            logFields = [
+                "backgroundDensity", 
+                "beamFraction"
+            ], 
+            algorithms = args.algorithms, 
+            resultsFilepath=args.resultsFilepath,
+            doPlot=False,
+            noTitle=True
+        )
 
     if args.scanArgs:
         regress_scanArgs(

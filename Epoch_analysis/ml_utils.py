@@ -8,11 +8,13 @@ import epoch_utils
 
 from scipy.stats import norm
 from scipy.interpolate import griddata
-from scipy.signal import find_peaks, resample
+from scipy.signal import find_peaks
 import xarray as xr
 from inference.plotting import matrix_plot
 from sklearn.gaussian_process import GaussianProcessRegressor, GaussianProcessClassifier
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import Ridge
+from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
 import json
 import dataclasses as dc
 from dataclasses import dataclass
@@ -20,21 +22,6 @@ from dataclasses_json import dataclass_json
 from numpy.typing import ArrayLike
 from SALib import ProblemSpec
 import SALib.sample as salsamp
-
-import astropy.units as u
-from plasmapy.formulary import frequencies as ppf
-
-# Sktime algorithms
-# import sktime.clustering.dbscan as skt_dbscan
-# import sktime.clustering.k_means  as skt_kmeans
-# import sktime.clustering.k_medoids  as skt_kmedoids
-# import sktime.clustering.k_shapes  as skt_kshapes
-# import sktime.clustering.kernel_k_means as skt_kernelmeans
-# import sktime.regression.deep_learning as skt_deep
-# import sktime.regression.distance_based as skt_dist
-# import sktime.regression.interval_based as skt_int
-# import sktime.regression.kernel_based as skt_kernel
-# import sktime.regression.compose as skt_compose
 
 # Aeon algorithms
 import aeon.regression.interval_based as aeon_int
@@ -353,6 +340,14 @@ def get_algorithm(name, nThreads = 1, **kwargs):
     # Univariate
         case "aeon.DisjointCNNRegressor":
             return aeon_deep.DisjointCNNRegressor()
+        
+    # STANDARD ALGORITHMS -- NOT TIME-SERIES
+        case "RidgeRegressor":
+            return Ridge(**kwargs)
+        case "GradientBoostingRegressor":
+            return GradientBoostingRegressor(**kwargs)
+        case "RandomForestRegressor":
+            return RandomForestRegressor(**kwargs)
 
 def read_data(
         dataFiles, 
