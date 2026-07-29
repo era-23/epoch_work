@@ -384,19 +384,21 @@ def regress_cottrell_2(
         includeFreqs : bool = False,
         nThreads : int = 1,
         lowFrequencyCleaningMethod : str = "linterpToSP",
+        displayPlots : bool = False
 ):
-    
-    SMALL_SIZE = 10
-    MEDIUM_SIZE = 16
-    BIGGER_SIZE = 20
 
-    plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
-    plt.rc('axes', titlesize=BIGGER_SIZE)     # fontsize of the axes title
-    plt.rc('axes', labelsize=BIGGER_SIZE)    # fontsize of the x and y labels
-    plt.rc('xtick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
-    plt.rc('ytick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
-    plt.rc('legend', fontsize=12)    # legend fontsize
-    plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
+    if displayPlots:
+        SMALL_SIZE = 10
+        MEDIUM_SIZE = 16
+        BIGGER_SIZE = 20
+
+        plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
+        plt.rc('axes', titlesize=BIGGER_SIZE)     # fontsize of the axes title
+        plt.rc('axes', labelsize=BIGGER_SIZE)    # fontsize of the x and y labels
+        plt.rc('xtick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
+        plt.rc('ytick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
+        plt.rc('legend', fontsize=12)    # legend fontsize
+        plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
 
     # Initialise results objects
 
@@ -520,12 +522,15 @@ def regress_cottrell_2(
     all_prediction_sems = {a : [] for a in algorithms}
     all_prediction_sds = {a : [] for a in algorithms}
 
-    n_repeats = 20
+    n_repeats = 2
     all_results = []
 
     print(f"Spectra in dB range from {np.min(train_x[:][0])}dB to {np.max(train_x[:][0])}dB.")
 
     for output_field, output_values in outputs.items():
+
+        if output_field not in outputFields:
+            continue
 
         # ##### Debugging
         # pct_diffs = np.array([np.abs(v - all_true_y[output_field]) for v in output_values])
@@ -564,7 +569,8 @@ def regress_cottrell_2(
             
             # Fit
             predictions = []
-            for _ in range(n_repeats):
+            for r in range(n_repeats):
+                print(f"Fitting and predicting repeat {r}...")
                 tsr.fit(train_x, train_y)
 
                 # Predict
@@ -638,70 +644,71 @@ def regress_cottrell_2(
         writer.writeheader()
         writer.writerows(all_results)
 
-    fig, axs = plt.subplots(len(outputFields), 1, figsize=(12,10))
-    for i in range(len(outputFields)):
-        for algo, results in all_predictions.items():
-            if outputFields[i] == "backgroundDensity":
-                axs[i].errorbar(all_predictions[algo][i] / 10**20, epoch_utils.fieldNameToText(outputFields[i]), xerr=all_prediction_sds[algo][i] / 10**20, label = algo, ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
+    if displayPlots:
+        fig, axs = plt.subplots(len(outputFields), 1, figsize=(12,10))
+        for i in range(len(outputFields)):
+            for algo, results in all_predictions.items():
+                if outputFields[i] == "backgroundDensity":
+                    axs[i].errorbar(all_predictions[algo][i] / 10**20, epoch_utils.fieldNameToText(outputFields[i]), xerr=all_prediction_sds[algo][i] / 10**20, label = algo, ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
+                else:
+                    axs[i].errorbar(all_predictions[algo][i], epoch_utils.fieldNameToText(outputFields[i]), xerr=all_prediction_sds[algo][i], label = algo, ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
+            
+            if outputFields[i] == "B0strength":
+                axs[i].axvline(x = all_true_y["B0strength"], color = "black", linestyle=":", lw = 2.0, label="Experimental value")
+                axs[i].fill_between(x = [all_true_y["B0strength"] - 0.07, all_true_y["B0strength"] + 0.07], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
+            elif outputFields[i] == "pitch":
+                axs[i].fill_between(x = [all_true_y["pitch"] - 0.05, all_true_y["pitch"] + 0.04], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
+            elif outputFields[i] == "backgroundDensity":
+                axs[i].axvline(x = all_true_y["backgroundDensity"] / 10**20, color = "black", linestyle=":", lw = 2.0, label="Experimental value")
             else:
-                axs[i].errorbar(all_predictions[algo][i], epoch_utils.fieldNameToText(outputFields[i]), xerr=all_prediction_sds[algo][i], label = algo, ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
-        
-        if outputFields[i] == "B0strength":
-            axs[i].axvline(x = all_true_y["B0strength"], color = "black", linestyle=":", lw = 2.0, label="Experimental value")
-            axs[i].fill_between(x = [all_true_y["B0strength"] - 0.07, all_true_y["B0strength"] + 0.07], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
-        elif outputFields[i] == "pitch":
-            axs[i].fill_between(x = [all_true_y["pitch"] - 0.05, all_true_y["pitch"] + 0.04], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
-        elif outputFields[i] == "backgroundDensity":
-            axs[i].axvline(x = all_true_y["backgroundDensity"] / 10**20, color = "black", linestyle=":", lw = 2.0, label="Experimental value")
-        else:
-            axs[i].axvline(x = all_true_y[outputFields[i]], color = "black", linestyle=":", lw = 2.0, label="Experimental value")
+                axs[i].axvline(x = all_true_y[outputFields[i]], color = "black", linestyle=":", lw = 2.0, label="Experimental value")
 
-    axs[0].legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, 2.0))
-    fig.supylabel("Output field", fontsize = 20)
-    fig.supxlabel("Prediction", fontsize = 20)
-    axs[2].set_xscale("log")
-    axs[3].set_xscale("log")
-    axs[2].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=False))
-    axs[3].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
-    plt.tight_layout()
-    for ax in axs:
-        ax.grid()
-    plt.show()
+        axs[0].legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, 2.0))
+        fig.supylabel("Output field", fontsize = 20)
+        fig.supxlabel("Prediction", fontsize = 20)
+        axs[2].set_xscale("log")
+        axs[3].set_xscale("log")
+        axs[2].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=False))
+        axs[3].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
+        plt.tight_layout()
+        for ax in axs:
+            ax.grid()
+        plt.show()
 
-    fig, axs = plt.subplots(len(outputFields), 1, figsize=(12,10))
-    for i in range(len(outputFields)):
-        for algo, _ in all_predictions.items():
-            if outputFields[i] == "backgroundDensity":
-                axs[i].errorbar(all_predictions[algo][i] / 10**20, epoch_utils.fieldNameToText(outputFields[i]), xerr=all_prediction_sds[algo][i] / 10**20, label = algo, ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
+        fig, axs = plt.subplots(len(outputFields), 1, figsize=(12,10))
+        for i in range(len(outputFields)):
+            for algo, _ in all_predictions.items():
+                if outputFields[i] == "backgroundDensity":
+                    axs[i].errorbar(all_predictions[algo][i] / 10**20, epoch_utils.fieldNameToText(outputFields[i]), xerr=all_prediction_sds[algo][i] / 10**20, label = algo, ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
+                else:
+                    axs[i].errorbar(all_predictions[algo][i], epoch_utils.fieldNameToText(outputFields[i]), xerr=all_prediction_sds[algo][i], label = algo, ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
+
+            if outputFields[i] == "B0strength":
+                axs[i].axvline(x = all_true_y["B0strength"], color = "black", linestyle=":", lw = 2.0, label="Experimental value")
+                axs[i].fill_between(x = [all_true_y["B0strength"] - 0.07, all_true_y["B0strength"] + 0.07], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
+            elif outputFields[i] == "pitch":
+                axs[i].fill_between(x = [all_true_y["pitch"] - 0.05, all_true_y["pitch"] + 0.04], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
+            elif outputFields[i] == "backgroundDensity":
+                axs[i].axvline(x = all_true_y["backgroundDensity"] / 10**20, color = "black", linestyle=":", lw = 2.0, label="Experimental value")
             else:
-                axs[i].errorbar(all_predictions[algo][i], epoch_utils.fieldNameToText(outputFields[i]), xerr=all_prediction_sds[algo][i], label = algo, ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
+                axs[i].axvline(x = all_true_y[outputFields[i]], color = "black", linestyle=":", lw = 2.0, label="Experimental value")
 
-        if outputFields[i] == "B0strength":
-            axs[i].axvline(x = all_true_y["B0strength"], color = "black", linestyle=":", lw = 2.0, label="Experimental value")
-            axs[i].fill_between(x = [all_true_y["B0strength"] - 0.07, all_true_y["B0strength"] + 0.07], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
-        elif outputFields[i] == "pitch":
-            axs[i].fill_between(x = [all_true_y["pitch"] - 0.05, all_true_y["pitch"] + 0.04], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
-        elif outputFields[i] == "backgroundDensity":
-            axs[i].axvline(x = all_true_y["backgroundDensity"] / 10**20, color = "black", linestyle=":", lw = 2.0, label="Experimental value")
-        else:
-            axs[i].axvline(x = all_true_y[outputFields[i]], color = "black", linestyle=":", lw = 2.0, label="Experimental value")
-
-    axs[0].legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, 2.0))
-    axs[2].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=False))
-    axs[3].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
-    fig.supxlabel("Prediction", fontsize = 20)
-    fig.supylabel("Output field", fontsize = 20)
-    axs[2].set_xscale("log")
-    axs[3].set_xscale("log")
-    axs[0].set_xlim(1.0, 5.0)
-    axs[1].set_xlim(0.0, 1.0)
-    # axs[2].set_xlim(1E19, 1E20)
-    axs[2].set_xlim(0.1, 1.0)
-    axs[3].set_xlim(1E-4, 1E-2)
-    plt.tight_layout()
-    for ax in axs:
-        ax.grid()
-    plt.show()
+        axs[0].legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, 2.0))
+        axs[2].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=False))
+        axs[3].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
+        fig.supxlabel("Prediction", fontsize = 20)
+        fig.supylabel("Output field", fontsize = 20)
+        axs[2].set_xscale("log")
+        axs[3].set_xscale("log")
+        axs[0].set_xlim(1.0, 5.0)
+        axs[1].set_xlim(0.0, 1.0)
+        # axs[2].set_xlim(1E19, 1E20)
+        axs[2].set_xlim(0.1, 1.0)
+        axs[3].set_xlim(1E-4, 1E-2)
+        plt.tight_layout()
+        for ax in axs:
+            ax.grid()
+        plt.show()
 
 def regress_cottrell(
         dataDirectory : Path,
@@ -846,13 +853,13 @@ def regress_cottrell(
     #     # plt.title(inputs["sim_ids"][i])
     #     plt.show()
     
-    for simulation in inputSpectra:
+    # for simulation in inputSpectra:
         
-        plt.plot(simulation[1], simulation[0], color = "blue")
-        plt.title("data")
-        plt.axhline(y = np.mean(simulation[0]), color = "red")
-        plt.grid(which = "major", axis = "x")
-        plt.show()
+    #     plt.plot(simulation[1], simulation[0], color = "blue")
+    #     plt.title("data")
+    #     plt.axhline(y = np.mean(simulation[0]), color = "red")
+    #     plt.grid(which = "major", axis = "x")
+    #     plt.show()
 
     for output_field, output_values in outputs.items():
 
@@ -2033,6 +2040,12 @@ if __name__ == "__main__":
         type=str,
         nargs=1
     )
+    parser.add_argument(
+        "--displayPlots",
+        action="store_true",
+        help="Generate and display plots (primarily for Cottrell regression).",
+        required = False
+    )
 
     args = parser.parse_args()
 
@@ -2155,24 +2168,26 @@ if __name__ == "__main__":
                 "backgroundDensity", 
                 "beamFraction"
             ], 
-            algorithms = [
-                "aeon.HydraRegressor", 
-                "aeon.RocketRegressor", 
-                "aeon.MiniRocketRegressor", 
-                "aeon.MultiRocketRegressor", 
-                "aeon.MultiRocketHydraRegressor", 
-                "aeon.QUANTRegressor", 
-                "aeon.KNeighborsTimeSeriesRegressor",
-                "aeon.RDSTRegressor",
-                "aeon.TimeSeriesForestRegressor",
-                "aeon.Catch22Regressor",
-                "aeon.RandomIntervalRegressor",
-                "aeon.RandomIntervalSpectralEnsembleRegressor",
-                "aeon.SummaryRegressor",
+            algorithms = 
+                args.algorithms,
+            # [
+                # "aeon.HydraRegressor", 
+                # "aeon.RocketRegressor", 
+                # "aeon.MiniRocketRegressor", 
+                # "aeon.MultiRocketRegressor", 
+                # "aeon.MultiRocketHydraRegressor", 
+                # "aeon.QUANTRegressor", 
+                # "aeon.KNeighborsTimeSeriesRegressor",
+                # "aeon.RDSTRegressor",
+                # "aeon.TimeSeriesForestRegressor",
+                # "aeon.Catch22Regressor",
+                # "aeon.RandomIntervalRegressor",
+                # "aeon.RandomIntervalSpectralEnsembleRegressor",
+                # "aeon.SummaryRegressor",
                 # "aeon.DummyRegressor",
                 # "aeon.TSFreshRegressor",
                 # "aeon.FreshPRINCERegressor"
-            ], 
+            # ], 
             cottrellDatapath = args.cottrellFilepath,
             resultsFilepath=args.resultsFilepath,
             includeFreqs=args.includeFreqs,
@@ -2193,29 +2208,33 @@ if __name__ == "__main__":
                 "backgroundDensity", 
                 "beamFraction"
             ], 
-            algorithms = [
-                "aeon.HydraRegressor", 
-                "aeon.RocketRegressor", 
-                "aeon.MiniRocketRegressor", 
-                "aeon.MultiRocketRegressor", 
-                "aeon.MultiRocketHydraRegressor", 
-                "aeon.QUANTRegressor", 
-                "aeon.KNeighborsTimeSeriesRegressor",
-                "aeon.RDSTRegressor",
-                "aeon.TimeSeriesForestRegressor",
-                "aeon.Catch22Regressor",
-                "aeon.RandomIntervalRegressor",
-                "aeon.RandomIntervalSpectralEnsembleRegressor",
-                "aeon.SummaryRegressor",
+            algorithms = 
+                args.algorithms,
+            # [
+                # "aeon.HydraRegressor", 
+                # "aeon.RocketRegressor", 
+                # "aeon.MiniRocketRegressor", 
+                # "aeon.MultiRocketRegressor", 
+                # "aeon.MultiRocketHydraRegressor", 
+                # "aeon.QUANTRegressor", 
+                # "aeon.KNeighborsTimeSeriesRegressor",
+                # "aeon.RDSTRegressor",
+                # "aeon.TimeSeriesForestRegressor",
+                # "aeon.Catch22Regressor",
+                # "aeon.RandomIntervalRegressor",
+                # "aeon.RandomIntervalSpectralEnsembleRegressor",
+                # "aeon.SummaryRegressor",
                 # "aeon.DummyRegressor",
                 # "aeon.TSFreshRegressor",
                 # "aeon.FreshPRINCERegressor"
-            ], 
+            # ], 
             cottrellDatapath = args.cottrellFilepath,
             resultsFilepath=args.resultsFilepath,
             includeFreqs=args.includeFreqs,
             nThreads = args.nThreads,
-            lowFrequencyCleaningMethod=args.lowFrequencyCleaningMethod[0])
+            lowFrequencyCleaningMethod=args.lowFrequencyCleaningMethod[0],
+            displayPlots=args.displayPlots
+        )
         # "--lowFrequencyCleaningMethod",
         #             "linterpToSP",
         #             "zeroToSP",
