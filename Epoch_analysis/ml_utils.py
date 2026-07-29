@@ -343,7 +343,7 @@ def get_algorithm(name, nThreads = 1, **kwargs):
         
     # STANDARD ALGORITHMS -- NOT TIME-SERIES
         case "RidgeRegressor":
-            return Ridge(**kwargs)
+            return Ridge(solver="svd", **kwargs)
         case "GradientBoostingRegressor":
             return GradientBoostingRegressor(**kwargs)
         case "RandomForestRegressor":
