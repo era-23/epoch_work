@@ -1,27 +1,34 @@
 import argparse
 import copy
-import glob
-import os
-from pathlib import Path
 import csv
-from matplotlib import ticker
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.linear_model import RidgeCV
-import ml_utils
+import glob
+import math
+import os
+import time
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import time
-from scipy.stats import sem
-from sklearn.model_selection import LeaveOneOut
-from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error, root_mean_squared_error, r2_score
-from sklearn.preprocessing import MinMaxScaler
-import epoch_utils
-from astropy import units as u
 import plasmapy.formulary.frequencies as ppf
-import math
-
+from astropy import units as u
 from dataclass_csv import DataclassWriter
+from matplotlib import ticker
+from scipy.stats import sem
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import RidgeCV
+from sklearn.metrics import (
+    mean_absolute_error,
+    mean_absolute_percentage_error,
+    r2_score,
+    root_mean_squared_error,
+)
+from sklearn.model_selection import LeaveOneOut
+from sklearn.preprocessing import MinMaxScaler
+
+import epoch_utils
+import ml_utils
+
 
 def plot_predictions(
         algorithm_name : str,
@@ -1746,7 +1753,7 @@ def regress_non_ts(
             result.output = output_field
             result.algorithm = algorithm
             
-            tsr = ml_utils.get_algorithm(algorithm)
+            model = ml_utils.get_algorithm(algorithm)
 
             # CV Folds
             all_test_indices = []
@@ -1775,7 +1782,7 @@ def regress_non_ts(
 
                 print("    Training model....")
                 # Fit
-                tsr.fit(train_x, train_y)
+                model.fit(train_x, train_y)
                 fold_end_training_time = time.process_time_ns()
                 
                 # Timing
@@ -1787,7 +1794,7 @@ def regress_non_ts(
                 # Predict
                 fold_inf_time_clock_start = time.perf_counter_ns()
                 fold_inference_time_start = time.process_time_ns()
-                predictions = tsr.predict(test_x)
+                predictions = model.predict(test_x)
                 fold_inference_time_end = time.process_time_ns()
                 fold_inf_time_clock_end = time.perf_counter_ns()
                 fold_inference_time_ns = fold_inference_time_end - fold_inference_time_start
@@ -1803,12 +1810,12 @@ def regress_non_ts(
                     test_y_denormed = 10.0**test_y_denormed
                 print(f"    Predictions:  {predictions} (normalised), {preds_denormed} (original)")
                 print(f"    Ground truth: {test_y} (normalised), {test_y_denormed} (original)")
-                score = tsr.score(test_x, test_y)
+                # score = model.score(test_x, test_y)
                 skl_rmse = root_mean_squared_error(test_y, predictions)
-                training_r2 = tsr.score(train_x, train_y)
+                training_r2 = model.score(train_x, train_y)
                 all_train_R2s.append(training_r2)
                 print(f"    training r2:  {training_r2}")
-                print(f"    knn r2:       {score}")
+                # print(f"    knn r2:       {score}")
                 print(f"    sklearn rmse: {skl_rmse} (actuals S.D.: {np.std(test_y)})")
 
                 all_test_indices.extend(test.tolist())

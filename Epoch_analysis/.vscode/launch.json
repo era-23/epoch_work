@@ -308,7 +308,7 @@
                 // "--nThreads",
                 //     "12",
                 "--algorithms",
-                    "aeon.DummyRegressor",
+                    // "aeon.DummyRegressor",
                     // "aeon.KNeighborsTimeSeriesRegressor",
                     // "aeon.RDSTRegressor",
                     // "aeon.Catch22Regressor",
