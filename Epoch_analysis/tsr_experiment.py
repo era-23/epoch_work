@@ -1902,7 +1902,9 @@ def regress_non_ts(
     # Write results and all predictions
     ml_utils.write_ML_result_to_file(battery, resultsFilepath)
     if len(allPredictionsRecord) > 0:
-        with open(resultsFilepath.parent / "predictions" / f"{resultsFilepath.name.replace('.json', '').replace('.', '')}_predictions.csv", "w") as f:
+        prds_path = resultsFilepath.parent / "predictions"
+        prds_path.mkdir(parents = True, exist_ok=True)
+        with open(prds_path / f"{resultsFilepath.name.replace('.json', '').replace('.', '')}_predictions.csv", "w") as f:
             w = DataclassWriter(f, allPredictionsRecord, ml_utils.TSRPrediction)
             w.write()
 
