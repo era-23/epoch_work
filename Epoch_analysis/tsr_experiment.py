@@ -382,6 +382,7 @@ def regress_cottrell_2(
         cottrellDatapath : Path,
         resultsFilepath : Path = None,
         includeFreqs : bool = False,
+        nRepeats : int = 10,
         nThreads : int = 1,
         lowFrequencyCleaningMethod : str = "linterpToSP",
         displayPlots : bool = False
@@ -496,7 +497,9 @@ def regress_cottrell_2(
     assert inputs["sim_ids"] == list(sim_id_to_indexNumber.keys())
 
     # Reshape into 3D numpy array of shape (n_cases, n_channels, n_timepoints)
-    inputSpectra = np.swapaxes(np.array(inputData), 0, 1)
+    inputData = np.array(inputData)
+    print(f"Spectra in dB range from {np.min(inputData[0])}dB to {np.max(inputData[0])}dB.")
+    inputSpectra = np.swapaxes(inputData, 0, 1)
     # outputs = np.array(list(outputs.values()))
 
     logFields = np.intersect1d(outputFields, logFields)
@@ -522,10 +525,7 @@ def regress_cottrell_2(
     all_prediction_sems = {a : [] for a in algorithms}
     all_prediction_sds = {a : [] for a in algorithms}
 
-    n_repeats = 2
     all_results = []
-
-    print(f"Spectra in dB range from {np.min(train_x[:][0])}dB to {np.max(train_x[:][0])}dB.")
 
     for output_field, output_values in outputs.items():
 
@@ -569,7 +569,7 @@ def regress_cottrell_2(
             
             # Fit
             predictions = []
-            for r in range(n_repeats):
+            for r in range(nRepeats):
                 print(f"Fitting and predicting repeat {r}...")
                 tsr.fit(train_x, train_y)
 
@@ -2007,6 +2007,14 @@ if __name__ == "__main__":
         type=Path
     )
     parser.add_argument(
+        "--nRepeats",
+        action="store",
+        help="Number of repeats to use for training and prediction.",
+        required = False,
+        type=int,
+        default=1
+    )
+    parser.add_argument(
         "--nThreads",
         action="store",
         help="Number of threads to use for training and prediction.",
@@ -2231,9 +2239,10 @@ if __name__ == "__main__":
             cottrellDatapath = args.cottrellFilepath,
             resultsFilepath=args.resultsFilepath,
             includeFreqs=args.includeFreqs,
+            nRepeats=args.nRepeats,
             nThreads = args.nThreads,
             lowFrequencyCleaningMethod=args.lowFrequencyCleaningMethod[0],
-            displayPlots=args.displayPlots
+            displayPlots=args.displayPlots,
         )
         # "--lowFrequencyCleaningMethod",
         #             "linterpToSP",
