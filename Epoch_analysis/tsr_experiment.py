@@ -2282,8 +2282,8 @@ if __name__ == "__main__":
                 "aeon.RandomIntervalSpectralEnsembleRegressor",
                 "aeon.SummaryRegressor",
                 # "aeon.DummyRegressor",
-                # "aeon.TSFreshRegressor",
-                # "aeon.FreshPRINCERegressor"
+                "aeon.TSFreshRegressor",
+                "aeon.FreshPRINCERegressor"
             ], 
             cottrellDatapath = args.cottrellFilepath,
             resultsFilepath=args.resultsFilepath,

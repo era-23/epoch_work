@@ -1,37 +1,38 @@
-import os
-from pathlib import Path
-import matplotlib.pyplot as plt
-import numpy as np
-import itertools
 import csv
-import epoch_utils
-
-from scipy.stats import norm
-from scipy.interpolate import griddata
-from scipy.signal import find_peaks
-import xarray as xr
-from inference.plotting import matrix_plot
-from sklearn.gaussian_process import GaussianProcessRegressor, GaussianProcessClassifier
-from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import Ridge
-from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
-import json
 import dataclasses as dc
+import itertools
+import json
+import os
 from dataclasses import dataclass
-from dataclasses_json import dataclass_json
-from numpy.typing import ArrayLike
-from SALib import ProblemSpec
-import SALib.sample as salsamp
+from pathlib import Path
 
 # Aeon algorithms
-import aeon.regression.interval_based as aeon_int
+import aeon.regression as aeon_reg
+import aeon.regression.convolution_based as aeon_conv
+import aeon.regression.deep_learning as aeon_deep
 import aeon.regression.distance_based as aeon_dist
 import aeon.regression.feature_based as aeon_feature
-import aeon.regression.shapelet_based as aeon_shapelet
-import aeon.regression.convolution_based as aeon_conv
 import aeon.regression.hybrid as aeon_hybrid
-import aeon.regression.deep_learning as aeon_deep
-import aeon.regression as aeon_reg
+import aeon.regression.interval_based as aeon_int
+import aeon.regression.shapelet_based as aeon_shapelet
+import matplotlib.pyplot as plt
+import numpy as np
+import SALib.sample as salsamp
+import xarray as xr
+from dataclasses_json import dataclass_json
+from inference.plotting import matrix_plot
+from numpy.typing import ArrayLike
+from SALib import ProblemSpec
+from scipy.interpolate import griddata
+from scipy.signal import find_peaks
+from scipy.stats import norm
+from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
+from sklearn.gaussian_process import GaussianProcessClassifier, GaussianProcessRegressor
+from sklearn.linear_model import Lasso, Ridge
+from sklearn.preprocessing import StandardScaler
+
+import epoch_utils
+
 
 @dataclass
 class GPModel:
@@ -344,6 +345,8 @@ def get_algorithm(name, nThreads = 1, **kwargs):
     # STANDARD ALGORITHMS -- NOT TIME-SERIES
         case "RidgeRegressor":
             return Ridge(solver="svd", **kwargs)
+        case "LassoRegressor":
+            return Lasso(**kwargs)
         case "GradientBoostingRegressor":
             return GradientBoostingRegressor(**kwargs)
         case "RandomForestRegressor":

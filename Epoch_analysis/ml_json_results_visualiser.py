@@ -111,7 +111,11 @@ def plotScatter(resultsDict : dict, metric : str = "cvR2"):
 
     plt.show()
 
-def plotBar(resultsDict : dict, metric : str = "cvR2", errors : str = "rmseSE", dropAlgorithms : list = []): 
+def plotBar(resultsDict : dict, metrics : list = None, errors : str = "rmseSE", dropAlgorithms : list = []): 
+
+    if metrics is None:
+        print("No metric specified. Exiting")
+        return
 
     patterns = [ "/" , ".", "\\" , "|" , "-" , "+" , "x",  "o", "O", "*" ]
     field_names = {"B0strength" : r"$B_0$", "backgroundDensity" : r"$n_e$", "pitch" : r"$\lambda$", "beamFraction" : r"$n_\alpha/n_e$"}
@@ -125,6 +129,11 @@ def plotBar(resultsDict : dict, metric : str = "cvR2", errors : str = "rmseSE", 
 
     # bar values in output order, grouped by algorithm
     algorithms = [a for a in resultsDict["algorithms"] if a not in dropAlgorithms]
+    metric = metrics[0]
+    alt_metric = None
+    if len(metrics) > 1:
+        alt_metric = metrics[1]
+        barAlts= {algorithm : [] for algorithm in algorithms}
     barVals = {algorithm : [] for algorithm in algorithms}
     barErrs = {algorithm : [] for algorithm in algorithms}
     for field in xLabels:
@@ -132,25 +141,50 @@ def plotBar(resultsDict : dict, metric : str = "cvR2", errors : str = "rmseSE", 
         for res in fieldResults:
             barVals[res["algorithm"]].append(np.round(res[f"{metric}_mean"], 3))
             if errors == "rmseSD":
-                barErrs[res["algorithm"]].append(np.sqrt(res[f"cvRMSE_var"]))
+                barErrs[res["algorithm"]].append(np.sqrt(res["cvRMSE_var"]))
             elif errors == "rmseSE":
-                barErrs[res["algorithm"]].append(res[f"cvRMSE_stderr"])
+                barErrs[res["algorithm"]].append(res["cvRMSE_stderr"])
             else:
                 barErrs[res["algorithm"]].append(res[f"{metric}_stderr"])
+            if alt_metric:
+                barAlts[res["algorithm"]].append(np.round(res[f'{alt_metric}_mean'], 3))
     
     x = np.arange(len(xLabels))
     
     width = 1.0/(len(algorithms) + 1)  # the width of the bars
     multiplier = 0
 
-    fig, ax = plt.subplots(figsize=(15, 15))
+    _, ax = plt.subplots(figsize=(15, 15))
 
-    for algorithm, value in barVals.items():
+    for algorithm, value in sorted(barVals.items()):
         offset = width * multiplier
-        rects = ax.bar(x + offset, value, width, label=algorithm, yerr=barErrs[algorithm], edgecolor='black')
-        if list(barErrs.values())[0]:
+        errs = barErrs[algorithm]
+        rects = ax.bar(x + offset, value, width, label=algorithm, yerr=errs, edgecolor='black')
+        if next(iter(barErrs.values())):
             ax.errorbar(x + offset, value, yerr=barErrs[algorithm], fmt=",", color = "k")
+
         ax.bar_label(rects, padding=3, fontsize = 20, rotation=90)
+        
+        if alt_metric:
+            # Loop through each bar and its corresponding error and label
+            for rect, val, err, alt_label in zip(rects, value, errs, barAlts[algorithm]):
+                # Determine the lower bound of the error bar
+                # Handles asymmetric errors (tuple/list of [lower, upper]) or symmetric scalar error
+                neg_err = err[0] if isinstance(err, (list, tuple, np.ndarray)) else err
+                bottom_y = val - neg_err
+                
+                # Place label just below the bottom of the error bar
+                ax.annotate(
+                    str(alt_label),
+                    xy=(rect.get_x() + rect.get_width() / 2, bottom_y),
+                    xytext=(0, -3),  # Slight offset down from the error bar end
+                    textcoords="offset points",
+                    ha='center',
+                    va='top',
+                    fontsize=20,
+                    rotation=90
+                )
+            
         multiplier += 1
 
     # Add some text for labels, title and custom x-axis tick labels, etc.
@@ -164,10 +198,10 @@ def plotBar(resultsDict : dict, metric : str = "cvR2", errors : str = "rmseSE", 
     xLabels = [field_names[lab] for lab in xLabels]
     ax.set_xticks(x + (0.5 * (len(algorithms) -1) * width), xLabels)
     if len(resultsDict["algorithms"]) > 5:
-        ax.legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, 1.12))
+        ax.legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, 1.15))
     else:
         ax.legend(loc='upper left' if metric == "cvR2" else 'lower left', ncols = 1)
-    ax.set_ylim(top= 1.15 if metric == "cvR2" else np.round(np.max([v for v in barVals.values()]) + 0.2, 1))
+    ax.set_ylim(top= 1.15 if metric == "cvR2" else np.round(np.max([v for v in barVals.values()]) + 0.39, 1))
     ax.axhline(0.0, color="black", lw=0.5)
     ax.grid(axis="y")
     # ax.set_ylim(0.0, 1.1)
@@ -246,10 +280,10 @@ def plot_individual_spectra_results(folder):
         plt.show()
 
 
-def plotResults(resultsFile : Path, metric : str = "cvR2", errors : str = "rmseSE", dropAlgorithms : list = []):
+def plotResults(resultsFile : Path, metrics : list = None, errors : str = "rmseSE", dropAlgorithms : list = []):
     with open(resultsFile, "r") as f:
         parser = json.load(f)
-        plotBar(parser, metric, errors, dropAlgorithms)
+        plotBar(parser, metrics, errors, dropAlgorithms)
         # plotScatter(parser, metric)
 
 def latexTable(resultsFile : Path, experimentName : str):
@@ -389,7 +423,8 @@ if __name__ == "__main__":
         action="store",
         help="Scoring metric: \'cvR2\' or \'cvRMSE\'.",
         required = False,
-        type = str
+        type=str,
+        nargs="*"
     )
     parser.add_argument(
         "--experimentName",

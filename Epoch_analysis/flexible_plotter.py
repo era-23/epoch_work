@@ -491,55 +491,75 @@ def plot_cottrell_regression(csvResultsPath : Path):
     
     results = pd.read_csv(csvResultsPath)
     outputFields = results["field"].unique()
+    results = results.sort_values(by = "algorithm")
     # exclude_algos = ["aeon.KNeighborsTimeSeriesRegressor", "aeon.TimeSeriesForestRegressor", "aeon.RandomIntervalSpectralEnsembleRegressor", "aeon.RocketRegressor"]
     # exclude_algos = ["aeon.KNeighborsTimeSeriesRegressor", "aeon.TimeSeriesForestRegressor", "aeon.RandomIntervalRegressor", "aeon.QUANTRegressor"]
-    exclude_algos = [ "aeon.KNeighborsTimeSeriesRegressor", "aeon.RandomIntervalSpectralEnsembleRegressor", "aeon.QUANTRegressor", "aeon.RandomIntervalRegressor"]
+    # exclude_algos = [ "aeon.KNeighborsTimeSeriesRegressor", "aeon.RandomIntervalSpectralEnsembleRegressor", "aeon.QUANTRegressor", "aeon.RandomIntervalRegressor"]
+    exclude_algos = ["aeon.DummyRegressor", "aeon.KNeighborsTimeSeriesRegressor", "aeon.RocketRegressor", "aeon.RandomIntervalSpectralEnsembleRegressor", "aeon.MultiRocketRegressor"]
+    # exclude_algos = ["aeon.DummyRegressor", "aeon.KNeighborsTimeSeriesRegressor", "aeon.RocketRegressor", "aeon.QUANTRegressor", "aeon.TSFreshRegressor", "aeon.RandomIntervalSpectralEnsembleRegressor", "aeon.MultiRocketRegressor"]
 
-    fig, axs = plt.subplots(len(outputFields), 1, figsize=(12,10))
-    for i in range(len(outputFields)):
-        field = outputFields[i]
-        field_results = results[results["field"] == field]
+    # fig, axs = plt.subplots(len(outputFields), 1, figsize=(12,10))
+    # for i in range(len(outputFields)):
+    #     field = outputFields[i]
+    #     field_results = results[results["field"] == field]
 
-        for index, result in field_results.iterrows():
-            if result["algorithm"] not in exclude_algos:
-                axs[i].errorbar(result["mean_denormed_prediction"], epoch_utils.fieldNameToSymbolWithUnit(field), xerr=result["denormed_std"], label = result["algorithm"], ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
+    #     for index, result in field_results.iterrows():
+    #         if result["algorithm"] not in exclude_algos:
+    #             axs[i].errorbar(result["mean_denormed_prediction"], epoch_utils.fieldNameToSymbolWithUnit(field), xerr=result["denormed_std"], label = result["algorithm"], ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
         
-        if field == "B0strength":
-            axs[i].fill_between(x = [result["true_value_before_log"] - 0.07, result["true_value_before_log"] + 0.07], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
-        if field == "pitch":
-            axs[i].fill_between(x = [result["true_value_before_log"] - 0.05, result["true_value_before_log"] + 0.04], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
-        if field == "beamFraction":
-            axs[i].fill_between(x = [result["true_value_before_log"] - 0.0001, result["true_value_before_log"] + 0.0003], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
-        else:
-            axs[i].axvline(x = result["true_value_before_log"], color = "black", linestyle=":", lw = 2.0, label="Cottrell '93 value")
+    #     if field == "B0strength":
+    #         axs[i].fill_between(x = [result["true_value_before_log"] - 0.07, result["true_value_before_log"] + 0.07], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
+    #     if field == "pitch":
+    #         axs[i].fill_between(x = [result["true_value_before_log"] - 0.05, result["true_value_before_log"] + 0.04], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
+    #     if field == "beamFraction":
+    #         axs[i].fill_between(x = [result["true_value_before_log"] - 0.0001, result["true_value_before_log"] + 0.0003], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
+    #     else:
+    #         axs[i].axvline(x = result["true_value_before_log"], color = "black", linestyle=":", lw = 2.0, label="Cottrell '93 value")
 
-        best = field_results[abs(field_results["mean_denormed_error"]) == abs(field_results["mean_denormed_error"]).min()]
-        mrh = field_results[field_results["algorithm"] == "aeon.MultiRocketHydraRegressor"]
-        print(f"Best algorithm for {field}: {best['algorithm'].values[0]}, Prediction: {best['mean_denormed_prediction'].values[0]}, S.D. {best['denormed_std'].values[0]}, MRH Prediction: {mrh['mean_denormed_prediction'].values[0]}, MRH S.D. {mrh['denormed_std'].values[0]}")
+    #     best = field_results[abs(field_results["mean_denormed_error"]) == abs(field_results["mean_denormed_error"]).min()]
+    #     mrh = field_results[field_results["algorithm"] == "aeon.MultiRocketHydraRegressor"]
+    #     print(f"Best algorithm for {field}: {best['algorithm'].values[0]}, Prediction: {best['mean_denormed_prediction'].values[0]}, S.D. {best['denormed_std'].values[0]}, MRH Prediction: {mrh['mean_denormed_prediction'].values[0]}, MRH S.D. {mrh['denormed_std'].values[0]}")
 
-    axs[0].legend(loc='center', ncols = 2, bbox_to_anchor = (0.3, 2.0))
-    fig.supylabel("Output field", fontsize = 24)
-    fig.supxlabel("Prediction", fontsize = 24)
-    axs[2].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=False))
-    axs[2].set_xscale("log")
-    axs[3].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
-    axs[3].set_xscale("log")
-    plt.tight_layout()
-    for ax in axs:
-        ax.grid()
-    plt.show()
+    # axs[0].legend(loc='center', ncols = 2, bbox_to_anchor = (0.3, 2.0))
+    # fig.supylabel("Output field", fontsize = 24)
+    # fig.supxlabel("Prediction", fontsize = 24)
+    # axs[2].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=False))
+    # axs[2].set_xscale("log")
+    # axs[3].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
+    # axs[3].set_xscale("log")
+    # plt.tight_layout()
+    # for ax in axs:
+    #     ax.grid()
+    # plt.show()
 
+    # Original (PPCF)
+    # colours = {
+    #     "aeon.HydraRegressor" : "tab:blue",
+    #     "aeon.MultiRocketRegressor" : "tab:orange",
+    #     "aeon.MultiRocketHydraRegressor" : "tab:green",
+    #     "aeon.TimeSeriesForestRegressor" : "tab:red",
+    #     "aeon.RDSTRegressor" : "tab:purple",
+    #     "aeon.Catch22Regressor" : "tab:brown",
+    #     "aeon.RocketRegressor" : "tab:pink",
+    #     "aeon.MiniRocketRegressor" : "tab:gray",
+    #     "aeon.SummaryRegressor" : "tab:olive"
+    # }
+
+    # # ECML
     colours = {
-        "aeon.HydraRegressor" : "tab:blue",
-        "aeon.MultiRocketRegressor" : "tab:orange",
+        "aeon.Catch22Regressor" : "tab:blue",
+        "aeon.HydraRegressor" : "tab:orange",
         "aeon.MultiRocketHydraRegressor" : "tab:green",
-        "aeon.TimeSeriesForestRegressor" : "tab:red",
+        # "aeon.QUANTRegressor" : "tab:red",
         "aeon.RDSTRegressor" : "tab:purple",
-        "aeon.Catch22Regressor" : "tab:brown",
-        "aeon.RocketRegressor" : "tab:pink",
-        "aeon.MiniRocketRegressor" : "tab:gray",
-        "aeon.SummaryRegressor" : "tab:olive"
+        "aeon.RandomIntervalRegressor" : "tab:brown",
+        "aeon.SummaryRegressor" : "tab:pink",
+        "aeon.TimeSeriesForestRegressor" : "tab:gray",
+        "aeon.MiniRocketRegressor" : "tab:olive",
+        "aeon.MultiRocketRegressor" : "tab:cyan",
+        "aeon.QUANTRegressor" : "tab:red",
     }
+    # colours = {}
 
     axis_positions = [1.0, 0.75, 0.5, 0.25, 0.0, -0.25, -0.5, -0.75, -1.0, 1.0, 0.75, 0.5, 0.25]
     fig, axs = plt.subplots(len(outputFields), 1, figsize=(12,10))
@@ -551,7 +571,7 @@ def plot_cottrell_regression(csvResultsPath : Path):
         axs[i].set_yticks(ticks=[0.0], labels=[epoch_utils.fieldNameToSymbolWithUnit(field)])
         for index, result in field_results.iterrows():
             if result["algorithm"] not in exclude_algos:
-                colour = colours[result["algorithm"]] if result["algorithm"] in colours else None
+                colour = colours.get(result["algorithm"], None)
                 if field == "backgroundDensity":
                     axs[i].errorbar(result["mean_denormed_prediction"] / 10**20, axis_positions[plot_position_counter], xerr=result["denormed_std"] / 10**20, label = result["algorithm"], ms = 12, marker="D", color = colour, elinewidth=2.0, capsize=8.0, capthick=2.0)
                 else:
@@ -569,10 +589,13 @@ def plot_cottrell_regression(csvResultsPath : Path):
             axs[i].axvline(x = result["true_value_before_log"] / 10**20, color = "black", linestyle=":", lw = 2.0, label="Cottrell '93 value")
         else:
             axs[i].axvline(x = result["true_value_before_log"], color = "black", linestyle=":", lw = 2.0, label="Cottrell '93 value")
+        best = field_results[abs(field_results["mean_denormed_error"]) == abs(field_results["mean_denormed_error"]).min()]
+        hyd = field_results[field_results["algorithm"] == "aeon.HydraRegressor"]
+        print(f"Best algorithm for {field}: {best['algorithm'].values[0]}, Prediction: {best['mean_denormed_prediction'].values[0]}, S.D. {best['denormed_std'].values[0]}, Hydra Prediction: {hyd['mean_denormed_prediction'].values[0]}, Hydra S.D. {hyd['denormed_std'].values[0]}")
 
     axs[0].legend(loc='center', ncols = 2, bbox_to_anchor = (0.3, 2.0))
     fig.supxlabel("Prediction", fontsize = 24)
-    fig.supylabel("Output", fontsize = 24)
+    fig.supylabel("Target Field", fontsize = 24)
     axs[0].set_xlim(1.0, 5.0)
     axs[1].set_xlim(0.0, 1.0)
     axs[2].set_xlim(0.1, 1.0)
@@ -620,8 +643,8 @@ def plot_all_predictions_for_one_algorithm(
         plt.yscale("log")
         plt.grid(which="both")
 
-    plt.xlabel(f"True value [norm.]")
-    plt.ylabel(f"Prediction [norm.]")
+    plt.xlabel("True value [norm.]")
+    plt.ylabel("Prediction [norm.]")
 
     # Set legend
     handles, labels = plt.gca().get_legend_handles_labels()
