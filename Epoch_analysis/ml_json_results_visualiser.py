@@ -279,7 +279,6 @@ def plot_individual_spectra_results(folder):
         plt.tight_layout()
         plt.show()
 
-
 def plotResults(resultsFile : Path, metrics : list = None, errors : str = "rmseSE", dropAlgorithms : list = []):
     with open(resultsFile, "r") as f:
         parser = json.load(f)

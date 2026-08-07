@@ -1,9 +1,12 @@
-import os
-from pathlib import Path
-import shutil
 import argparse
 import fnmatch
 import json
+import os
+import shutil
+from pathlib import Path
+
+import pandas as pd
+
 
 def modify_line_in_matching_files(src_dir, pattern, search_text, replace_text):
     """
@@ -49,7 +52,7 @@ def copy_files_matching_pattern(src_dir, dest_dir, pattern):
                     os.makedirs(dest_subdir)
                 shutil.copy2(src_file, os.path.join(dest_subdir, file))
 
-def unify_results(source_dir : Path, file_pattern : str):
+def unify_results_json(source_dir : Path, file_pattern : str):
 
     out_name = "unified_output.json"
     output_path = os.path.join(source_dir, out_name)
@@ -72,6 +75,25 @@ def unify_results(source_dir : Path, file_pattern : str):
     
     with open(output_path, 'w') as fp:
         json.dump(results_dict, fp, indent = 4)
+
+def unify_results_csv(file_paths : list[str], output_path: str) -> None:
+    """Combines multiple CSV files with matching headers into a single CSV.
+
+    :param file_paths: List of string file paths to input CSVs.
+    :param output_path: Destination path for the unified CSV file.
+    """
+    if not file_paths:
+        raise ValueError("The list of file paths cannot be empty.")
+
+    # Read all CSVs into DataFrames and concatenate them
+    df_list = [pd.read_csv(file) for file in file_paths]
+    unified_df = pd.concat(df_list, ignore_index=True)
+
+    # Save to destination path
+    unified_df.to_csv(output_path, index=False)
+    print(
+        f"Successfully merged {len(file_paths)} files into '{output_path}'."
+    )
 
 # Example usage
 if __name__ == "__main__":
@@ -138,8 +160,15 @@ if __name__ == "__main__":
         raise ValueError("File pattern must be specified.")
 
     if args.unify:
-        print(f"Unifying JSON results files in {source_directory} matching pattern '{file_pattern}'")
-        unify_results(source_directory, file_pattern)
+        if str(file_pattern).endswith("json"):
+            print(f"Unifying JSON results files in {source_directory} matching pattern '{file_pattern}'")
+            unify_results_json(source_directory, file_pattern)
+        elif str(file_pattern).endswith("csv"):
+            print(f"Unifying CSV results files in {source_directory} matching pattern '{file_pattern}'")
+            files_to_merge = list(source_directory.glob(file_pattern))
+            unify_results_csv(files_to_merge, str(source_directory / "unified_output.csv"))
+        else:
+            print("Unknown filetype in pattern.")
 
     if args.copy:
         destination_directory = args.destination

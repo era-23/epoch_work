@@ -272,7 +272,7 @@ def regress(
     fold_inference_times_clock_ns = []
 
     # Dumb hack
-    best_results = {"backgroundDensity" : 0.435279, "beamFraction" : 0.316314, "B0strength" : 0.024969, "pitch" : 0.589228}
+    best_results = {"backgroundDensity" : 0.452861, "beamFraction" : 0.313241, "B0strength" : 0.024969, "pitch" : 0.587287}
 
     clock_time_start = time.time()
     cv_time_start = time.process_time_ns()

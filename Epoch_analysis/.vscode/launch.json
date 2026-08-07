@@ -193,8 +193,8 @@
                 // "--file", "/home/era536/Documents/Epoch/Data/2026_analysis/tsr_aeon_viking/full_spectra/aeon_ps_main_battery.json",
                 "--file", "/home/era536/Documents/Epoch/Data/2026_analysis/tsr_aeon_viking/full_spectra/repeat_for_ml_paper/unified_output.json",
                 // "--individualSpectra",
-                // "--print",
-                "--plot",
+                "--print",
+                // "--plot",
                 // "--latex",
                 // "--accuracyByFrequency",
                 "--metric", "cvR2", "cvRMSE",
@@ -204,7 +204,7 @@
                     // "/home/era536/Documents/Epoch/Data/2026_analysis/tsr_aeon_viking/individual_spectra",
                 // "--filePattern", "AE_results_catch24_gpu_pca_*.json",
                 // "--dropAlgorithms", "aeon.DummyRegressor", "aeon.KNeighborsTimeSeriesRegressor", "aeon.RandomIntervalSpectralEnsembleRegressor", "aeon.RocketRegressor", "aeon.MiniRocketRegressor", "aeon.RandomIntervalRegressor", "aeon.SummaryRegressor", "aeon.QUANTRegressor",
-                "--dropAlgorithms", "aeon.DummyRegressor", "aeon.MiniRocketRegressor", "aeon.KNeighborsTimeSeriesRegressor", "aeon.RandomIntervalSpectralEnsembleRegressor", "aeon.RocketRegressor", "aeon.MultiRocketRegressor"
+                // "--dropAlgorithms", "aeon.DummyRegressor", "aeon.MiniRocketRegressor", "aeon.KNeighborsTimeSeriesRegressor", "aeon.RandomIntervalSpectralEnsembleRegressor", "aeon.RocketRegressor", "aeon.MultiRocketRegressor"
             ]
         },
         {
@@ -219,8 +219,8 @@
                     "/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_4/data/",
                 "--inputSpectra", 
                     "Magnetic_Field_Bz/power/frequencyPowerSpectrum",
-                    "Electric_Field_Ex/power/frequencyPowerSpectrum",
-                    "Electric_Field_Ey/power/frequencyPowerSpectrum",
+                    // "Electric_Field_Ex/power/frequencyPowerSpectrum",
+                    // "Electric_Field_Ey/power/frequencyPowerSpectrum",
                 ///// Simulation parameters
                 "--outputFields",
                     "B0strength", 
@@ -232,7 +232,7 @@
                     "beamFraction",
                 "--logInputs",
                 "--algorithms",
-                    // "aeon.DummyRegressor",
+                    "aeon.DummyRegressor",
                     // "aeon.KNeighborsTimeSeriesRegressor",
                     // "aeon.RDSTRegressor",
                     // "aeon.Catch22Regressor",
@@ -253,9 +253,9 @@
                     // "aeon.SummaryRegressor",
                     // "aeon.RandomIntervalRegressor",
                     // "aeon.MLPRegressor",
-                    "RidgeRegressor",
-                    "GradientBoostingRegressor",
-                    "RandomForestRegressor",
+                    // "RidgeRegressor",
+                    // "GradientBoostingRegressor",
+                    // "RandomForestRegressor",
                 "--cvFolds",
                     "5",
                 "--cvRepeats",
@@ -264,7 +264,7 @@
                     "LeaveOneOut",
                     //"RepeatedKFolds",
                 "--resultsFilepath",
-                    "/home/era536/Documents/Epoch/Data/2026_analysis/tsr_aeon/test_nonTS.json",
+                    "/home/era536/Documents/Epoch/Data/2026_analysis/tsr_aeon/test_dummy.json",
                 "--includeFreqs",
                 // "--scaleInputs",
                 // "--doIce",
@@ -276,7 +276,7 @@
                 //     "ICEmetric_harmonicPeakFloorRatio",
                 //     "ICEmetric_harmonicPower",
                 //     "ICEmetric_energyTransfer",
-                "--doPlot",
+                // "--doPlot",
                 // "--noTitle"
                 "--nThreads",
                     "12"
@@ -963,9 +963,9 @@
             "args": [
                 "--unify",
                 "--source",
-                    "/home/era536/Documents/Epoch/Data/2026_analysis/tsr_aeon_viking/full_spectra/repeat_for_ml_paper/",
+                    "/home/era536/Documents/Epoch/Data/2026_analysis/tsr_aeon_viking/full_spectra/repeat_for_ml_paper/predictions/unified/",
                 "--file_pattern",
-                    "*.json",
+                    "*.csv",
                 // "--search_text",
                 //     "b0_angle = 92",
                 // "--replace_text",

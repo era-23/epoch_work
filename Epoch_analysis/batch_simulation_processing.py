@@ -519,10 +519,14 @@ def process_simulation_batch(
     displayPlots = False,
     saveGrowthRatePlots = False,
     numGrowthRatesToPlot : int = 0,
-    mci_thresholds : dict = {"mci_threshold_pct" : 0.05, "saturation_variation_threshold_pct" : 0.01},
+    mci_thresholds : dict = None,
     num_workers : int = None,
     debug : bool = False
 ):
+    # MCI thresholds default
+    if mci_thresholds is None:
+        mci_thresholds = {"mci_threshold_pct": 0.05, "saturation_variation_threshold_pct": 0.01}
+
     # Dynamically switch backend based on displayPlots flag
     if not displayPlots:
         plt.switch_backend("Agg")  # Non-interactive / headless
