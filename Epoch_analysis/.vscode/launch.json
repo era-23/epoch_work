@@ -419,9 +419,9 @@
             "console": "integratedTerminal",
             "args": [
                "--dataFolder", 
-                     "/home/era536/Documents/Epoch/Data/2026_analysis/all_angles_4/",
+                    "/home/era536/Documents/Epoch/Data/2026_analysis/all_angles_4/",
                 "--outputFolder",
-                    "/home/era536/Documents/Epoch/Data/2026_analysis/energy_classifications/",
+                    "/home/era536/Documents/Epoch/Data/2026_analysis/energy_classifications/testing/hybrid/",
             ]
         },
         {
@@ -963,7 +963,7 @@
             "args": [
                 "--unify",
                 "--source",
-                    "/home/era536/Documents/Epoch/Data/2026_analysis/tsr_aeon_viking/full_spectra/repeat_for_ml_paper/predictions/unified/",
+                    "/home/era536/Documents/Epoch/Data/2026_analysis/benchmarking_nonTS/viking/predictions/",
                 "--file_pattern",
                     "*.csv",
                 // "--search_text",
@@ -1009,8 +1009,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "args": [
-                "--dir", "/home/era536/Documents/Epoch/Data/2026_analysis/new_batch_processing_development/sim_output_small/",
-                "--outputDir", "/home/era536/Documents/Epoch/Data/2026_analysis/new_batch_processing_development/analysis_test_refactor/",
+                "--dir", "/home/era536/Documents/Epoch/Data/2026_analysis/new_batch_processing_development/sim_output/",
+                "--outputDir", "/home/era536/Documents/Epoch/Data/2026_analysis/new_batch_processing_development/analysis_new_MCI_labelling/",
                 // "--beta",
                 // "--initFolders",
                 "--fields",

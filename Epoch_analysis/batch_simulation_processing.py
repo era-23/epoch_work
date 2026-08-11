@@ -1,21 +1,24 @@
 import argparse
 import os
-import time
-import epoch_utils as e_utils
-import netCDF4 as nc
-import xarray as xr
-import epydeck
-import numpy as np
 import shutil as sh
+import time
 import warnings
-import xrft  # noqa: E402
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
+
+import epydeck
+import netCDF4 as nc
+import numpy as np
+import xarray as xr
+import xrft  # noqa: E402
 from matplotlib import pyplot as plt
-from sdf_xarray import SDFPreprocess
 from scipy import constants
 from scipy.interpolate import make_smoothing_spline
 from scipy.signal import find_peaks
-from concurrent.futures import ProcessPoolExecutor
+from sdf_xarray import SDFPreprocess
+
+import epoch_utils as e_utils
+
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 def initialise_folder_structure(
@@ -57,7 +60,7 @@ def run_energy_analysis(
     noLegend : bool = False,
     backgroundSpeciesName : str = "deuteron",
     fastSpeciesName : str = "alpha",
-    mci_threshold_pct = 0.05,
+    mci_NL_threshold_pct = 0.05,
     saturation_variation_threshold_pct = 0.01,
     debug : bool = False
 ) -> tuple:
@@ -194,7 +197,7 @@ def run_energy_analysis(
         if "fastIon" in variable:
             dE_dt = np.diff(smoothPctData) / np.diff(timeCoords)
 
-            mci_start_idxs = np.nonzero(smoothPctData < -mci_threshold_pct)[0]
+            mci_start_idxs = np.nonzero(smoothPctData < -mci_NL_threshold_pct)[0]
             if mci_start_idxs.size > 0:
                 threshold_indices["MCI_start"] = int(mci_start_idxs[0])
             
@@ -208,7 +211,7 @@ def run_energy_analysis(
 
                 threshold_indices["MCI_peak_growth"] = int(np.argmin(dE_dt))
 
-                # VECTORIZED SATURATION DETECTION (Replaces Python loop)
+                # Saturation detection
                 if threshold_indices["MCI_linear_saturation"] is not None:
                     rev_data = smoothPctData[::-1]
                     running_max = np.maximum.accumulate(rev_data)
@@ -365,13 +368,13 @@ def run_spectral_analysis(
     original_spec = original_spec.rename(freq_time="frequency", freq_x_space="wavenumber")
     original_spec = original_spec.where(original_spec.wavenumber != 0.0, None)
 
-    tk_spec = e_utils.create_t_k_spectrum(original_spec, fieldStats, maxK, load=True, debug=debug)
+    tk_spec = e_utils.create_t_k_spectrum(sim_name, original_spec, fieldStats, maxK, load=True, debug=debug)
     wavenumberToFrequencyTable = e_utils.create_omega_k_plots(
         original_spec, fieldStats, field_name, field_unit, plotFieldFolder, 
-        f"{sim_name}_combined", inputDeck, backgroundIonSpecies, fastIonSpecies, 
+        f"{sim_name}", inputDeck, backgroundIonSpecies, fastIonSpecies, 
         maxK=maxK, maxW=maxW, display=displayPlots, debug=debug
     )
-    e_utils.create_power_spectra(data, fieldStats, debug)
+    e_utils.create_power_spectra(data, fieldStats, sim_name, debug)
     e_utils.create_t_k_plot(tk_spec, field_name, field_unit, plotFieldFolder, sim_name, maxK, displayPlots)
 
     if bispectra:
@@ -428,7 +431,7 @@ def process_single_angle(
         ion_gyroperiod, alfven_velocity = e_utils.calculate_simulation_metadata(
             inputDeck, ds, statsRoot, fastIonSpecies, backgroundIonSpecies
         )
-        ds = e_utils.normalise_data(ds, ion_gyroperiod, alfven_velocity)
+        ds = e_utils.normalise_data(ds, f"{sim_name}_angle_{angle_name}", ion_gyroperiod, alfven_velocity)
 
         plotsFolder = analysisOutputFolder / angle_name / "plots"
         energyPlotFolder = plotsFolder / "energy"
@@ -438,7 +441,7 @@ def process_single_angle(
         run_energy_analysis(
             ds, 
             inputDeck, 
-            sim_name, 
+            f"{sim_name}_angle_{angle_name}", 
             energyPlotFolder, 
             statsRoot, 
             displayPlots=displayPlots, 
@@ -446,7 +449,7 @@ def process_single_angle(
             noLegend=noLegend, 
             backgroundSpeciesName="deuteron" if backgroundIonSpecies == "D+" else "proton",
             fastSpeciesName="alpha" if fastIonSpecies == 'He-4 2+' else "ion_ring_beam",
-            mci_threshold_pct=mci_thresholds["mci_threshold_pct"],
+            mci_NL_threshold_pct=mci_thresholds["mci_threshold_pct"],
             saturation_variation_threshold_pct=mci_thresholds["saturation_variation_threshold_pct"],
             debug=debug
         )
@@ -494,7 +497,7 @@ def process_single_angle(
 
             # FFT Execution
             run_spectral_analysis(field_da, fieldStats, field, field_unit, maxK, maxW,
-                plotFieldFolder, sim_name, inputDeck, backgroundIonSpecies, fastIonSpecies,
+                plotFieldFolder, f"{sim_name}_angle_{angle_name}", inputDeck, backgroundIonSpecies, fastIonSpecies,
                 displayPlots, bispectra, growthRates, gammaWindowTciMin, gammaWindowTciMax,
                 saveGrowthRatePlots, numGrowthRatesToPlot, noTitle)
 
@@ -630,7 +633,7 @@ def process_simulation_batch(
                 statsRoot, displayPlots=displayPlots, noTitle=noTitle, noLegend=noLegend, 
                 backgroundSpeciesName="deuteron" if backgroundIonSpecies == "D+" else "proton",
                 fastSpeciesName="alpha" if fastIonSpecies == 'He-4 2+' else "ion_ring_beam",
-                mci_threshold_pct=mci_thresholds["mci_threshold_pct"],
+                mci_NL_threshold_pct=mci_thresholds["mci_threshold_pct"],
                 saturation_variation_threshold_pct=mci_thresholds["saturation_variation_threshold_pct"]
             )
 
@@ -670,7 +673,7 @@ def process_simulation_batch(
 
                 # FFT Execution
                 run_spectral_analysis(field_da, fieldStats, field, field_unit, maxK, maxW,
-                    plotFieldFolder, sim_name, inputDeck, backgroundIonSpecies, fastIonSpecies,
+                    plotFieldFolder, f"{sim_name}_combined", inputDeck, backgroundIonSpecies, fastIonSpecies,
                     displayPlots, bispectra, growthRates, gammaWindowTciMin, gammaWindowTciMax,
                     saveGrowthRatePlots, numGrowthRatesToPlot, noTitle)
                 
@@ -700,7 +703,7 @@ def process_simulation_batch(
                     timeEnd = time_coords[transition_indices["MCI_start"]]
 
                     run_spectral_analysis(field_da, preMciStats, field, field_unit, maxK, maxW,
-                        preMciPlotFolder, sim_name + "_preMCI", inputDeck, backgroundIonSpecies, fastIonSpecies,
+                        preMciPlotFolder, f"{sim_name}_combined" + "_preMCI", inputDeck, backgroundIonSpecies, fastIonSpecies,
                         displayPlots, bispectra, growthRates, gammaWindowTciMin, gammaWindowTciMax,
                         saveGrowthRatePlots, numGrowthRatesToPlot, noTitle, timeEnd=timeEnd)
 
@@ -715,7 +718,7 @@ def process_simulation_batch(
                         timeEnd = time_coords[transition_indices["MCI_linear_saturation"]]
 
                         run_spectral_analysis(field_da, linearMciStats, field, field_unit, maxK, maxW,
-                            linearMciPlotFolder, sim_name + "_linearMCI", inputDeck, backgroundIonSpecies, fastIonSpecies,
+                            linearMciPlotFolder, f"{sim_name}_combined" + "_linearMCI", inputDeck, backgroundIonSpecies, fastIonSpecies,
                             displayPlots, bispectra, growthRates, gammaWindowTciMin, gammaWindowTciMax,
                             saveGrowthRatePlots, numGrowthRatesToPlot, noTitle, timeStart=timeStart, timeEnd=timeEnd)
 
@@ -729,7 +732,7 @@ def process_simulation_batch(
                             timeEnd = time_coords[transition_indices["MCI_nonlinear_saturation"]]
 
                             run_spectral_analysis(field_da, nonlinearMciStats, field, field_unit, maxK, maxW,
-                                nonlinearMciPlotFolder, sim_name + "_linearMCI", inputDeck, backgroundIonSpecies, fastIonSpecies,
+                                nonlinearMciPlotFolder, f"{sim_name}_combined" + "_linearMCI", inputDeck, backgroundIonSpecies, fastIonSpecies,
                                 displayPlots, bispectra, growthRates, gammaWindowTciMin, gammaWindowTciMax,
                                 saveGrowthRatePlots, numGrowthRatesToPlot, noTitle, timeStart=timeStart, timeEnd=timeEnd)
                             
@@ -741,7 +744,7 @@ def process_simulation_batch(
                             timeStart = time_coords[transition_indices["MCI_nonlinear_saturation"]]
 
                             run_spectral_analysis(field_da, saturatedMciStats, field, field_unit, maxK, maxW,
-                                saturatedMciPlotFolder, sim_name + "_linearMCI", inputDeck, backgroundIonSpecies, fastIonSpecies,
+                                saturatedMciPlotFolder, f"{sim_name}_combined" + "_linearMCI", inputDeck, backgroundIonSpecies, fastIonSpecies,
                                 displayPlots, bispectra, growthRates, gammaWindowTciMin, gammaWindowTciMax,
                                 saveGrowthRatePlots, numGrowthRatesToPlot, noTitle, timeStart=timeStart)
 

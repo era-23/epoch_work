@@ -24,6 +24,7 @@ from inference.pdf.hdi import sample_hdi
 from inference.pdf.kde import GaussianKDE, KDE2D
 from matplotlib import colormaps
 from scipy import constants
+import pandas as pd
 
 @dataclass
 class LinearGrowthRate:
@@ -69,6 +70,15 @@ E_TRACE_SPECIES_COLOUR_MAP = {
     "electricField" : "green",
     "fastIon" : "red",
     "total" : "black"
+}
+
+E_TRACE_TRANSITION_COLOUR_MAP = {
+    "linear_MCI_growth_start" : "blue",
+    "nonlinear_MCI_growth_start" : "tab:orange",
+    "peak_growth" : "green",
+    "MCI_stationary_point" : "purple",
+    "nonlinear_restitution" : "tab:brown",
+    "nonlinear_saturation" : "black"
 }
 
 SPECIES_NAME_MAP = {
@@ -762,9 +772,13 @@ def calculate_simulation_metadata(
 
     return ion_gyroperiod_s, alfven_velocity
 
-def normalise_data(dataset : xr.Dataset, ion_gyroperiod : float, alfven_velocity : float) -> xr.Dataset:
+def normalise_data(
+        dataset : xr.Dataset, 
+        runName : str,
+        ion_gyroperiod : float, 
+        alfven_velocity : float) -> xr.Dataset:
     
-    print("Normalising and interpolating data....")
+    print(f"{runName}: Normalising and interpolating data....")
     evenly_spaced_time = np.linspace(dataset.coords["time"][0].data, dataset.coords["time"][-1].data, len(dataset.coords["time"].data))
     dataset = dataset.interp(time=evenly_spaced_time)
     Tci = evenly_spaced_time / ion_gyroperiod
@@ -772,7 +786,7 @@ def normalise_data(dataset : xr.Dataset, ion_gyroperiod : float, alfven_velocity
     dataset = dataset.drop_vars("X_Grid")
     dataset = dataset.assign_coords({"time" : Tci, "X_Grid_mid" : vA_Tci})
     dataset = dataset.rename(X_Grid_mid="x_space")
-    print("Dataset normalised")
+    print(f"{runName}: Dataset normalised")
 
     return dataset
 
@@ -791,7 +805,7 @@ def create_omega_k_plots(
         display : bool,
         debug):
 
-    print("Generating w-k plots....")
+    print(f"{runName}: Generating w-k plots....")
 
     if not os.path.exists(saveDirectory):
         os.makedirs(saveDirectory)
@@ -822,9 +836,9 @@ def create_omega_k_plots(
     statsFile.meanWkSpectralPower = spec_mean
     
     if debug:
-        print(f"Sum of omega-k squared * dw * dk: {parseval_wk}")
-        print(f"Max peak in omega-k: {spec_peak}")
-        print(f"Mean of omega-k: {spec_mean}")
+        print(f"{runName}: Sum of omega-k squared * dw * dk: {parseval_wk}")
+        print(f"{runName}: Max peak in omega-k: {spec_peak}")
+        print(f"{runName}: Mean of omega-k: {spec_mean}")
 
     # Create fields for recording powers by frequency and wavenumber
     if "power" not in statsFile.groups.keys():
@@ -880,8 +894,8 @@ def create_omega_k_plots(
         plt.close("all")
 
     if debug:
-        print(f"Sum of omega-power squared * dw * dk: {parsevalWpower}")
-        print(f"Max frequency power: {float(np.nanmax(power_trace))} at f = {float(power_trace[np.nanargmax(power_trace)])}")
+        print(f"{runName}: Sum of omega-power squared * dw * dk: {parsevalWpower}")
+        print(f"{runName}: Max frequency power: {float(np.nanmax(power_trace))} at f = {float(power_trace[np.nanargmax(power_trace)])}")
 
     # Power in omega over all k (log proportion)
     fig, axs = plt.subplots(figsize=(15, 10))
@@ -1048,9 +1062,10 @@ def create_omega_k_plots(
 def create_power_spectra(
         fieldData : xr.Dataset, 
         fieldStats : nc.Dataset,
+        simName :str,
         debug : bool = False
 ):
-    print("Creating power spectra...")
+    print(f"{simName}: Creating power spectra...")
 
     # Get power spectrum
     ps = xrft.power_spectrum(fieldData, scaling = "spectrum", window = 'hann', window_correction=True, detrend = "constant") # PS over space and time
@@ -1100,7 +1115,7 @@ def create_power_spectra(
 
     # Optional plots
     if debug:
-        print(f"Parseval PS: {ps_freq_sum}")
+        print(f"{simName}: Parseval PS: {ps_freq_sum}")
         # freq_ps.plot()
         # plt.xlabel("Frequency [Hz]")
         # plt.ylabel("Power [T^2]")
@@ -1108,7 +1123,7 @@ def create_power_spectra(
         # plt.grid()
         # plt.show()
 
-        print(f"Parseval PSD: {psd_freq_sum}")
+        print(f"{simName}: Parseval PSD: {psd_freq_sum}")
         # freq_psd.plot()
         # plt.xlabel("Frequency [Hz]")
         # plt.ylabel("Power Density [T^2 m/Hz]")
@@ -1117,6 +1132,7 @@ def create_power_spectra(
         # plt.show()
 
 def create_t_k_spectrum(
+        simName : str,
         originalFftSpectrum : xr.DataArray, 
         statsFile : nc.Dataset = None,
         maxK : float = 100.0,
@@ -1124,7 +1140,7 @@ def create_t_k_spectrum(
         debug : bool = False
 ) -> xr.DataArray :
     
-    print("Creating t-k spectrum...")
+    print(f"{simName}: Creating t-k spectrum...")
 
     tk_spec = originalFftSpectrum.where(originalFftSpectrum.frequency>0.0, 0.0)
     original_zero_freq_amplitude = tk_spec.sel(wavenumber=0.0)
@@ -1149,10 +1165,10 @@ def create_t_k_spectrum(
         statsFile.peakTkSpectralPowerRatio = tk_peak/tk_mean
     
     if debug:
-        print(f"Sum of t-k squared * dk * dt: {parseval_tk}")
-        print(f"Max peak in t-k: {tk_peak}")
-        print(f"Mean of t-k: {tk_mean}")
-        print(f"Ratio of peak to mean in t-k: {tk_peak/tk_mean}")
+        print(f"{simName}: Sum of t-k squared * dk * dt: {parseval_tk}")
+        print(f"{simName}: Max peak in t-k: {tk_peak}")
+        print(f"{simName}: Mean of t-k: {tk_mean}")
+        print(f"{simName}: Ratio of peak to mean in t-k: {tk_peak/tk_mean}")
 
     if maxK is not None:
         tk_spec = tk_spec.sel(wavenumber=tk_spec.wavenumber<=maxK)
@@ -1172,13 +1188,13 @@ def create_t_k_plot(
         maxK : float = 100.0,
         display : bool = False):
     
-    print("Generating t-k plot....")
+    print(f"{runName}: Generating t-k plot....")
 
     if maxK is not None:
         tkSpec_plot = tkSpectrum.sel(wavenumber=tkSpectrum.wavenumber<=maxK)
         tkSpec_plot = tkSpec_plot.sel(wavenumber=tkSpec_plot.wavenumber>=-maxK)
     tkSpec_plot : xr.DataArray = np.abs(tkSpec_plot) # Returns DataArray somehow (xarray magic)
-    print(f"tk_plot squared * dx * dy = {float((tkSpec_plot**2).sum() * tkSpec_plot.coords['time'].spacing * tkSpec_plot.coords['wavenumber'].spacing)}")
+    print(f"{runName}: tk_plot squared * dx * dy = {float((tkSpec_plot**2).sum() * tkSpec_plot.coords['time'].spacing * tkSpec_plot.coords['wavenumber'].spacing)}")
     tkSpec_plot_log : xr.DataArray = np.log10(tkSpec_plot) # Returns DataArray somehow (xarray magic)
     
     # Time-wavenumber
@@ -2203,3 +2219,77 @@ def write_stats(energy_stats, prefix, array_data, delta_data, time_coords):
     setattr(energy_stats, f"{prefix}_min", array_data[idx_min])
     setattr(energy_stats, f"{prefix}_timeMin", time_coords[idx_min])
     setattr(energy_stats, f"{prefix}_delta", delta_data[-1])
+
+# Correctly handles negatives and 0 in log10 for energy plots
+def signed_log10(arr: np.ndarray) -> np.ndarray:
+    """Correctly preserves order across all real numbers:
+
+    - Large positive (x >= 1):  log10(x)      >= 0
+    - Small positive (0 < x < 1): -log10(1/x)   < 0  (i.e. log10(x))
+    - Small negative (-1 < x < 0): log10(|x|)   < 0
+    - Large negative (x <= -1): -log10(|x|)     <= 0 (continuation)
+    """
+    arr = np.asarray(arr, dtype=float)
+    result = np.zeros_like(arr)
+
+    # 1. Positives >= 1  --->  [0, +inf)
+    m1 = arr >= 1.0
+    result[m1] = np.log10(arr[m1])
+
+    # 2. Positives (0, 1) ---> (-inf, 0)
+    m2 = (arr > 0.0) & (arr < 1.0)
+    result[m2] = np.log10(arr[m2])
+
+    # 3. Negatives (-1, 0) ---> (-inf, 0) flipped to be strictly lower
+    m3 = (arr > -1.0) & (arr < 0.0)
+    # log10(|x|) is negative (e.g., log10(0.1) = -1), keeping it strictly negative
+    result[m3] = np.log10(-arr[m3])
+
+    # 4. Negatives <= -1 ---> (-inf, 0] continuation
+    m4 = arr <= -1.0
+    result[m4] = -np.log10(-arr[m4])
+
+    # Handle explicit infinities
+    result[np.isneginf(arr)] = -np.inf
+    result[np.isposinf(arr)] = np.inf
+
+    return result
+
+# Correctly handles negatives and 0 in ln for energy plots
+def signed_ln(arr: np.ndarray) -> np.ndarray:
+    """Correctly preserves order across all real numbers:
+
+    - Large positive (x >= 1):  ln(x)      >= 0
+    - Small positive (0 < x < 1): -ln(1/x)   < 0  (i.e. ln(x))
+    - Small negative (-1 < x < 0): ln(|x|)   < 0
+    - Large negative (x <= -1): -ln(|x|)     <= 0 (continuation)
+    """
+    arr = np.asarray(arr, dtype=float)
+    result = np.zeros_like(arr)
+
+    # 1. Positives >= 1  --->  [0, +inf)
+    m1 = arr >= 1.0
+    result[m1] = np.log(arr[m1])
+
+    # 2. Positives (0, 1) ---> (-inf, 0)
+    m2 = (arr > 0.0) & (arr < 1.0)
+    result[m2] = np.log(arr[m2])
+
+    # 3. Negatives (-1, 0) ---> (-inf, 0) flipped to be strictly lower
+    m3 = (arr > -1.0) & (arr < 0.0)
+    # log10(|x|) is negative (e.g., log10(0.1) = -1), keeping it strictly negative
+    result[m3] = np.log(-arr[m3])
+
+    # 4. Negatives <= -1 ---> (-inf, 0] continuation
+    m4 = arr <= -1.0
+    result[m4] = -np.log(-arr[m4])
+
+    # Handle explicit infinities
+    result[np.isneginf(arr)] = -np.inf
+    result[np.isposinf(arr)] = np.inf
+
+    return result
+
+def rolling_stdev(series : np.ndarray, window : int = 10):
+    ts = pd.Series(series)
+    return np.nan_to_num(ts.rolling(window=window).std().to_numpy())
