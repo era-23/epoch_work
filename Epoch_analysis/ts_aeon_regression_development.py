@@ -911,6 +911,8 @@ if __name__ == "__main__":
             resultsFilepath=args.resultsFilepath,
             doPlot=args.doPlot,
             noTitle=args.noTitle,
-            nThreads=args.nThreads
+            nThreads=args.nThreads,
+            numFolds=args.cvFolds,
+            numRepeats=args.cvRepeats
         )
     # demo()
