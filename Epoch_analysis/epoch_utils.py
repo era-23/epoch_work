@@ -2290,6 +2290,24 @@ def signed_ln(arr: np.ndarray) -> np.ndarray:
 
     return result
 
+def zero_negative_safe_log(data : ArrayLike):
+    new_data = []
+    for d in data:
+        if d == 0.0:
+            new_data.append(0.0)
+        elif d < 0.0:
+            new_data.append(np.log10(np.abs(d)))
+        else:
+            new_data.append(np.log10(d))
+    
+    return new_data
+
 def rolling_stdev(series : np.ndarray, window : int = 10):
     ts = pd.Series(series)
     return np.nan_to_num(ts.rolling(window=window).std().to_numpy())
+
+def calculate_gyrofrequencies_in_Hz(B0 : float, max_freq : float, particle : str = "D+"):
+    gf = (ppf.gyrofrequency(B = B0 * u.T, particle = particle) / (2.0 * np.pi * u.rad)).to(u.MHz)
+    num_harmonics = int(np.floor(max_freq / gf.value))
+    freqs = gf.value * np.array(range(1, num_harmonics))
+    return freqs
