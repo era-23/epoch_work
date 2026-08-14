@@ -19,10 +19,31 @@ import plasmapy.formulary.speeds as pps
 import astropy.units as u
 import netCDF4 as nc
 from scipy.interpolate import make_smoothing_spline
+from inference.plotting import matrix_plot
 
 class ScalarFormatterForceFormat(ScalarFormatter):
     def _set_format(self):  # Override function that finds format to use.
         self.format = "%.1f"  # Give format here
+
+def update_annot(ind, annot, sc, names):
+    
+    pos = sc.get_offsets()[ind["ind"][0]]
+    annot.xy = pos
+    text = " ".join([str(names[n]) for n in ind["ind"]])
+    annot.set_text(text)
+
+def hover(event, annot, fig, sc, ax, names):
+    vis = annot.get_visible()
+    if event.inaxes == ax:
+        cont, ind = sc.contains(event)
+        if cont:
+            update_annot(ind, annot, sc, names)
+            annot.set_visible(True)
+            fig.canvas.draw_idle()
+        else:
+            if vis:
+                annot.set_visible(False)
+                fig.canvas.draw_idle()
 
 def all_power_spectra(dataFolder : Path, fields : list):
 
@@ -652,6 +673,107 @@ def plot_all_predictions_for_one_algorithm(
     plt.legend(by_label.values(), by_label.keys())
     plt.savefig(saveFolder / f"{algorithm_name}_grouped_predictions.png", bbox_inches="tight")
 
+def matrix_plot_growth_rates_and_heating(
+        stats_folder : Path
+):
+    """
+    Produces 3 plots: 2 matrix plots of simulation parameters and angles with growth rates and with electron heating, 
+    and 1 2D plot of two of the heating analogues to check their correlation.
+    """
+    
+    plt.rcParams.update({'axes.titlesize': 26.0})
+    plt.rcParams.update({'axes.labelsize': 28.0})
+    plt.rcParams.update({'xtick.labelsize': 22.0})
+    plt.rcParams.update({'ytick.labelsize': 22.0})
+    plt.rcParams.update({'legend.fontsize': 14.0})
+
+    data_dict = {
+        "sim_id" : [],
+        "angle" : [],
+        "B0" : [],
+        "pitch" : [],
+        "density" : [],
+        "alpha_conc" : [],
+        "gamma" : [],
+        "electron_dE" : [],
+        "E_conservation" : []
+    }
+
+    angles = glob.glob(str(stats_folder / "9*"))
+
+    # Get all data
+    for angle in angles:
+        # Get simulation stats files
+        simFiles = glob.glob(str(Path(angle) / "data" / "*_stats.nc"))
+        for s in simFiles:
+            stats = xr.open_datatree(
+                s,
+                engine="netcdf4"
+            )
+            data_dict["sim_id"].append(Path(s).name.split("_")[1])
+            data_dict["angle"].append(int(Path(s).parent.parent.name))
+            data_dict["B0"].append(stats.attrs["B0strength"])
+            data_dict["pitch"].append(stats.attrs["pitch"])
+            data_dict["density"].append(stats.attrs["backgroundDensity"])
+            data_dict["alpha_conc"].append(stats.attrs["beamFraction"])
+            data_dict["gamma"].append(stats["/Energy"].attrs["fastIonEnergyGamma"])
+            data_dict["electron_dE"].append(stats["/Energy"].attrs["electronEnergyDensity_delta"])
+            data_dict["E_conservation"].append(stats["/Energy"].attrs["totalEnergyDensityConservation_pct"])
+            stats.close()
+
+    data_df : pd.DataFrame = pd.DataFrame(data_dict)
+    data_df["gamma"] = data_df["gamma"].clip(lower=0.01)
+    data_df = data_df.assign(log_density = lambda d: np.log10(d.density))
+    data_df = data_df.assign(log_alphaConc = lambda d: np.log10(d.alpha_conc))
+    data_df = data_df.assign(log_gamma = lambda d: np.log10(d.gamma))
+    data_df = data_df.assign(log_Econs = lambda d: np.log10(d.E_conservation))
+    data_df = data_df.assign(log_edE = lambda d: np.log10(d.electron_dE))
+    print(data_df)
+
+    # Energy conservation
+    x_field = "alpha_conc"
+    y_field = "gamma"
+    fig, ax = plt.subplots()
+    # sc = data_df.plot.scatter(x = x_field, y = y_field, c="log_gamma", alpha = 0.8)
+    sc = plt.scatter(data_df[x_field], data_df[y_field], alpha = 0.8)
+    names = [f"sim: {f},\nangle: {a},\nB0: {b:.3f},\npitch: {c:.3f},\ndensity: {d:.3e},\nA.C.: {e:g}\n" for f, a, b, c, d, e in zip(data_df["sim_id"], data_df["angle"], data_df["B0"], data_df["pitch"], data_df["density"], data_df["alpha_conc"])]
+    annot = ax.annotate("", xy=(0,0), xytext=(20,20),textcoords="offset points",
+                    bbox=dict(boxstyle="round", fc="w"),
+                    arrowprops=dict(arrowstyle="-"))
+    annot.set_visible(False)
+    fig.canvas.mpl_connect("motion_notify_event", lambda event: hover(event, annot, fig, sc, ax, names))
+    plt.xscale("log")
+    plt.yscale("log")
+    plt.xlabel(x_field)
+    plt.ylabel(y_field)
+    fig.tight_layout()
+    plt.show()
+
+    # Plotting interesting combinations
+    # Grouped by angle
+    # field = "gamma"
+    # lg_means = data_df.groupby("angle")[field].mean()
+    # lg_stds = data_df.groupby("angle")[field].std()
+    # plt.bar(x=[str(a) for a in lg_means.index], height=lg_means.values, label = "mean")
+    # plt.errorbar(x=[str(a) for a in lg_means.index], y=lg_means.values, yerr = lg_stds.values, fmt = "o", color = "r", label = "S.D.")
+    # plt.xlabel("angle")
+    # plt.legend()
+    # plt.ylabel(field)
+    # plt.tight_layout()
+    # plt.show()
+
+    # to_matrix_plot = {
+    #     "angle" : data_df["angle"].to_numpy(),
+    #     "B0" : data_df["B0"].to_numpy(),
+    #     "pitch" : data_df["pitch"].to_numpy(),
+    #     "log_density" : data_df["log_density"].to_numpy(),
+    #     "log_alphaConc" : data_df["log_alphaConc"].to_numpy(),
+    #     "log_gamma" : np.nan_to_num(data_df["log_gamma"].to_numpy()),
+    #     "log E cons." : data_df["log_Econs"].to_numpy(),
+    #     "log e- dE" : data_df["log_edE"].to_numpy(),
+    # }
+    # matrix_plot([v for v in to_matrix_plot.values()], [k for k in to_matrix_plot.keys()], plot_style="hdi", show_ticks=True)
+
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser("parser")
@@ -690,6 +812,12 @@ if __name__ == "__main__":
         "--cottrell",
         action="store_true",
         help="Plot TSER of Cottrell 1993 experimental data.",
+        required = False
+    )
+    parser.add_argument(
+        "--matrix",
+        action="store_true",
+        help="Matrix plot growth rate and heating investigation.",
         required = False
     )
     parser.add_argument(
@@ -772,6 +900,8 @@ if __name__ == "__main__":
     plt.rcParams.update({'ytick.labelsize': 18.0})
     plt.rcParams.update({'legend.fontsize': 18.0})
 
+    if args.matrix:
+        matrix_plot_growth_rates_and_heating(args.dataFolder)
     if args.powerSpectrum:
         if args.dataFile:
             for f in args.fields:

@@ -65,7 +65,7 @@ def find_phase_thresholds(
     threshold_indices["linear_MCI_growth_start"] = int(mci_start_idx)
 
     if threshold_indices["linear_MCI_growth_start"] is not None:
-        nl_mci_start_idxs = np.nonzero(abs(smoothDeltaData) > 0.01) # Deviation from baseline energy is > 0.01%
+        nl_mci_start_idxs = np.nonzero(abs(smoothDeltaData) > 0.03) # Deviation from baseline energy is > 0.03%
         if len(nl_mci_start_idxs) > 0 and len(nl_mci_start_idxs[0]) > 0:
             nl_start = int(nl_mci_start_idxs[0][0]) if int(nl_mci_start_idxs[0][0]) > threshold_indices["linear_MCI_growth_start"] else threshold_indices["linear_MCI_growth_start"] + 10
             threshold_indices["nonlinear_MCI_growth_start"] = nl_start
@@ -119,8 +119,6 @@ def find_and_plot_phases(
 
         for s in simFiles:
 
-            # s = "/home/era536/Documents/Epoch/Data/2026_analysis/all_angles_4/debug/run_74_stats.nc"
-
             stats = xr.open_datatree(
                 s,
                 engine="netcdf4"
@@ -153,11 +151,12 @@ def find_and_plot_phases(
 
                     stdev_window = 5
                     threshold_indices, dE_dt, ln_abs, rolling_std = find_phase_thresholds(percentageED, timeCoords, rollingWindowSize=stdev_window)
-                    l1 = ax.plot(timeCoords, ln_abs if doLog else percentageED, label=f"{epoch_utils.SPECIES_NAME_MAP[variable]} (abs)", color = line_colour)
+                    l1 = ax.plot(timeCoords, ln_abs if doLog else percentageED, label=f"{epoch_utils.SPECIES_NAME_MAP[variable]} (log(abs))", color = line_colour)
                     l2 = ax.plot(timeCoords[1:], rolling_std, linestyle="dashed", color="black", label = f"{stdev_window}-point rolling SD(diff)")
                     ax2 = ax.twinx()
                     l3 = ax2.plot(timeCoords, percentageED, label=f"{epoch_utils.SPECIES_NAME_MAP[variable]}", alpha = 0.6, linestyle = "dashed", color = line_colour)
                     l4 = ax2.plot(timeCoords[1:], dE_dt, linestyle="dotted", color="black", label = "d(FI)/dt")
+                    l7 = ax.plot(timeCoords[1:], np.log(np.abs(dE_dt)), linestyle="dotted", color="purple", label = "d(FI)/dt (log(abs))")
                     l5 = []
                     for k,v in threshold_indices.items():
                         if v is not None:
@@ -179,7 +178,7 @@ def find_and_plot_phases(
                     stats["/Energy"].attrs["fastIonEnergyGamma"] = linGrowth.slope
                     stats["/Energy"].attrs["fastIonEnergyGammaUnit"] = "pct/Tci"
 
-                    lines = l1 + l3 + l4 + l5 + l2 + l6
+                    lines = l3 + l4 + l1 + l7 + l5 + l2 + l6
                     labels = [line.get_label() for line in lines]
                     ax.legend(lines, labels, loc = "center left", bbox_to_anchor = (1.2, 0.5))
                     ax.set_xlabel(r"Time [$\tau_{ci}$]")
