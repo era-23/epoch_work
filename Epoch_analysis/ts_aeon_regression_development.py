@@ -69,6 +69,7 @@ def regress_from_hd5(
 
     outputFields = ["B0", "log(density)", "log(alpha_conc)", "pitch", "background_temp"]
     inputData = []
+    aeon_only = np.all([str.startswith(a, "aeon") for a in algorithms])
 
     # Input data
     for f in data_files:
@@ -86,7 +87,7 @@ def regress_from_hd5(
         data.close()
 
     assert np.allclose(inputData[0]["spectra"].F.data, inputData[1]["spectra"].F.data)
-    inputFreqs = np.array(inputData[0]["spectra"].F)
+    # inputFreqs = np.array(inputData[0]["spectra"].F)
     inputParams = np.concat((np.array(inputData[0]["parameters"].X.data), np.array(inputData[1]["parameters"].X.data)), axis=1)
     inputSpectra = np.concat((np.array(inputData[0]["spectra"].Y.data), np.array(inputData[1]["spectra"].Y.data)), axis=1).T
 
@@ -98,7 +99,8 @@ def regress_from_hd5(
             inputSpectra[i] = log_spec
 
     # Reshape into 3D numpy array of shape (n_cases, n_channels, n_timepoints)
-    inputSpectra = np.expand_dims(inputSpectra, axis = 1)
+    if aeon_only:
+        inputSpectra = np.expand_dims(inputSpectra, axis = 1)
 
     # Output data
     battery.outputFields = np.array(outputFields)
@@ -109,8 +111,8 @@ def regress_from_hd5(
 
     battery.equalLengthTimeseries = True
     battery.numObservations = inputSpectra.shape[0]
-    battery.numInputDimensions = inputSpectra.shape[1]
-    battery.numTimepointsIfEqual = inputSpectra.shape[2]
+    battery.numInputDimensions = 1
+    battery.numTimepointsIfEqual = inputSpectra.shape[-1]
     battery.multivariate = battery.numInputDimensions > 1
 
     battery.cvStrategy = "RepeatedKFolds"
@@ -192,10 +194,14 @@ def regress_from_hd5(
                         # print(f"    Ground truth: {test_y} (normalised), {test_y_denormed} (original)")
                 else:
                     print("Fold test size > 10, skipping printing of predictions.")
-                score = tsr.score(test_x, test_y, metric='r2')
+                if aeon_only:
+                    score = tsr.score(test_x, test_y, metric='r2')
+                    training_r2 = tsr.score(train_x, train_y, metric='r2')
+                else:
+                    score = tsr.score(test_x, test_y)
+                    training_r2 = tsr.score(train_x, train_y)
                 all_test_R2s.append(score)
                 skl_rmse = root_mean_squared_error(test_y, predictions)
-                training_r2 = tsr.score(train_x, train_y, metric='r2')
                 all_train_R2s.append(training_r2)
                 print("-------- RESULTS ---------")
                 print(f"    test r2:      {score}")
