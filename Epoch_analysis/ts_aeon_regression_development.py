@@ -159,9 +159,9 @@ def regress_from_hd5(
             all_predictions = []
             all_test_points_denormed = []
             all_predictions_denormed = []
-            
+
             for fold, (train, test) in tt_split:
-                fold_start_training_time = time.process_time_ns()
+                fold_time_start = time.process_time_ns()
                 print(f"Fold: {fold}....")
 
                 train_x = [inputSpectra[t] for t in train]
@@ -186,9 +186,12 @@ def regress_from_hd5(
                 if output_field in logFields:
                     preds_denormed = 10.0**preds_denormed
                     test_y_denormed = 10.0**test_y_denormed
-                for i in range(len(predictions)):
-                    print(f"    Prediction:  {preds_denormed[i]}, Ground truth: {test_y_denormed[i]} (normalised)")
-                    # print(f"    Ground truth: {test_y} (normalised), {test_y_denormed} (original)")
+                if len(predictions) < 10:
+                    for i in range(len(predictions)):
+                        print(f"    Prediction:  {preds_denormed[i]}, Ground truth: {test_y_denormed[i]} (normalised)")
+                        # print(f"    Ground truth: {test_y} (normalised), {test_y_denormed} (original)")
+                else:
+                    print("Fold test size > 10, skipping printing of predictions.")
                 score = tsr.score(test_x, test_y, metric='r2')
                 all_test_R2s.append(score)
                 skl_rmse = root_mean_squared_error(test_y, predictions)
@@ -223,6 +226,11 @@ def regress_from_hd5(
                         predictedValue_denormalised_log10=np.log10(preds_denormed[i][0])
                     )
                     allPredictionsRecord.append(predRecord)
+
+                fold_time_end = time.process_time_ns()
+                fold_time = fold_time_end - fold_time_start
+                fold_time_s = fold_time / 1e9
+                print(f"Fold time: {fold_time_s}s.")
 
             rmse, rmse_var, rmse_se = ml_utils.root_mean_squared_error(all_predictions, all_test_points)
             r2 = np.mean(all_test_R2s)
