@@ -642,8 +642,8 @@ def plot_all_predictions_for_one_algorithm(
     
     results = pd.read_csv(csvResultsPath)
     outputFields = results["outputQuantity"].unique()
-    colours = ["red", "green", "blue", "orange"]
-    markers = ["o", "^", "s", "D"]
+    colours = ["red", "green", "blue", "orange", "purple"]
+    markers = ["o", "^", "s", "D", "X"]
 
     if not os.path.exists(saveFolder):
         os.makedirs(saveFolder)
@@ -655,7 +655,7 @@ def plot_all_predictions_for_one_algorithm(
     for i in range(len(outputFields)):
         field = outputFields[i]
         predictions : pd.DataFrame = allPredictions[allPredictions["outputQuantity"] == field]
-        plt.scatter(predictions["trueValue_normalised"].to_numpy(), predictions["predictedValue_normalised"].to_numpy(), marker = markers[i], s = 50, color = colours[i], label = epoch_utils.fieldNameToSymbol(field))
+        plt.scatter(predictions["trueValue_normalised"].to_numpy(), predictions["predictedValue_normalised"].to_numpy(), marker = markers[i], s = 50, color = colours[i], alpha = 0.8, label = epoch_utils.fieldNameToSymbol(field))
     plt.grid()
     if not noTitle:
         plt.title(f"{algorithm_name}")

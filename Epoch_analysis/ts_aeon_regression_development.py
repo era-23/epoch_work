@@ -28,6 +28,15 @@ import xarray as xr
 
 from dataclass_csv import DataclassWriter
 
+# 0 = All logs (default)
+# 1 = Filter out INFO logs
+# 2 = Filter out INFO and WARNING logs
+# 3 = Filter out INFO, WARNING, and ERROR logs
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
+# Optional: Silence the oneDNN message explicitly
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+
 logger = logging.getLogger(__name__)
 warnings.filterwarnings("ignore")
 

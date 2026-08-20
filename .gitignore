@@ -8,3 +8,6 @@ code_sandbox/mast_data.py
 .gitignore
 .gitignore
 code_sandbox/.vscode/settings.json
+Epoch_analysis/.python-version
+Epoch_analysis/*.keras
+__pycache__/

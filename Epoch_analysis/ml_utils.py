@@ -6,6 +6,15 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+# 0 = All logs (default)
+# 1 = Filter out INFO logs
+# 2 = Filter out INFO and WARNING logs
+# 3 = Filter out INFO, WARNING, and ERROR logs
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
+# Optional: Silence the oneDNN message explicitly
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+
 # Aeon algorithms
 import aeon.regression as aeon_reg
 import aeon.regression.convolution_based as aeon_conv

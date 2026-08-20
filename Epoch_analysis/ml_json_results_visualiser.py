@@ -111,14 +111,17 @@ def plotScatter(resultsDict : dict, metric : str = "cvR2"):
 
     plt.show()
 
-def plotBar(resultsDict : dict, metrics : list = None, errors : str = "rmseSE", dropAlgorithms : list = []): 
+def plotBar(
+        resultsDict : dict, 
+        metrics : list = None, 
+        fieldNames : dict = None,
+        errors : str = "rmseSE", 
+        dropAlgorithms : list = []
+    ): 
 
     if metrics is None:
         print("No metric specified. Exiting")
         return
-
-    patterns = [ "/" , ".", "\\" , "|" , "-" , "+" , "x",  "o", "O", "*" ]
-    field_names = {"B0strength" : r"$B_0$", "backgroundDensity" : r"$n_e$", "pitch" : r"$\lambda$", "beamFraction" : r"$n_\alpha/n_e$"}
     
     # results
     results = resultsDict["results"]
@@ -195,12 +198,9 @@ def plotBar(resultsDict : dict, metrics : list = None, errors : str = "rmseSE", 
     if resultsDict["cvStrategy"] == "RepeatedKFolds":
         ax.set_title(f'{resultsDict["cvFolds"]}-fold CV results ({resultsDict["cvRepeats"]} repeats)')
     ax.set_xlabel('Output')
-    xLabels = [field_names[lab] for lab in xLabels]
+    xLabels = [fieldNames[lab] for lab in xLabels]
     ax.set_xticks(x + (0.5 * (len(algorithms) -1) * width), xLabels)
-    if len(resultsDict["algorithms"]) > 5:
-        ax.legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, 1.15))
-    else:
-        ax.legend(loc='upper left' if metric == "cvR2" else 'lower left', ncols = 1)
+    ax.legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, 1.15 if len(algorithms) < 8 else 1.2))
     ax.set_ylim(top= 1.15 if metric == "cvR2" else np.round(np.max([v for v in barVals.values()]) + 0.39, 1))
     ax.axhline(0.0, color="black", lw=0.5)
     ax.grid(axis="y")
@@ -279,10 +279,16 @@ def plot_individual_spectra_results(folder):
         plt.tight_layout()
         plt.show()
 
-def plotResults(resultsFile : Path, metrics : list = None, errors : str = "rmseSE", dropAlgorithms : list = []):
+def plotResults(
+        resultsFile : Path, 
+        metrics : list = None,
+        fieldNames : dict = None,
+        errors : str = "rmseSE", 
+        dropAlgorithms : list = []
+    ):
     with open(resultsFile, "r") as f:
         parser = json.load(f)
-        plotBar(parser, metrics, errors, dropAlgorithms)
+        plotBar(parser, metrics, fieldNames, errors, dropAlgorithms)
         # plotScatter(parser, metric)
 
 def latexTable(resultsFile : Path, experimentName : str):
@@ -418,6 +424,12 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
+        "--jamesNames",
+        action="store_true",
+        help="Use field name conventions from James' linear code.",
+        required = False
+    )
+    parser.add_argument(
         "--metric",
         action="store",
         help="Scoring metric: \'cvR2\' or \'cvRMSE\'.",
@@ -468,7 +480,22 @@ if __name__ == "__main__":
         if args.folder is not None:
             plotAeResultsByPcaComponents(args.folder, args.filePattern)
         dropAlgorithms = [] if args.dropAlgorithms is None else args.dropAlgorithms
-        plotResults(args.file, args.metric, args.errors if args.errors is not None else "rmseSE", dropAlgorithms)
+        if args.jamesNames:
+            field_names = {
+                "B0" : r"$B_0$", 
+                "log(density)" : r"$n_e$", 
+                "log(alpha_conc)" : r"$n_\alpha/n_e$",
+                "pitch" : r"$\lambda$", 
+                "background_temp" : r"$T_{e,i}$"
+            }
+        else:
+            field_names = {
+                "B0strength" : r"$B_0$", 
+                "backgroundDensity" : r"$n_e$", 
+                "pitch" : r"$\lambda$", 
+                "beamFraction" : r"$n_\alpha/n_e$"
+            }
+        plotResults(args.file, args.metric, field_names, args.errors if args.errors is not None else "rmseSE", dropAlgorithms)
     if args.latex:
         latexTable(args.file, args.experimentName)
     if args.accuracyByFrequency:
