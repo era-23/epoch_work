@@ -297,6 +297,7 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "args": [
+                "--lhd",
                 // "--cottrell",
                 // "--cottrellBeta",
                 // "--cottrellPlots",
@@ -307,17 +308,19 @@
                     // "/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_cottrell_4/testing_regression/data_full/long_sims_data/",
                     // "/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_4/reduced_debugging_dataset/",
                     // "/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_4/data/",
-                    
+                    "/home/era536/Documents/Epoch/Data/2026_analysis/jwsc_linear_data/",
+                "--lhdFilepath",
+                    "/home/era536/Documents/Epoch/Data/2026_analysis/jwsc_linear_data/comparison/lhd_data/",
                 "--cottrellFilepath",
                     "/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_cottrell_4/testing_regression/cottrell_93_experimental_data.csv",
                 "--resultsFilepath",
                     // "/home/era536/Documents/Epoch/Data/2026_analysis/tsr_aeon/cottrell/repeat_test_old/",
                     // "/home/era536/Documents/Epoch/Data/2026_analysis/tsr_aeon/scan_args/test_json_estimator.json",
-                    "/home/era536/Documents/Epoch/Data/2026_analysis/combined_spectra_4/benchmarking_nonTS/test_nonTS.json",
+                    "/home/era536/Documents/Epoch/Data/2026_analysis/jwsc_linear_data/results/",
                 // "--nThreads",
                 //     "12",
                 "--algorithms",
-                    // "aeon.DummyRegressor",
+                    "aeon.DummyRegressor",
                     // "aeon.KNeighborsTimeSeriesRegressor",
                     // "aeon.RDSTRegressor",
                     // "aeon.Catch22Regressor",
@@ -342,7 +345,7 @@
                     // "RidgeRegressor",
                     // "GradientBoostingRegressor",
                     // "RandomForestRegressor",
-                    "LassoRegressor",
+                    // "LassoRegressor",
                 // "--frequencyBandwidths",
                 //     "5.0",
                 //     "10.0",
@@ -363,7 +366,7 @@
                 //    "padMin",
                     // "padMean",
                 "--nRepeats",
-                    "20",
+                    "2",
                 "--nThreads",
                     "12",
             ]
@@ -940,7 +943,7 @@
                     // "/home/era536/Documents/Epoch/Data/sept_25/JET_test/"
                     // "/home/era536/Documents/Epoch/Data/2026_analysis/jet_analogue/long_beamFracs/patched_1x/sim_output/run_90/"
                     // "/home/era536/Documents/Epoch/Data/2026_analysis/jet_analogue/debugging/halton_fix/run_90/"
-                    "/home/era536/Documents/Epoch/Data/2026_analysis/jet_analogue/debugging/no_dF_fix/run_90/"
+                    "/home/era536/Documents/Epoch/Data/2026_analysis/jwsc_linear_data/epoch_analogue/median/"
             ]
         },
         {

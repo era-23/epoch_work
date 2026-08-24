@@ -7,10 +7,20 @@ import os
 import time
 from pathlib import Path
 
+# 0 = All logs (default)
+# 1 = Filter out INFO logs
+# 2 = Filter out INFO and WARNING logs
+# 3 = Filter out INFO, WARNING, and ERROR logs
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
+# Optional: Silence the oneDNN message explicitly
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import plasmapy.formulary.frequencies as ppf
+import xarray as xr
 from astropy import units as u
 from dataclass_csv import DataclassWriter
 from matplotlib import ticker
@@ -25,6 +35,9 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import LeaveOneOut
 from sklearn.preprocessing import MinMaxScaler
+
+from scipy.signal import find_peaks
+from scipy.interpolate import interp1d
 
 import epoch_utils
 import ml_utils
@@ -709,6 +722,243 @@ def regress_cottrell_v2(
         for ax in axs:
             ax.grid()
         plt.show()
+
+def regress_lhd(
+        dataDirectory : Path,
+        outputFields : list,
+        algorithms : list,
+        lhdDatapath : Path,
+        resultsFilepath : Path = None,
+        nRepeats : int = 10,
+        nThreads : int = 1,
+        noise_freq_minimum : float = 5.0,
+        lowFrequencyCleaningMethod : str = "linterpToSP",
+        displayPlots : bool = False
+):
+    if displayPlots:
+        SMALL_SIZE = 10
+        MEDIUM_SIZE = 16
+        BIGGER_SIZE = 20
+
+        plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
+        plt.rc('axes', titlesize=BIGGER_SIZE)     # fontsize of the axes title
+        plt.rc('axes', labelsize=BIGGER_SIZE)    # fontsize of the x and y labels
+        plt.rc('xtick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
+        plt.rc('ytick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
+        plt.rc('legend', fontsize=12)    # legend fontsize
+        plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
+
+    aeon_only = np.all([str.startswith(a, "aeon") for a in algorithms])
+
+    # Get filepaths
+    data_dir = dataDirectory / "data"
+    data_files = glob.glob(str(data_dir / "*.h5"))
+    lhdParams_dir = lhdDatapath / "lhd_data_parameters.csv"
+    lhdDir = glob.glob(str(lhdDatapath / "*.dat")) # Just one file for now
+
+    # JWSC h5 simulation data schema:
+    # spectra/F == frequencies
+    # spectra/Y == growth rates
+    # parameters/X == input values
+    inputData = []
+    for f in data_files:
+        data : xr.DataTree = xr.open_datatree(f)
+        inputData.append(data)
+        data.close()
+
+    assert np.allclose(inputData[0]["spectra"].F.data, inputData[1]["spectra"].F.data)
+    inputFreqs = np.array(inputData[0]["spectra"].F)
+    inputParams = np.concat((np.array(inputData[0]["parameters"].X.data), np.array(inputData[1]["parameters"].X.data)), axis=1)
+    inputSpectra = np.concat((np.array(inputData[0]["spectra"].Y.data), np.array(inputData[1]["spectra"].Y.data)), axis=1).T
+    targetFields = {k : v for k, v in zip(outputFields, inputParams)}
+
+    # Ensure fields match correct values
+    assert targetFields["B0"].min() == 1.4
+    assert targetFields["B0"].max() == 1.6
+    assert targetFields["log(density)"].min() == 18.5
+    assert targetFields["log(density)"].max() == 19.75
+    assert targetFields["log(fi_conc)"].min() == -5
+    assert targetFields["log(fi_conc)"].max() == -3
+    assert targetFields["pitch"].min() == 0.0
+    assert targetFields["pitch"].max() == 0.5
+    assert targetFields["background_temp"].min() == 10.0
+    assert targetFields["background_temp"].max() == 400.0
+
+    # Reshape into 3D numpy array of shape (n_cases, n_channels, n_timepoints)
+    if aeon_only:
+        inputSpectra = np.expand_dims(inputSpectra, axis = 1)
+
+    # Get Experimental LHD data
+    lhd_true_params = pd.read_csv(lhdParams_dir)
+    test_x = {}
+    for f in lhdDir:
+        lhd_data = pd.read_csv(f, sep = r"\s+", names = ["frequency", "power"])
+        max_lhd_frequency = float((lhd_data["frequency"].max() * u.MHz).value)
+        max_training_freq = inputFreqs.max()
+        max_common_freq = float(np.min([max_lhd_frequency, max_training_freq]))
+        print(f"Max freq in simulated linear data: {max_training_freq} (len {len(inputFreqs)}), max in LHD experimental data: {max_lhd_frequency} (len {lhd_data.shape[0]}), truncating to {max_common_freq}...")
+        # lhd_data.plot(x = "frequency", y = "power")
+        # plt.title(Path(f).name)
+        # plt.show()
+        
+        # Truncate
+        lhd_data_trunc_sort = lhd_data[(lhd_data["frequency"] > 0.0) & (lhd_data["frequency"] < max_common_freq)].sort_values(by = "frequency")
+        print(f"Simulated linear data length: {len(inputFreqs)}, LHD experimental data length: {lhd_data_trunc_sort.shape[0]}")
+        # lhd_data_trunc_sort.plot(x = "frequency", y = "power")
+        # plt.title(Path(f).name)
+        # plt.show()
+
+        # Resample and interpolate
+        clean_df = lhd_data_trunc_sort.drop_duplicates(subset=["frequency"], keep="first").sort_values("frequency")
+        freqs_old = clean_df["frequency"].to_numpy()
+        power_old = clean_df["power"].to_numpy()
+        freqs_new = np.sort(inputFreqs)
+
+        # Binning for max-pooling operation
+        # Midpoints define the boundaries between adjacent target frequencies
+        midpoints = (freqs_new[:-1] + freqs_new[1:]) / 2.0
+        bin_edges = np.concatenate([
+            [freqs_new[0] - (midpoints[0] - freqs_new[0])], # Left boundary of first bin
+            midpoints,
+            [freqs_new[-1] + (freqs_new[-1] - midpoints[-1])] # Right boundary of last bin
+        ])
+
+        # Apply Max-Pooling over each bin window
+        power_max_pooled = np.zeros_like(freqs_new)
+        for i in range(len(freqs_new)):
+            bin_min = bin_edges[i]
+            bin_max = bin_edges[i + 1]
+            
+            # Identify original points falling inside the current frequency bin
+            mask = (freqs_old >= bin_min) & (freqs_old < bin_max)
+            
+            if np.any(mask):
+                # Extract peak height inside this bin
+                power_max_pooled[i] = np.max(power_old[mask])
+            else:
+                # Fallback to linear interpolation for empty bins (sparse regions without points)
+                power_max_pooled[i] = np.interp(freqs_new[i], freqs_old, power_old, left=0.0, right=0.0)
+
+        lhd_data_resamp = pd.DataFrame({
+            "frequency": freqs_new,
+            "power": power_max_pooled
+        })
+
+        # Remove low freq noise
+        lhd_data_resamp.loc[lhd_data_resamp["frequency"] < noise_freq_minimum, "power"] = lhd_data_resamp["power"].min() # Below 3MHz is electron noise
+
+        # # Plot comparison
+        # plt.figure(figsize=(10, 5))
+        # plt.plot(freqs_old, power_old, label=f"Original Non-Uniform ({len(freqs_old)} pts)", alpha=0.5)
+        # plt.plot(freqs_new, lhd_data_resamp["power"], label=f"Max-Pooled Uniform ({len(freqs_new)} pts)", linestyle="--", color="orange")
+        # plt.legend()
+        # plt.show()
+
+        assert np.allclose(freqs_new, lhd_data_resamp["frequency"])
+
+        test_x[Path(f).name] = np.expand_dims(np.nan_to_num(lhd_data_resamp["power"]), axis = 0)
+
+    assert len(test_x) > 0
+
+    train_x = inputSpectra
+
+    all_abs_normalised_errors = {a : [] for a in algorithms}
+    all_predictions = {a : [] for a in algorithms}
+    all_prediction_sems = {a : [] for a in algorithms}
+    all_prediction_sds = {a : [] for a in algorithms}
+
+    all_results = []
+
+    # True values (edge LHD values )
+    # all_true_y = {"B0" : 1.581, "log(density)" : 19.53, "log(fi_conc)" : -4.0, "pitch" : 0.25, "background_temp" : 50}
+
+    for output_field, output_values in targetFields.items():
+
+        if output_field not in outputFields:
+            continue
+
+        print(f"Regressing spectra against {output_field}...")
+
+        assert len(output_values) == inputSpectra.shape[0]
+        output_values = np.array(output_values)
+        
+        train_y, scaler_y = ml_utils.normalise_data(output_values)
+
+        # Record denormalisation parameters
+        print(f"Original data mean: {np.mean(output_values)}, original data SD: {np.std(output_values)}")
+
+        for algorithm in algorithms:
+
+            print(f"Building {algorithm} model for {output_field}....")
+            
+            # Results
+            result = ml_utils.TSRResult()
+            result.output = output_field
+            result.algorithm = algorithm
+            
+            tsr = ml_utils.get_algorithm(algorithm, nThreads)
+            
+            # Fit
+            for comp_name, comp_spectrum in test_x.items():
+
+                true_y = lhd_true_params[lhd_true_params["filename"] == comp_name][output_field].values[0]
+                true_y_norm, _ = ml_utils.normalise_data([true_y], scaler_y)
+
+                predictions = []
+                for r in range(nRepeats):
+                    print(f"Fitting and predicting repeat {r}...")
+                    tsr.fit(train_x, train_y)
+
+                    # Predict
+                    predictions.append(tsr.predict(comp_spectrum))
+                prediction = np.mean(predictions)
+                pred_var = np.var(predictions)
+                pred_sd = np.std(predictions)
+                pred_se = sem(predictions)
+
+                pred_denormed = ml_utils.denormalise_data(np.array([prediction]), scaler_y)
+                pred_se_denormed = ml_utils.denormalise_data(np.array([pred_se]), scaler_y)
+                pred_sd_denormed = ml_utils.denormalise_data(np.array([pred_sd]), scaler_y)
+                pred_se_denormed = pred_se_denormed[0] - scaler_y.mean_
+                pred_sd_denormed = pred_sd_denormed[0] - scaler_y.mean_
+                err_norm = prediction-true_y_norm[0]
+                print(f"{algorithm} Mean prediction of {output_field}:  {prediction} (normalised) {pred_sd} (S.D.) {pred_se} (S.E.), {pred_denormed[0]}+-{pred_se_denormed} (original) -- {err_norm} normalised error")
+                all_abs_normalised_errors[algorithm].append(abs(err_norm))
+                all_predictions[algorithm].append(abs(pred_denormed[0]))
+                all_prediction_sems[algorithm].append(pred_se_denormed)
+                all_prediction_sds[algorithm].append(pred_sd_denormed)
+
+                results_dict = {
+                    "algorithm" : algorithm, 
+                    "field" : output_field, 
+                    "true_filename" : comp_name,
+                    "true_value" : true_y, 
+                    "true_value_before_log" : true_y, 
+                    "true_value_norm" : true_y_norm[0],
+                    "mean_norm_prediction" : prediction, 
+                    "mean_norm_error" : err_norm, 
+                    "var" : pred_var, 
+                    "std" : pred_sd, 
+                    "stderr" : pred_se[0], 
+                    "mean_denormed_prediction" : pred_denormed[0][0], 
+                    "mean_denormed_error" : pred_denormed[0][0] - true_y,
+                    "denormed_std" : pred_sd_denormed[0], 
+                    "denormed_stderr" : pred_se_denormed[0]
+                }
+                # print(results_dict)
+                all_results.append(results_dict)
+
+    if not os.path.exists(resultsFilepath):
+        if not resultsFilepath.name.endswith(".csv"):
+            os.makedirs(resultsFilepath)
+        else:
+            os.makedirs(resultsFilepath.parent)
+    resultsFilepath = resultsFilepath if str(resultsFilepath).endswith(".csv") else resultsFilepath / "lhd_regression_results.csv"
+    with open(resultsFilepath, "w") as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=all_results[0].keys())
+        writer.writeheader()
+        writer.writerows(all_results)
+    
 
 def regress_scanArgs(
         directory : Path,
@@ -1653,6 +1903,12 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
+        "--lhd",
+        action="store_true",
+        help="Run LHD experimental regression.",
+        required = False
+    )
+    parser.add_argument(
         "--frequency",
         action="store_true",
         help="Run accuracy vs frequency bandwidth experiment.",
@@ -1674,6 +1930,13 @@ if __name__ == "__main__":
         "--cottrellFilepath",
         action="store",
         help="Filepath of Cottrell 93 data to regress against.",
+        required = False,
+        type=Path
+    )
+    parser.add_argument(
+        "--lhdFilepath",
+        action="store",
+        help="Filepath of Reman 21 LHD data to regress against.",
         required = False,
         type=Path
     )
@@ -1914,3 +2177,22 @@ if __name__ == "__main__":
             includeFreqs=args.includeFreqs,
             nThreads = args.nThreads,
             lowFrequencyCleaningMethod=args.lowFrequencyCleaningMethod[0])
+
+    if args.lhd:
+        regress_lhd(
+            dataDirectory = args.dataDir, 
+            outputFields = [
+                "B0", 
+                "log(density)",
+                "log(fi_conc)", 
+                "pitch", 
+                "background_temp"
+            ], 
+            algorithms = args.algorithms,
+            lhdDatapath = args.lhdFilepath,
+            resultsFilepath=args.resultsFilepath,
+            nRepeats=args.nRepeats,
+            nThreads = args.nThreads,
+            lowFrequencyCleaningMethod=args.lowFrequencyCleaningMethod[0],
+            displayPlots=args.displayPlots,
+        )

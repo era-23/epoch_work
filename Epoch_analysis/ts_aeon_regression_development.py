@@ -76,7 +76,7 @@ def regress_from_hd5(
     # spectra/Y == growth rates
     # parameters/X == input values
 
-    outputFields = ["B0", "log(density)", "log(alpha_conc)", "pitch", "background_temp"]
+    outputFields = ["B0", "log(density)", "log(fi_conc)", "pitch", "background_temp"]
     inputData = []
     aeon_only = np.all([str.startswith(a, "aeon") for a in algorithms])
 

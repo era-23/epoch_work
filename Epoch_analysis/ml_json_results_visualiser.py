@@ -484,7 +484,7 @@ if __name__ == "__main__":
             field_names = {
                 "B0" : r"$B_0$", 
                 "log(density)" : r"$n_e$", 
-                "log(alpha_conc)" : r"$n_\alpha/n_e$",
+                "log(fi_conc)" : r"$n_{FI}/n_e$",
                 "pitch" : r"$\lambda$", 
                 "background_temp" : r"$T_{e,i}$"
             }
