@@ -490,6 +490,87 @@ def energy_plots_for_papers(
             plt.show()
         plt.close("all")
 
+def plot_lhd_regression(csvResultsPath : Path, ground_truth_spectra_name : str = "AkiyamaExtract_Spectra_high_res_138433.dat"):
+    # Schema
+    # results_dict = {
+    #     "algorithm" : algorithm, 
+    #     "field" : output_field, 
+    #     "true_filename" : ground truth filename
+    #     "true_value" : true_y, 
+    #     "true_value_before_log" : true_y_prelog, 
+    #     "true_value_norm" : true_y_norm[0],
+    #     "mean_norm_prediction" : prediction, 
+    #     "mean_norm_error" : err_norm, 
+    #     "var" : pred_var, 
+    #     "std" : pred_sd, 
+    #     "stderr" : pred_se[0], 
+    #     "mean_denormed_prediction" : pred_denormed[0][0], 
+    #     "mean_denormed_error" : pred_denormed[0][0] - true_y_prelog,
+    #     "denormed_std" : pred_sd_denormed[0], 
+    #     "denormed_stderr" : pred_se_denormed[0]
+    # }
+    
+    results = pd.read_csv(csvResultsPath)
+    results = results.loc[results["true_filename"] == ground_truth_spectra_name]
+    outputFields = results["field"].unique()
+    results = results.sort_values(by = "algorithm")
+    exclude_algos = ["aeon.DummyRegressor", "aeon.KNeighborsTimeSeriesRegressor", "aeon.RocketRegressor", "aeon.RandomIntervalSpectralEnsembleRegressor", "aeon.MultiRocketRegressor"]
+    exclude_algos = ["aeon.DummyRegressor", "aeon.KNeighborsTimeSeriesRegressor", "aeon.RDSTRegressor", "aeon.MultiRocketRegressor", "aeon.MultiRocketHydraRegressor"]
+
+    # # ECML
+    # colours = {
+    #     "aeon.Catch22Regressor" : "tab:blue",
+    #     "aeon.HydraRegressor" : "tab:orange",
+    #     "aeon.MultiRocketHydraRegressor" : "tab:green",
+    #     # "aeon.QUANTRegressor" : "tab:red",
+    #     "aeon.RDSTRegressor" : "tab:purple",
+    #     "aeon.RandomIntervalRegressor" : "tab:brown",
+    #     "aeon.SummaryRegressor" : "tab:pink",
+    #     "aeon.TimeSeriesForestRegressor" : "tab:gray",
+    #     "aeon.MiniRocketRegressor" : "tab:olive",
+    #     "aeon.MultiRocketRegressor" : "tab:cyan",
+    #     "aeon.QUANTRegressor" : "tab:red",
+    # }
+    colours = {}
+
+    axis_positions = [1.0, 0.75, 0.5, 0.25, 0.0, -0.25, -0.5, -0.75, -1.0, 1.0, 0.75, 0.5, 0.25, 0.0, -0.25, -0.5, -0.75, -1.0]
+    fig, axs = plt.subplots(len(outputFields), 1, figsize=(12,10))
+    for i in range(len(outputFields)):
+        plot_position_counter = 0
+        field = outputFields[i]
+        field_results = results[results["field"] == field]
+        axs[i].set_ylim((-2.0, 2.0))
+        axs[i].set_yticks(ticks=[0.0], labels=[epoch_utils.fieldNameToSymbolWithUnit(field)])
+        for index, result in field_results.iterrows():
+            if result["algorithm"] not in exclude_algos:
+                colour = colours.get(result["algorithm"], None)
+                axs[i].errorbar(result["mean_denormed_prediction"], axis_positions[plot_position_counter], xerr=result["denormed_std"], label = result["algorithm"], ms = 12, marker="D", color = colour, elinewidth=2.0, capsize=8.0, capthick=2.0)
+                plot_position_counter += 1
+        
+        axs[i].axvline(x = result["true_value_before_log"], color = "black", linestyle=":", lw = 2.0, label="Cottrell '93 value")
+        best = field_results[abs(field_results["mean_denormed_error"]) == abs(field_results["mean_denormed_error"]).min()]
+        hyd = field_results[field_results["algorithm"] == "aeon.HydraRegressor"]
+        print(f"Best algorithm for {field}: {best['algorithm'].values[0]}, Prediction: {best['mean_denormed_prediction'].values[0]}, S.D. {best['denormed_std'].values[0]}, Hydra Prediction: {hyd['mean_denormed_prediction'].values[0]}, Hydra S.D. {hyd['denormed_std'].values[0]}")
+
+    axs[0].legend(loc='center', ncols = 2, bbox_to_anchor = (0.3, 2.0))
+    fig.supxlabel("Prediction", fontsize = 24)
+    fig.supylabel("Target Field", fontsize = 24)
+    axs[0].set_xlim(1.4, 1.6)
+    axs[1].set_xlim(18.5, 19.75)
+    axs[2].set_xlim(-5.0, -3.0)
+    axs[3].set_xlim(0.0, 0.5)
+    axs[4].set_xlim(10.0, 400.0)
+    #axs[2].set_xscale("log")
+    #axs[2].xaxis.set_major_formatter(ticker.FormatStrFormatter("%.1f"))
+    #axs[2].xaxis.set_minor_formatter(ticker.FormatStrFormatter("%.1f"))
+    #axs[3].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
+    #axs[3].set_xscale("log")
+
+    plt.tight_layout()
+    for ax in axs:
+        ax.grid(axis="x", which="both")
+    plt.show()
+
 def plot_cottrell_regression(csvResultsPath : Path):
 
     # Schema
@@ -815,6 +896,12 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
+        "--lhd",
+        action="store_true",
+        help="Plot TSER of LHD experimental data.",
+        required = False
+    )
+    parser.add_argument(
         "--matrix",
         action="store_true",
         help="Matrix plot growth rate and heating investigation.",
@@ -916,6 +1003,8 @@ if __name__ == "__main__":
         energy_plots_for_papers(args.dataFolder, args.outputFolder)
     if args.cottrell:
         plot_cottrell_regression(args.dataFile)
+    if args.lhd:
+        plot_lhd_regression(args.dataFile)
     if args.predictions:
         plot_all_predictions_for_one_algorithm(args.dataFile, args.algorithm, args.outputFolder)
 

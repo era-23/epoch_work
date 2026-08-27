@@ -632,7 +632,7 @@ def process_simulation_batch(
                 ds_combined, inputDeck, f"{sim_name}_combined", energyPlotFolder, 
                 statsRoot, displayPlots=displayPlots, noTitle=noTitle, noLegend=noLegend, 
                 backgroundSpeciesName="deuteron" if backgroundIonSpecies == "D+" else "proton",
-                fastSpeciesName="alpha" if fastIonSpecies == 'He-4 2+' else "ion_ring_beam",
+                fastSpeciesName="alpha" if fastIonSpecies == 'He-4 2+' else "nbi",
                 mci_NL_threshold_pct=mci_thresholds["mci_threshold_pct"],
                 saturation_variation_threshold_pct=mci_thresholds["saturation_variation_threshold_pct"]
             )
@@ -891,6 +891,20 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
+        "--fastSpeciesName",
+        action="store",
+        help="Name of fast ion species.",
+        required = True,
+        type=str
+    )
+    parser.add_argument(
+        "--bkgdSpeciesName",
+        action="store",
+        help="Name of background ion species.",
+        required = True,
+        type=str
+    )
+    parser.add_argument(
         "--debug",
         action="store_true",
         help="Print debugging statements.",
@@ -920,6 +934,8 @@ if __name__ == "__main__":
         maxW=args.maxW,
         growthRates=args.growthRates,
         bispectra = args.bispectra,
+        fastIonSpecies=args.fastSpeciesName if args.fastSpeciesNames is not None else 'He-4 2+',
+        backgroundIonSpecies=args.bkgdSpeciesName if args.bkgdSpeciesName is not None else 'D+',
         numGrowthRatesToPlot=args.numGrowthRatesToPlot, 
         displayPlots=args.displayPlots,
         bigLabels=args.bigLabels,
