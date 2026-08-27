@@ -894,14 +894,14 @@ if __name__ == "__main__":
         "--fastSpeciesName",
         action="store",
         help="Name of fast ion species.",
-        required = True,
+        required = False,
         type=str
     )
     parser.add_argument(
         "--bkgdSpeciesName",
         action="store",
         help="Name of background ion species.",
-        required = True,
+        required = False,
         type=str
     )
     parser.add_argument(
@@ -934,7 +934,7 @@ if __name__ == "__main__":
         maxW=args.maxW,
         growthRates=args.growthRates,
         bispectra = args.bispectra,
-        fastIonSpecies=args.fastSpeciesName if args.fastSpeciesNames is not None else 'He-4 2+',
+        fastIonSpecies=args.fastSpeciesName if args.fastSpeciesName is not None else 'He-4 2+',
         backgroundIonSpecies=args.bkgdSpeciesName if args.bkgdSpeciesName is not None else 'D+',
         numGrowthRatesToPlot=args.numGrowthRatesToPlot, 
         displayPlots=args.displayPlots,
