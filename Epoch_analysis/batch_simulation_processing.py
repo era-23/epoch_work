@@ -5,7 +5,7 @@ import time
 import warnings
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
-
+import glob
 import epydeck
 import netCDF4 as nc
 import numpy as np
@@ -24,7 +24,8 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 def initialise_folder_structure(
         outputDirectory : Path,
         angles : list = ["90", "92", "94", "96", "sum"],
-        fields : list = ["Electric_Field_Ex", "Electric_Field_Ey", "Magnetic_Field_Bz", "energy", "growth_rates"]
+        fields : list = ["Electric_Field_Ex", "Electric_Field_Ey", "Magnetic_Field_Bz", "energy", "growth_rates"],
+        legacy : bool = False
     ):
     """
     Creates folder structure:
@@ -39,14 +40,201 @@ def initialise_folder_structure(
         sh.rmtree(outputDirectory)
     os.mkdir(outputDirectory)
 
-    for angle in angles:
-        angle_folder = outputDirectory / angle
-        os.mkdir(angle_folder)
-        os.mkdir(angle_folder / "data")
-        plots_folder = angle_folder / "plots"
+    if not legacy:
+        for angle in angles:
+            angle_folder = outputDirectory / angle
+            os.mkdir(angle_folder)
+            os.mkdir(angle_folder / "data")
+            plots_folder = angle_folder / "plots"
+            os.mkdir(plots_folder)
+            for field in fields:
+                os.mkdir(plots_folder / field)
+    else:
+        os.mkdir(outputDirectory / "data")
+        plots_folder = outputDirectory / "plots"
         os.mkdir(plots_folder)
         for field in fields:
             os.mkdir(plots_folder / field)
+
+def process_simulation_batch_legacy(
+        directory : Path,
+        dataFolder : Path,
+        plotsFolder : Path,
+        fields : list,
+        maxK : float = None,
+        maxW : float = None,
+        growthRates : bool = True,
+        bispectra : bool = True,
+        gammaWindowPctMin : float = 5.0,
+        gammaWindowPctMax : float = 15.0,
+        fastSpecies : str = 'He-4 2+',
+        bkgdSpecies : str = 'D+',
+        bigLabels : bool = False,
+        noTitle : bool = False,
+        noLegend : bool = False,
+        displayPlots = False,
+        saveGrowthRatePlots = False,
+        numGrowthRatesToPlot : int = 0,
+        energy = True,
+        logEnergy = False):
+        
+    """
+    Processes a batch of simulations:
+    - Calculates plasma characteristics
+    - Normalises to ion cyclotron frequency (fast species if present) and Alfven velocity
+    - Creates plots (optionally displays) of omega-k and t-k of 'field' (or optionally delta field) up to maxK
+    - Saves plots to outFileDirectory (or an output folder in 'directory' if not specified)
+    - Calculates growth rates by k
+    - Saves growth rates and plasma characteristics to netCDF
+
+    ### Parameters:
+        directory: Path -- Directory of simulation outputs, containing "run_n" folders each with sdf output files and an input.deck
+        field: list = 'all' -- List of string fields to use for analysis, either EPOCH output fields such as ['Magnetic_Field_Bz', 'Electric_Field_Ex']
+            or ['all'] to process all magnetic and electric field components. Defaults to Bz
+        outFileDirectory : Path = None -- directory to use for output, defaults to the input directory
+        numGrowthRates : int = 10 -- number of wavenumbers for which to calculate growth rates
+        maxK : float = 100.0 -- Maximum wavenumber for plots and analysis
+        maxW : float = None -- Maximum frequency for plots and analysis
+        maxResPct : float = 0.1 -- Percentage of growth rates to use based on ranked residual values, e.g. 0.1 = top 10% of gammas ranked by (lowest) residuals (default).
+        maxResidual : float = 0.1 -- Maximum residual value to consider a well-conditioned fit. Must be baselined from null cases 
+        gammaWindowPct : float = 5.0 -- Percentage of trace (in time) to use as a growth rate fitting window. Defaults to 5%
+        minSignalPower : float = 0.08 -- Minimum peak signal power to observe in frequency-wavenumber space to discern MCI activity. Defaults to 0.08T (FIELD DEPENDENT and must be baselined from null cases.) 
+        takeLog = False -- Take logarithm of data 
+        deltaField = False -- Consider the change in field strength from t = 1 (t = 0 is discarded as initial conditions) rather than absolute values
+        beam = True -- Take ion ring beam (fast) as significant ion species 
+        fastSpecies : str = 'proton' -- Fast (ion ring beam) species, if present
+        bkgdSpecies : str = 'proton' -- Background ion species
+        displayPlots = False -- Display plots as they are generated
+    """
+
+    # Dynamically switch backend based on displayPlots flag
+    if not displayPlots:
+        plt.switch_backend("Agg")  # Non-interactive / headless
+
+    run_folders = []
+    if directory.name.startswith("run_"): # Single simulation
+        run_folders.append(directory)
+    else: # Multiple simulations
+        run_folders = glob.glob(str(directory / "run_*") + os.path.sep) 
+
+    if bigLabels:
+        plt.rcParams.update({'axes.titlesize': 26.0})
+        plt.rcParams.update({'axes.labelsize': 24.0})
+        plt.rcParams.update({'xtick.labelsize': 20.0})
+        plt.rcParams.update({'ytick.labelsize': 20.0})
+        plt.rcParams.update({'legend.fontsize': 18.0})
+    else:
+        plt.rcParams.update({'axes.titlesize': 18.0})
+        plt.rcParams.update({'axes.labelsize': 16.0})
+        plt.rcParams.update({'xtick.labelsize': 14.0})
+        plt.rcParams.update({'ytick.labelsize': 14.0})
+        plt.rcParams.update({'legend.fontsize': 14.0})
+    
+    for simFolder in run_folders:
+
+        simFolder = Path(simFolder)
+        print(f"Analyzing simulation '{simFolder.name}'")
+
+        # Read dataset
+        ds = xr.open_mfdataset(
+            str(simFolder / "*.sdf"),
+            data_vars='minimal', 
+            coords='minimal', 
+            compat='override', 
+            preprocess=SDFPreprocess()
+        )
+
+        # Drop initial conditions because they may not represent a solution
+        ds = ds.sel(time=ds.coords["time"]>ds.coords["time"][0])
+
+        # Read input deck
+        inputDeck = {}
+        with open(str(simFolder / "input.deck")) as id:
+            inputDeck = epydeck.loads(id.read())
+        
+        statsFilename = simFolder.name + "_stats.nc"
+        statsFilepath = os.path.join(dataFolder, statsFilename)
+        statsRoot = nc.Dataset(statsFilepath, "a", format="NETCDF4")
+
+        ion_gyroperiod, alfven_velocity = e_utils.calculate_simulation_metadata(inputDeck, ds, statsRoot, fastSpecies, bkgdSpecies)
+
+        ds = e_utils.normalise_data(ds, simFolder.name, ion_gyroperiod, alfven_velocity)
+
+        # Energy analysis
+        if energy:
+            energyPlotFolder = plotsFolder / "energy"
+            run_energy_analysis(
+                ds, 
+                inputDeck, 
+                simFolder.name, 
+                energyPlotFolder, 
+                statsRoot, 
+                log=logEnergy, 
+                displayPlots = displayPlots, 
+                noTitle=noTitle, 
+                noLegend=noLegend, 
+                backgroundSpeciesName= "deuteron" if bkgdSpecies == "D+" else "proton",
+                fastSpeciesName= "alpha" if fastSpecies == 'He-4 2+' else "ion_ring_beam")
+
+        if "all" in fields:
+            fields = [str(f) for f in ds.data_vars.keys() if str(f).startswith("Electric_Field") or str(f).startswith("Magnetic_Field")]
+        
+        for field in fields:
+
+            print(f"Analyzing field '{field}'...")
+            plotFieldFolder = Path(os.path.join(plotsFolder, field))
+
+            # For field-specific stats
+            fieldStats = statsRoot.createGroup(field)
+            field_unit = ds[field].units
+            fieldStats.baseUnit = field_unit
+            field_mag = float(np.abs(ds[field].sum()))
+            fieldStats.totalMagnitude = field_mag
+            assert np.allclose([float(ds.coords['x_space'][2] - ds.coords['x_space'][1])], [float(ds.coords['x_space'][-2] - ds.coords['x_space'][-3])])
+            assert np.allclose([float(ds.coords['time'][2] - ds.coords['time'][1])], [float(ds.coords['time'][-2] - ds.coords['time'][-3])])
+            dx = float(ds.coords['x_space'][2] - ds.coords['x_space'][1])
+            dy = float(ds.coords['time'][2] - ds.coords['time'][1])
+            parseval_field = float((np.abs(ds[field])**2).sum()) * dx * dy
+            fieldStats.parsevalField = parseval_field
+            if debug:
+                print(f"Sum of squared {field} magnitude * dx * dy: {parseval_field}")
+            field_mean = float(ds[field].mean())
+            fieldStats.meanMagnitude = field_mean
+            delta = np.abs((ds[field] - field_mean))
+            fieldStats.totalDelta = float(delta.sum())
+            squared_delta = float((np.abs(ds[field] - field_mean)**2).sum())
+            parseval_fieldDelta = squared_delta * dx * dy
+            fieldStats.parsevalFieldDelta = parseval_fieldDelta
+            if debug:
+                print(f"Sum of squared {field} delta * dx * dy: {parseval_fieldDelta}")
+            field_dMean = float(delta.mean())
+            fieldStats.meanDelta = field_dMean
+            del(delta)
+            del(squared_delta)
+
+            # Take FFT
+            ds = ds.load()
+            original_spec : xr.DataArray = xrft.xrft.fft(ds[field], true_amplitude=True, true_phase=True, window=None)
+            original_spec = original_spec.rename(freq_time="frequency", freq_x_space="wavenumber")
+            # Remove zero-frequency component
+            original_spec = original_spec.where(original_spec.wavenumber!=0.0, None)
+
+            tk_spec = e_utils.create_t_k_spectrum(simFolder.name, original_spec, fieldStats, maxK, load=True, debug=debug)
+
+            # Dispersion relations
+            wavenumberToFrequencyTable = e_utils.create_omega_k_plots(original_spec, fieldStats, field, field_unit, plotFieldFolder, simFolder.name, inputDeck, bkgdSpecies, fastSpecies, maxK=maxK, maxW=maxW, display=displayPlots, debug=debug)
+            e_utils.create_power_spectra(ds[field], fieldStats, debug)
+            e_utils.create_t_k_plot(tk_spec, field, field_unit, plotFieldFolder, simFolder.name, maxK, displayPlots)
+
+            if bispectra:
+                e_utils.bispectral_analysis(tk_spec, simFolder.name, field, displayPlots, plotFieldFolder, maxK = maxK)
+
+            # Linear growth rates
+            if growthRates:
+                e_utils.process_growth_rates(tk_spec, fieldStats, plotFieldFolder, simFolder, field, gammaWindowPctMin, gammaWindowPctMax, saveGrowthRatePlots, numGrowthRatesToPlot, wavenumberToFrequencyTable, displayPlots, noTitle, debug)
+    
+        statsRoot.close()
+        ds.close()
 
 def run_energy_analysis(
     dataset : xr.Dataset,
@@ -905,6 +1093,12 @@ if __name__ == "__main__":
         type=str
     )
     parser.add_argument(
+        "--legacy",
+        action="store_true",
+        help="Use legacy batch processing.",
+        required = False
+    )
+    parser.add_argument(
         "--debug",
         action="store_true",
         help="Print debugging statements.",
@@ -921,30 +1115,50 @@ if __name__ == "__main__":
         init_fields = args.fields if args.fields is not None else []
         init_fields.append("energy") # Energy is no longer optional
         init_fields = list(set(init_fields)) # Remove any duplicates
-        initialise_folder_structure(outputDirectory = args.outputDir, fields=init_fields)
+        initialise_folder_structure(outputDirectory = args.outputDir, fields=init_fields, legacy = args.legacy)
         print("Output folder structure initialised, exiting....")
         exit(0)
 
-    process_simulation_batch(
-        simulationDataFolder=args.dir, 
-        analysisOutputFolder=args.outputDir,
-        runNumber=args.runNumber,
-        fields=fields,
-        maxK=args.maxK,
-        maxW=args.maxW,
-        growthRates=args.growthRates,
-        bispectra = args.bispectra,
-        fastIonSpecies=args.fastSpeciesName if args.fastSpeciesName is not None else 'He-4 2+',
-        backgroundIonSpecies=args.bkgdSpeciesName if args.bkgdSpeciesName is not None else 'D+',
-        numGrowthRatesToPlot=args.numGrowthRatesToPlot, 
-        displayPlots=args.displayPlots,
-        bigLabels=args.bigLabels,
-        noTitle=args.noTitle,
-        noLegend=args.noLegend,
-        saveGrowthRatePlots=args.saveGammaPlots,
-        mci_thresholds = {
-            "mci_threshold_pct" : args.mciStartThresholdPct if args.mciStartThresholdPct is not None else 0.05, 
-            "saturation_variation_threshold_pct" : args.saturationVariationThresholdPct if args.saturationVariationThresholdPct is not None else 0.01
-        },
-        debug = args.debug
-    )
+    if args.legacy:
+        process_simulation_batch_legacy(
+            directory=args.dir, 
+            dataFolder=args.outputDir / "data",
+            plotsFolder= args.outputDir / "plots",
+            fields=fields,
+            maxK=args.maxK,
+            maxW=args.maxW,
+            growthRates=args.growthRates,
+            bispectra = args.bispectra,
+            fastSpecies=args.fastSpeciesName if args.fastSpeciesName is not None else 'He-4 2+',
+            bkgdSpecies=args.bkgdSpeciesName if args.bkgdSpeciesName is not None else 'D+',
+            numGrowthRatesToPlot=args.numGrowthRatesToPlot, 
+            displayPlots=args.displayPlots,
+            bigLabels=args.bigLabels,
+            noTitle=args.noTitle,
+            noLegend=args.noLegend,
+            saveGrowthRatePlots=args.saveGammaPlots
+        )
+    else:
+        process_simulation_batch(
+            simulationDataFolder=args.dir, 
+            analysisOutputFolder=args.outputDir,
+            runNumber=args.runNumber,
+            fields=fields,
+            maxK=args.maxK,
+            maxW=args.maxW,
+            growthRates=args.growthRates,
+            bispectra = args.bispectra,
+            fastIonSpecies=args.fastSpeciesName if args.fastSpeciesName is not None else 'He-4 2+',
+            backgroundIonSpecies=args.bkgdSpeciesName if args.bkgdSpeciesName is not None else 'D+',
+            numGrowthRatesToPlot=args.numGrowthRatesToPlot, 
+            displayPlots=args.displayPlots,
+            bigLabels=args.bigLabels,
+            noTitle=args.noTitle,
+            noLegend=args.noLegend,
+            saveGrowthRatePlots=args.saveGammaPlots,
+            mci_thresholds = {
+                "mci_threshold_pct" : args.mciStartThresholdPct if args.mciStartThresholdPct is not None else 0.05, 
+                "saturation_variation_threshold_pct" : args.saturationVariationThresholdPct if args.saturationVariationThresholdPct is not None else 0.01
+            },
+            debug = args.debug
+        )
