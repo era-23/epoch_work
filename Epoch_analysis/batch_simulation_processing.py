@@ -174,7 +174,7 @@ def process_simulation_batch_legacy(
                 noTitle=noTitle, 
                 noLegend=noLegend, 
                 backgroundSpeciesName= "deuteron" if bkgdSpecies == "D+" else "proton",
-                fastSpeciesName= "alpha" if fastSpecies == 'He-4 2+' else "ion_ring_beam")
+                fastSpeciesName= "alpha" if fastSpecies == 'He-4 2+' else "nbi")
 
         if "all" in fields:
             fields = [str(f) for f in ds.data_vars.keys() if str(f).startswith("Electric_Field") or str(f).startswith("Magnetic_Field")]
@@ -636,7 +636,7 @@ def process_single_angle(
             noTitle=noTitle, 
             noLegend=noLegend, 
             backgroundSpeciesName="deuteron" if backgroundIonSpecies == "D+" else "proton",
-            fastSpeciesName="alpha" if fastIonSpecies == 'He-4 2+' else "ion_ring_beam",
+            fastSpeciesName="alpha" if fastIonSpecies == 'He-4 2+' else "nbi",
             mci_NL_threshold_pct=mci_thresholds["mci_threshold_pct"],
             saturation_variation_threshold_pct=mci_thresholds["saturation_variation_threshold_pct"],
             debug=debug
