@@ -958,7 +958,6 @@ def regress_lhd(
         writer = csv.DictWriter(csvfile, fieldnames=all_results[0].keys())
         writer.writeheader()
         writer.writerows(all_results)
-    
 
 def regress_scanArgs(
         directory : Path,

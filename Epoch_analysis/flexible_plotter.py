@@ -4,7 +4,7 @@ import glob
 import os
 from pathlib import Path
 import epydeck
-from matplotlib import ticker
+from matplotlib import ticker, colormaps
 import matplotlib.pyplot as plt
 from matplotlib.ticker import ScalarFormatter
 from sdf_xarray import SDFPreprocess
@@ -490,7 +490,7 @@ def energy_plots_for_papers(
             plt.show()
         plt.close("all")
 
-def plot_lhd_regression(csvResultsPath : Path, ground_truth_spectra_name : str = "AkiyamaExtract_Spectra_high_res_138433.dat"):
+def plot_lhd_regression(csvResultsPath : Path, ground_truth_spectra_name : str = "AkiyamaExtract_Spectra_high_res_138458.dat"):
     # Schema
     # results_dict = {
     #     "algorithm" : algorithm, 
@@ -509,13 +509,16 @@ def plot_lhd_regression(csvResultsPath : Path, ground_truth_spectra_name : str =
     #     "denormed_std" : pred_sd_denormed[0], 
     #     "denormed_stderr" : pred_se_denormed[0]
     # }
+
+    lhd_number = ground_truth_spectra_name.split("_")[-1].removesuffix(".dat")
     
     results = pd.read_csv(csvResultsPath)
     results = results.loc[results["true_filename"] == ground_truth_spectra_name]
     outputFields = results["field"].unique()
     results = results.sort_values(by = "algorithm")
-    exclude_algos = ["aeon.DummyRegressor", "aeon.KNeighborsTimeSeriesRegressor", "aeon.RocketRegressor", "aeon.RandomIntervalSpectralEnsembleRegressor", "aeon.MultiRocketRegressor"]
-    exclude_algos = ["aeon.DummyRegressor", "aeon.KNeighborsTimeSeriesRegressor", "aeon.RDSTRegressor", "aeon.MultiRocketRegressor", "aeon.MultiRocketHydraRegressor"]
+    # exclude_algos = ["aeon.DummyRegressor", "aeon.KNeighborsTimeSeriesRegressor", "aeon.RocketRegressor", "aeon.RandomIntervalSpectralEnsembleRegressor", "aeon.MultiRocketRegressor"]
+    # exclude_algos = ["aeon.DummyRegressor", "aeon.KNeighborsTimeSeriesRegressor", "aeon.RDSTRegressor", "aeon.MultiRocketRegressor", "aeon.MultiRocketHydraRegressor"]
+    exclude_algos = ["aeon.DummyRegressor"]
 
     # # ECML
     # colours = {
@@ -533,12 +536,16 @@ def plot_lhd_regression(csvResultsPath : Path, ground_truth_spectra_name : str =
     # }
     colours = {}
 
+    NUM_COLOURS = len(results["algorithm"].unique()) - len(np.intersect1d(results["algorithm"].unique(), exclude_algos))
+    print(list(colormaps))
+    cm = plt.get_cmap('tab20')
     axis_positions = [1.0, 0.75, 0.5, 0.25, 0.0, -0.25, -0.5, -0.75, -1.0, 1.0, 0.75, 0.5, 0.25, 0.0, -0.25, -0.5, -0.75, -1.0]
     fig, axs = plt.subplots(len(outputFields), 1, figsize=(12,10))
     for i in range(len(outputFields)):
         plot_position_counter = 0
         field = outputFields[i]
         field_results = results[results["field"] == field]
+        axs[i].set_prop_cycle('color', [cm(1.*i/NUM_COLOURS) for i in range(NUM_COLOURS)])
         axs[i].set_ylim((-2.0, 2.0))
         axs[i].set_yticks(ticks=[0.0], labels=[epoch_utils.fieldNameToSymbolWithUnit(field)])
         for index, result in field_results.iterrows():
@@ -547,7 +554,7 @@ def plot_lhd_regression(csvResultsPath : Path, ground_truth_spectra_name : str =
                 axs[i].errorbar(result["mean_denormed_prediction"], axis_positions[plot_position_counter], xerr=result["denormed_std"], label = result["algorithm"], ms = 12, marker="D", color = colour, elinewidth=2.0, capsize=8.0, capthick=2.0)
                 plot_position_counter += 1
         
-        axs[i].axvline(x = result["true_value_before_log"], color = "black", linestyle=":", lw = 2.0, label="Cottrell '93 value")
+        axs[i].axvline(x = result["true_value_before_log"], color = "black", linestyle=":", lw = 2.0, label=f"LHD #{lhd_number}")
         best = field_results[abs(field_results["mean_denormed_error"]) == abs(field_results["mean_denormed_error"]).min()]
         hyd = field_results[field_results["algorithm"] == "aeon.HydraRegressor"]
         print(f"Best algorithm for {field}: {best['algorithm'].values[0]}, Prediction: {best['mean_denormed_prediction'].values[0]}, S.D. {best['denormed_std'].values[0]}, Hydra Prediction: {hyd['mean_denormed_prediction'].values[0]}, Hydra S.D. {hyd['denormed_std'].values[0]}")
@@ -985,7 +992,7 @@ if __name__ == "__main__":
     plt.rcParams.update({'axes.labelsize': 26.0})
     plt.rcParams.update({'xtick.labelsize': 18.0})
     plt.rcParams.update({'ytick.labelsize': 18.0})
-    plt.rcParams.update({'legend.fontsize': 18.0})
+    plt.rcParams.update({'legend.fontsize': 12.0})
 
     if args.matrix:
         matrix_plot_growth_rates_and_heating(args.dataFolder)

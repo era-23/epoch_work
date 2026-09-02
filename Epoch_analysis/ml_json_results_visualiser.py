@@ -204,7 +204,7 @@ def plotBar(
     ax.set_ylim(top= 1.15 if metric == "cvR2" else np.round(np.max([v for v in barVals.values()]) + 0.39, 1))
     ax.axhline(0.0, color="black", lw=0.5)
     ax.grid(axis="y")
-    # ax.set_ylim(0.0, 1.1)
+    # ax.set_ylim(-0.4, 1.19)
     plt.tight_layout()
 
     plt.show()

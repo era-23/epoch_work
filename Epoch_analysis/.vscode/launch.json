@@ -189,24 +189,25 @@
             "console": "integratedTerminal",
             "args": [
                 // "--file", "/home/era536/Documents/Epoch/Data/2026_analysis/tsr_aeon_viking/full_spectra/log_spectra/extra_algos/aeon_log_extended_battery.json",
-                "--file", "/home/era536/Documents/Epoch/Data/2026_analysis/jwsc_linear_data/viking/results/non_ts/unified_output_nonTS.json",
+                // "--file", "/home/era536/Documents/Epoch/Data/2026_analysis/benchmarking_nonTS/viking/unified_output.json",
                 // "--file", "/home/era536/Documents/Epoch/Data/2026_analysis/tsr_aeon_viking/full_spectra/aeon_ps_main_battery.json",
-                // "--file", "/home/era536/Documents/Epoch/Data/2026_analysis/tsr_aeon_viking/full_spectra/repeat_for_ml_paper/unified_output.json",
+                "--file", "/home/era536/Documents/Epoch/Data/2026_analysis/tsr_aeon_viking/full_spectra/repeat_for_ml_paper/unified_output.json",
                 // "--individualSpectra",
                 // "--print",
                 "--plot",
-                "--jamesNames",
+                // "--jamesNames",
                 // "--latex",
                 // "--accuracyByFrequency",
                 "--metric", "cvR2",
                 //"--metric", "cvR2", "cvRMSE",
-                "--errors", "R2",
+                "--errors", "rmseSE",
                 // "--folder", 
                 //     "/home/era536/Documents/Epoch/Data/2026_analysis/tsr_aeon_viking/scan_frequencies/by_hz/",
                     // "/home/era536/Documents/Epoch/Data/2026_analysis/tsr_aeon_viking/individual_spectra",
                 // "--filePattern", "AE_results_catch24_gpu_pca_*.json",
+                // "--dropAlgorithms", "aeon.DummyRegressor",
                 // "--dropAlgorithms", "aeon.DummyRegressor", "aeon.KNeighborsTimeSeriesRegressor", "aeon.RandomIntervalSpectralEnsembleRegressor", "aeon.RocketRegressor", "aeon.MiniRocketRegressor", "aeon.RandomIntervalRegressor", "aeon.SummaryRegressor", "aeon.QUANTRegressor",
-                // "--dropAlgorithms", "aeon.DummyRegressor", "aeon.MiniRocketRegressor", "aeon.KNeighborsTimeSeriesRegressor", "aeon.RandomIntervalSpectralEnsembleRegressor", "aeon.RocketRegressor", "aeon.MultiRocketRegressor"
+                "--dropAlgorithms", "aeon.DummyRegressor", "aeon.MiniRocketRegressor", "aeon.KNeighborsTimeSeriesRegressor", "aeon.RandomIntervalSpectralEnsembleRegressor", "aeon.RocketRegressor", "aeon.MultiRocketRegressor"
                 // "--dropAlgorithms", "aeon.DummyRegressor", "aeon.Catch22Regressor", "aeon.SummaryRegressor", "aeon.RandomIntervalSpectralEnsembleRegressor", "aeon.MiniRocketRegressor",
             ]
         },
@@ -1024,9 +1025,11 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "args": [
-                "--dir", "/home/era536/Documents/Epoch/Data/2026_analysis/new_batch_processing_development/sim_output/",
-                "--outputDir", "/home/era536/Documents/Epoch/Data/2026_analysis/new_batch_processing_development/analysis_new_MCI_labelling/",
+                //"--dir", "/home/era536/Documents/Epoch/Data/2026_analysis/new_batch_processing_development/sim_output/",
+                "--dir", "/home/era536/Documents/Epoch/Data/2026_analysis/new_batch_processing_development/sim_output_small/90/run_0_1000000/run_0_10000/run_0_100/run_2/",
+                "--outputDir", "/home/era536/Documents/Epoch/Data/2026_analysis/new_batch_processing_development/testing_legacy/analysis/",
                 // "--beta",
+                "--legacy",
                 // "--initFolders",
                 "--fields",
                     "Magnetic_Field_Bz",
@@ -1058,6 +1061,19 @@
             "justMyCode": false,
             "args": [
 
+            ]
+        },
+        {
+            "name": "Python Debugger: General Statistics",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "general_stats_analysis.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "--dir",
+                    "/home/era536/Documents/Epoch/Data/2026_analysis/jwsc_linear_data/comparison/lhd_data/",
+                "--recoverB0",
             ]
         },
         {
