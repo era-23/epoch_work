@@ -372,6 +372,9 @@ def estimate_B0_from_csv_dat_spectra(csv_dat_directory : Path, known_B0 = 1.581,
     
     # print(f"Max frequency mean: {np.mean(maxCoords)} median: {np.median(maxCoords)} var: {np.var(maxCoords)} sd: {np.std(maxCoords)}")
 
+def estimate_B0_from_h5_spectra(h5_directory : Path, particle : str = "D+"):
+    print("To implement")
+
 if __name__ == "__main__":
 
     SMALL_SIZE = 10

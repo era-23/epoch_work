@@ -860,6 +860,10 @@ def regress_lhd(
 
     assert len(test_x) > 0
 
+    # #########
+    # Experiment with amplitude normalisation here -- 
+    # either 0-1 normalisation for both test and train, or dB scale equivalence (compare to the test LHD data)
+    # #########
     train_x = inputSpectra
 
     all_abs_normalised_errors = {a : [] for a in algorithms}
