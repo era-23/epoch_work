@@ -17,6 +17,7 @@ import ml_utils
 import plasmapy.formulary.frequencies as ppf
 import plasmapy.formulary.speeds as pps
 import astropy.units as u
+import scipy.constants as sc
 import netCDF4 as nc
 from scipy.interpolate import make_smoothing_spline
 from inference.plotting import matrix_plot
@@ -93,7 +94,7 @@ def all_power_spectra(dataFolder : Path, fields : list):
         plt.tight_layout()
         plt.show()
         
-def power_spectrum(dataFile : Path, field : str, doPlot : bool = True):
+def power_spectrum(dataFile : Path, field : str, max_freq_MHz : float = 120.5, doPlot : bool = True):
     
     data = xr.open_datatree(
             dataFile,
@@ -104,23 +105,29 @@ def power_spectrum(dataFile : Path, field : str, doPlot : bool = True):
     one_gf_hz = data.ionGyrofrequency_radPs / (2.0 * np.pi)
     print(one_gf_hz)
     print((one_gf_hz * u.Hz).to(u.MHz))
-    cottrell_gfs = 187E6 / one_gf_hz
-    print(cottrell_gfs)
+    # cottrell_gfs = 187E6 / one_gf_hz
+    # print(cottrell_gfs)
     s = field.split("/")
     group = "/" if len(s) == 1 else '/'.join(s[:-1])
     fieldName = s[-1]
     power_trace = data[group].variables[fieldName]
     fieldData = power_trace.data.astype("float")
-    coords = data[group].coords[power_trace.dims[0]]
+    coords_gfs = data[group].coords[power_trace.dims[0]]
+    coords_MHz = data[group].coords[power_trace.dims[0]] * (one_gf_hz / 1e6)
+    coords_MHz_trunc = coords_MHz[coords_MHz < max_freq_MHz]
+    fieldData_trunc = fieldData[:len(coords_MHz_trunc)]
     fieldName = epoch_utils.fieldNameToText(field)
     
     if doPlot:
         fig, axs = plt.subplots(figsize=(15, 10))
-        axs.plot(coords, fieldData)
-        axs.set_xticks(ticks=np.arange(np.floor(coords[0]), np.ceil(coords[-1])+1.0, 1.0), minor=True)
+        # axs.plot(coords_MHz, fieldData)
+        axs.plot(coords_MHz_trunc[10:], fieldData_trunc[10:])
+        # axs.set_xticks(ticks=np.arange(np.floor(coords_MHz[0]), np.ceil(coords_MHz[-1])+1.0, 1.0), minor=True)
         axs.grid(which='both', axis='x')
-        axs.set_xlabel(r"Frequency [$\Omega_{ci}$]")
-        axs.set_ylabel(f"Sum of power in {fieldName} over all k [T]")
+        # axs.set_xlabel(r"Frequency [$\Omega_{ci}$]")
+        axs.set_xlabel(r"Frequency [MHz]")
+        axs.set_ylabel(f"Power spectrum of {fieldName} over all k [T^2]")
+        plt.title(f"{dataFile.name} --\nB0:{B0},log(density): {np.log10(float(data.attrs['backgroundDensity']))}, alpha conc: {float(data.attrs["beamFraction"])},\npitch: {float(data.attrs["pitch"])}, background temp: {(2378928 * sc.k * u.J).to(u.eV)}")
         plt.show()
 
         # fig, axs = plt.subplots(figsize=(15, 10))
@@ -162,7 +169,7 @@ def power_spectrum(dataFile : Path, field : str, doPlot : bool = True):
         # plt.legend(loc = "upper right")
         # plt.show()
 
-    return fieldData, coords
+    return fieldData, coords_gfs
 
 def compare_spectra(folder : Path, simNumbers : list, maxXcoord : float = 50.0, axesToEquate = list, logScale : bool = False):
     
@@ -861,6 +868,12 @@ def matrix_plot_growth_rates_and_heating(
     #     "log e- dE" : data_df["log_edE"].to_numpy(),
     # }
     # matrix_plot([v for v in to_matrix_plot.values()], [k for k in to_matrix_plot.keys()], plot_style="hdi", show_ticks=True)
+
+def plot_power_spectrum_range(dataFile : Path, max_freq_Hz = 120.5):
+
+    ds = xr.open_datatree(dataFile, engine="netcdf4")
+
+    print("Woh")
 
 if __name__ == "__main__":
     
