@@ -95,10 +95,14 @@ def regress_from_hd5(
         inputData.append(data)
         data.close()
 
-    assert np.allclose(inputData[0]["spectra"].F.data, inputData[1]["spectra"].F.data)
-    # inputFreqs = np.array(inputData[0]["spectra"].F)
-    inputParams = np.concat((np.array(inputData[0]["parameters"].X.data), np.array(inputData[1]["parameters"].X.data)), axis=1)
-    inputSpectra = np.concat((np.array(inputData[0]["spectra"].Y.data), np.array(inputData[1]["spectra"].Y.data)), axis=1).T
+    if len(inputData) > 1:
+        assert np.allclose(inputData[0]["spectra"].F.data, inputData[1]["spectra"].F.data)
+        # inputFreqs = np.array(inputData[0]["spectra"].F)
+        inputParams = np.concat((np.array(inputData[0]["parameters"].X.data), np.array(inputData[1]["parameters"].X.data)), axis=1)
+        inputSpectra = np.concat((np.array(inputData[0]["spectra"].Y.data), np.array(inputData[1]["spectra"].Y.data)), axis=1).T
+    else:
+        inputParams = np.array(inputData[0]["parameters"].X.data)
+        inputSpectra = np.array(inputData[0]["spectra"].Y.data).T
 
     targetFields = {k : v for k, v in zip(outputFields, inputParams)}
 
@@ -871,7 +875,7 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
-        "--james",
+        "--h5data",
         action="store_true",
         help="Run TSER against James' linear data in h5 format.",
         required = False
@@ -905,7 +909,7 @@ if __name__ == "__main__":
     if args.doPlot and (args.cvStrategy != "LeaveOneOut"):
         print("WARNING: Prediction plots will only make sense with a LeaveOneOut cross-validation strategy.")
 
-    if not args.james:
+    if not args.h5data:
         regress(
             args.dir, 
             args.inputSpectra, 
@@ -924,7 +928,7 @@ if __name__ == "__main__":
             doPlot=args.doPlot,
             noTitle=args.noTitle,
             nThreads =args.nThreads)
-    if args.james:
+    if args.h5data:
         regress_from_hd5(
             directory=args.dir,
             outputFields=args.outputFields,
