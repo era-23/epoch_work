@@ -116,7 +116,8 @@ def plotBar(
         metrics : list = None, 
         fieldNames : dict = None,
         errors : str = "rmseSE", 
-        dropAlgorithms : list = []
+        dropAlgorithms : list = [],
+        noTitle : bool = False
     ): 
 
     if metrics is None:
@@ -195,7 +196,7 @@ def plotBar(
         ax.set_ylabel(r'$R^2$')
     elif metric == "cvRMSE":
         ax.set_ylabel('Mean RMSE')
-    if resultsDict["cvStrategy"] == "RepeatedKFolds":
+    if not noTitle and resultsDict["cvStrategy"] == "RepeatedKFolds":
         ax.set_title(f'{resultsDict["cvFolds"]}-fold CV results ({resultsDict["cvRepeats"]} repeats)')
     ax.set_xlabel('Output')
     xLabels = [fieldNames[lab] for lab in xLabels]
@@ -284,11 +285,12 @@ def plotResults(
         metrics : list = None,
         fieldNames : dict = None,
         errors : str = "rmseSE", 
-        dropAlgorithms : list = []
+        dropAlgorithms : list = [],
+        noTitle : bool = False
     ):
     with open(resultsFile, "r") as f:
         parser = json.load(f)
-        plotBar(parser, metrics, fieldNames, errors, dropAlgorithms)
+        plotBar(parser, metrics, fieldNames, errors, dropAlgorithms, noTitle)
         # plotScatter(parser, metric)
 
 def latexTable(resultsFile : Path, experimentName : str):
@@ -430,6 +432,12 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
+        "--noTitle",
+        action="store_true",
+        help="Do not include title on plots.",
+        required = False
+    )
+    parser.add_argument(
         "--metric",
         action="store",
         help="Scoring metric: \'cvR2\' or \'cvRMSE\'.",
@@ -495,7 +503,7 @@ if __name__ == "__main__":
                 "pitch" : r"$\lambda$", 
                 "beamFraction" : r"$n_\alpha/n_e$"
             }
-        plotResults(args.file, args.metric, field_names, args.errors if args.errors is not None else "rmseSE", dropAlgorithms)
+        plotResults(args.file, args.metric, field_names, args.errors if args.errors is not None else "rmseSE", dropAlgorithms, args.noTitle)
     if args.latex:
         latexTable(args.file, args.experimentName)
     if args.accuracyByFrequency:

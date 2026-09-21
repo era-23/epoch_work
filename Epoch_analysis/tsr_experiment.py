@@ -732,7 +732,8 @@ def regress_lhd(
         nRepeats : int = 10,
         nThreads : int = 1,
         noise_freq_minimum : float = 5.0,
-        lowFrequencyCleaningMethod : str = "linterpToSP",
+        normalise01 : bool = False,
+        normaliseDB : bool = False,
         displayPlots : bool = False
 ):
     if displayPlots:
@@ -864,7 +865,25 @@ def regress_lhd(
     # Experiment with amplitude normalisation here -- 
     # either 0-1 normalisation for both test and train, or dB scale equivalence (compare to the test LHD data)
     # #########
-    train_x = inputSpectra
+    if normalise01:
+        min_vals = np.min(inputSpectra, axis=-1, keepdims=True)
+        max_vals = np.max(inputSpectra, axis=-1, keepdims=True)
+        val_range = max_vals - min_vals
+        train_x = (inputSpectra - min_vals) / val_range
+
+        for name, x in test_x.items():
+            min_vals = np.min(x, axis=-1, keepdims=True)
+            max_vals = np.max(x, axis=-1, keepdims=True)
+            val_range = max_vals - min_vals
+            test_x[name][0] = (x - min_vals) / val_range
+    else:
+        train_x = inputSpectra
+
+    # for x in train_x:
+    #     plt.plot(inputFreqs, x[0], label = "training case")
+    #     plt.plot(inputFreqs, test_x[Path(lhdDir[0]).name][0], label = "test case")
+    #     plt.legend()
+    #     plt.show()
 
     all_abs_normalised_errors = {a : [] for a in algorithms}
     all_predictions = {a : [] for a in algorithms}
@@ -2196,6 +2215,7 @@ if __name__ == "__main__":
             resultsFilepath=args.resultsFilepath,
             nRepeats=args.nRepeats,
             nThreads = args.nThreads,
-            lowFrequencyCleaningMethod=args.lowFrequencyCleaningMethod[0],
+            normalise01=args.scaleInputs,
+            normaliseDB=False,
             displayPlots=args.displayPlots,
         )
