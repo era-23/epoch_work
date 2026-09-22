@@ -865,23 +865,27 @@ def regress_lhd(
     # Experiment with amplitude normalisation here -- 
     # either 0-1 normalisation for both test and train, or dB scale equivalence (compare to the test LHD data)
     # #########
-    if normalise01:
+    if normaliseDB:
+        global_input_min = np.min(np.where(inputSpectra == 0.0, np.inf, inputSpectra), axis=-1, keepdims=True)
+        global_input_min *= 10**(0.5)
+        train_x = np.nan_to_num(10.0 * np.log10(inputSpectra / global_input_min), posinf=0.0,  neginf=0.0)
+    elif normalise01:
         min_vals = np.min(inputSpectra, axis=-1, keepdims=True)
         max_vals = np.max(inputSpectra, axis=-1, keepdims=True)
         val_range = max_vals - min_vals
-        train_x = (inputSpectra - min_vals) / val_range
+        train_x = np.nan_to_num((inputSpectra - min_vals) / val_range, posinf=0.0,  neginf=0.0)
 
         for name, x in test_x.items():
             min_vals = np.min(x, axis=-1, keepdims=True)
             max_vals = np.max(x, axis=-1, keepdims=True)
             val_range = max_vals - min_vals
-            test_x[name][0] = (x - min_vals) / val_range
+            test_x[name][0] = np.nan_to_num((x - min_vals) / val_range, posinf=0.0,  neginf=0.0)
     else:
         train_x = inputSpectra
 
     # for x in train_x:
     #     plt.plot(inputFreqs, x[0], label = "training case")
-    #     plt.plot(inputFreqs, test_x[Path(lhdDir[0]).name][0], label = "test case")
+    #     plt.plot(inputFreqs, test_x[Path(lhdDir[1]).name][0], label = "test case")
     #     plt.legend()
     #     plt.show()
 
@@ -1991,6 +1995,12 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
+        "--dB",
+        action="store_true",
+        help="Convert spectra to dB based on global noise floor minimum.",
+        required = False
+    )
+    parser.add_argument(
         "--logInputs",
         action="store_true",
         help="Take logarithms of input spectra.",
@@ -2216,6 +2226,6 @@ if __name__ == "__main__":
             nRepeats=args.nRepeats,
             nThreads = args.nThreads,
             normalise01=args.scaleInputs,
-            normaliseDB=False,
+            normaliseDB=args.dB,
             displayPlots=args.displayPlots,
         )
