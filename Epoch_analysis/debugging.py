@@ -154,7 +154,7 @@ def plot_particle_push_scaling(file : Path):
 
     # Scan vals
     num_samples = 1000
-    temp_vals_keV_dimless = np.linspace(0.8, 10, num_samples)
+    temp_vals_keV_dimless = np.linspace(0.008, 0.1, num_samples)
     temp_vals_K_dimless = np.array([t.value for t in (temp_vals_keV_dimless*u.keV).to(u.J) / constants.k])
     temp_vals_K = temp_vals_K_dimless * u.K
     density_vals_dimless = [10**v for v in np.linspace(17.9, 20.1, num_samples)]
@@ -286,7 +286,7 @@ def calculate_number_of_particle_pushes(
         nyquist_omega_factor = 20.0,
         num_time_samples = 1000.0,
         n_part_factor = 900.0,
-        doPrint : bool = False):
+        doPrint : bool = True):
     
     kb = constants.k * (u.J / u.K)
     qe = constants.elementary_charge * u.C
@@ -318,6 +318,7 @@ def calculate_number_of_particle_pushes(
     
     if doPrint:
         print("--------------------------------------------------------------------")
+        print(f"Background temperature = {background_temp}")
         print(f"Debye length = {my_Debye_length} ({pp_Debye_length} (pp))")
         print(f"Electron gyroradius = {my_e_gyroradius} ({pp_e_gyroradius} (pp))")
         print(f"Grid spacing = {grid_spacing}")
@@ -366,6 +367,6 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    # plot_particle_push_scaling(args.file)
-    debug_input_deck(args.dir)
+    plot_particle_push_scaling(args.dir / "input.deck")
+    # debug_input_deck(args.dir)
     # check_sdf_files(args.dir)

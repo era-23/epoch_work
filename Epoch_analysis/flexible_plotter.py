@@ -497,7 +497,7 @@ def energy_plots_for_papers(
             plt.show()
         plt.close("all")
 
-def plot_lhd_regression(csvResultsPath : Path, ground_truth_spectra_name : str = "AkiyamaExtract_Spectra_high_res_138458.dat"):
+def plot_lhd_regression(csvResultsPath : Path, ground_truth_spectra_name : str = "AkiyamaExtract_Spectra_high_res_138439.dat"):
     # Schema
     # results_dict = {
     #     "algorithm" : algorithm, 

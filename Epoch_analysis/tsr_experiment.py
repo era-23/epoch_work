@@ -386,7 +386,7 @@ def cottrell_data_plots(
     #     plt.grid(which = "major", axis = "x")
     #     plt.show()
 
-def regress_cottrell_v2(
+def regress_trainEpoch_testCottrell(
         dataDirectory : Path,
         inputSpectraNames : list,
         outputFields : list,
@@ -723,11 +723,12 @@ def regress_cottrell_v2(
             ax.grid()
         plt.show()
 
-def regress_lhd(
+def regress_trainLinear(
         dataDirectory : Path,
         outputFields : list,
         algorithms : list,
-        lhdDatapath : Path,
+        testDatapath : Path,
+        testName : str = "lhd",
         resultsFilepath : Path = None,
         nRepeats : int = 10,
         nThreads : int = 1,
@@ -752,65 +753,91 @@ def regress_lhd(
     aeon_only = np.all([str.startswith(a, "aeon") for a in algorithms])
 
     # Get filepaths
-    data_dir = dataDirectory / "data"
-    data_files = glob.glob(str(data_dir / "*.h5"))
-    lhdParams_dir = lhdDatapath / "lhd_data_parameters.csv"
-    lhdDir = glob.glob(str(lhdDatapath / "*.dat")) # Just one file for now
+    training_dir = dataDirectory
+    training_files = glob.glob(str(training_dir / "*.h5"))
+
+    # Modify behaviour based on whether we're testing on LHD or JET experimental data
+    if testName.lower() == "lhd":
+        outputFields = [
+            "B0", 
+            "log(density)",
+            "log(fi_conc)", 
+            "pitch", 
+            "background_temp"
+        ]
+        test_files = glob.glob(str(testDatapath / "*.dat"))
+        test_true_params = pd.read_csv(testDatapath / "lhd_data_parameters.csv")
+        csv_sep = r"\s+"
+    elif testName.lower() == "jet":
+        outputFields = [
+            "B0", 
+            "log(density)", 
+            "log(fi_conc)",
+            "pitch", 
+        ]
+        test_files = glob.glob(str(testDatapath))
+        test_true_params = pd.DataFrame.from_dict(
+            {"filename": ["cottrell_93_experimental_data.csv"], "B0" : [2.21], "log(density)" : [19.23], "log(fi_conc)" : [-3.82], "pitch" : [0.4]}, orient="columns"
+        )
+        csv_sep = ","
 
     # JWSC h5 simulation data schema:
     # spectra/F == frequencies
     # spectra/Y == growth rates
     # parameters/X == input values
     inputData = []
-    for f in data_files:
+    for f in training_files:
         data : xr.DataTree = xr.open_datatree(f)
         inputData.append(data)
         data.close()
 
-    assert np.allclose(inputData[0]["spectra"].F.data, inputData[1]["spectra"].F.data)
     inputFreqs = np.array(inputData[0]["spectra"].F)
-    inputParams = np.concat((np.array(inputData[0]["parameters"].X.data), np.array(inputData[1]["parameters"].X.data)), axis=1)
-    inputSpectra = np.concat((np.array(inputData[0]["spectra"].Y.data), np.array(inputData[1]["spectra"].Y.data)), axis=1).T
+    if len(inputData) > 1:
+        assert np.allclose(inputData[0]["spectra"].F.data, inputData[1]["spectra"].F.data)
+        inputParams = np.concat((np.array(inputData[0]["parameters"].X.data), np.array(inputData[1]["parameters"].X.data)), axis=1)
+        inputSpectra = np.concat((np.array(inputData[0]["spectra"].Y.data), np.array(inputData[1]["spectra"].Y.data)), axis=1).T
+    else:
+        inputParams = np.array(inputData[0]["parameters"].X.data)
+        inputSpectra = np.array(inputData[0]["spectra"].Y.data).T
     targetFields = {k : v for k, v in zip(outputFields, inputParams)}
 
     # Ensure fields match correct values
-    assert targetFields["B0"].min() == 1.4
-    assert targetFields["B0"].max() == 1.6
-    assert targetFields["log(density)"].min() == 18.5
-    assert targetFields["log(density)"].max() == 19.75
-    assert targetFields["log(fi_conc)"].min() == -5
-    assert targetFields["log(fi_conc)"].max() == -3
-    assert targetFields["pitch"].min() == 0.0
-    assert targetFields["pitch"].max() == 0.5
-    assert targetFields["background_temp"].min() == 10.0
-    assert targetFields["background_temp"].max() == 400.0
+    print(f"B0 min: {targetFields["B0"].min()}")
+    print(f"B0 max: {targetFields["B0"].max()}")
+    print(f"log(density) min: {targetFields["log(density)"].min()}")
+    print(f"log(density) max: {targetFields["log(density)"].max()}")
+    print(f"log(fi_conc) min: {targetFields["log(fi_conc)"].min()}")
+    print(f"log(fi_conc) max: {targetFields["log(fi_conc)"].max()}")
+    print(f"pitch min: {targetFields["pitch"].min()}")
+    print(f"pitch max: {targetFields["pitch"].max()}")
+    # print(f"temp min: {targetFields["background_temp"].min()}")
+    # print(f"temp max: {targetFields["background_temp"].max()}")
 
     # Reshape into 3D numpy array of shape (n_cases, n_channels, n_timepoints)
     if aeon_only:
         inputSpectra = np.expand_dims(inputSpectra, axis = 1)
 
     # Get Experimental LHD data
-    lhd_true_params = pd.read_csv(lhdParams_dir)
     test_x = {}
-    for f in lhdDir:
-        lhd_data = pd.read_csv(f, sep = r"\s+", names = ["frequency", "power"])
-        max_lhd_frequency = float((lhd_data["frequency"].max() * u.MHz).value)
+    for f in test_files:
+        test_data = pd.read_csv(f, sep = csv_sep, header=0, names = ["frequency", "power"])
+        max_lhd_frequency = float((test_data["frequency"].max() * u.MHz).value)
         max_training_freq = inputFreqs.max()
         max_common_freq = float(np.min([max_lhd_frequency, max_training_freq]))
-        print(f"Max freq in simulated linear data: {max_training_freq} (len {len(inputFreqs)}), max in LHD experimental data: {max_lhd_frequency} (len {lhd_data.shape[0]}), truncating to {max_common_freq}...")
+        print(f"Max freq in simulated linear data: {max_training_freq} (len {len(inputFreqs)}), max in LHD experimental data: {max_lhd_frequency} (len {test_data.shape[0]}), truncating to {max_common_freq}...")
         # lhd_data.plot(x = "frequency", y = "power")
         # plt.title(Path(f).name)
         # plt.show()
         
         # Truncate
-        lhd_data_trunc_sort = lhd_data[(lhd_data["frequency"] > 0.0) & (lhd_data["frequency"] < max_common_freq)].sort_values(by = "frequency")
-        print(f"Simulated linear data length: {len(inputFreqs)}, LHD experimental data length: {lhd_data_trunc_sort.shape[0]}")
+        test_data_trunc_sort = test_data[(test_data["frequency"] > 0.0) & (test_data["frequency"] < max_common_freq)].sort_values(by = "frequency")
+        print(f"Simulated linear data length: {len(inputFreqs)}, LHD experimental data length: {test_data_trunc_sort.shape[0]}")
         # lhd_data_trunc_sort.plot(x = "frequency", y = "power")
         # plt.title(Path(f).name)
         # plt.show()
 
         # Resample and interpolate
-        clean_df = lhd_data_trunc_sort.drop_duplicates(subset=["frequency"], keep="first").sort_values("frequency")
+        clean_df = test_data_trunc_sort.drop_duplicates(subset=["frequency"], keep="first").sort_values("frequency")
         freqs_old = clean_df["frequency"].to_numpy()
         power_old = clean_df["power"].to_numpy()
         freqs_new = np.sort(inputFreqs)
@@ -840,13 +867,13 @@ def regress_lhd(
                 # Fallback to linear interpolation for empty bins (sparse regions without points)
                 power_max_pooled[i] = np.interp(freqs_new[i], freqs_old, power_old, left=0.0, right=0.0)
 
-        lhd_data_resamp = pd.DataFrame({
+        test_data_resamp = pd.DataFrame({
             "frequency": freqs_new,
             "power": power_max_pooled
         })
 
         # Remove low freq noise
-        lhd_data_resamp.loc[lhd_data_resamp["frequency"] < noise_freq_minimum, "power"] = lhd_data_resamp["power"].min() # Below 3MHz is electron noise
+        test_data_resamp.loc[test_data_resamp["frequency"] < noise_freq_minimum, "power"] = test_data_resamp["power"].min() # Below 3MHz is electron noise
 
         # # Plot comparison
         # plt.figure(figsize=(10, 5))
@@ -855,9 +882,9 @@ def regress_lhd(
         # plt.legend()
         # plt.show()
 
-        assert np.allclose(freqs_new, lhd_data_resamp["frequency"])
+        assert np.allclose(freqs_new, test_data_resamp["frequency"])
 
-        test_x[Path(f).name] = np.expand_dims(np.nan_to_num(lhd_data_resamp["power"]), axis = 0)
+        test_x[Path(f).name] = np.expand_dims(np.nan_to_num(test_data_resamp["power"]), axis = 0)
 
     assert len(test_x) > 0
 
@@ -867,7 +894,8 @@ def regress_lhd(
     # #########
     if normaliseDB:
         global_input_min = np.min(np.where(inputSpectra == 0.0, np.inf, inputSpectra), axis=-1, keepdims=True)
-        global_input_min *= 10**(0.5)
+        if testName == "lhd":
+            global_input_min *= 10**(0.5)
         train_x = np.nan_to_num(10.0 * np.log10(inputSpectra / global_input_min), posinf=0.0,  neginf=0.0)
     elif normalise01:
         min_vals = np.min(inputSpectra, axis=-1, keepdims=True)
@@ -885,7 +913,7 @@ def regress_lhd(
 
     # for x in train_x:
     #     plt.plot(inputFreqs, x[0], label = "training case")
-    #     plt.plot(inputFreqs, test_x[Path(lhdDir[1]).name][0], label = "test case")
+    #     plt.plot(inputFreqs, test_x[Path(test_files[0]).name][0], label = "test case")
     #     plt.legend()
     #     plt.show()
 
@@ -928,7 +956,7 @@ def regress_lhd(
             # Fit
             for comp_name, comp_spectrum in test_x.items():
 
-                true_y = lhd_true_params[lhd_true_params["filename"] == comp_name][output_field].values[0]
+                true_y = test_true_params[test_true_params["filename"] == comp_name][output_field].values[0]
                 true_y_norm, _ = ml_utils.normalise_data([true_y], scaler_y)
 
                 predictions = []
@@ -1917,21 +1945,33 @@ if __name__ == "__main__":
         nargs="*"
     )
     parser.add_argument(
-        "--cottrell",
-        action="store_true",
-        help="Run Cottrell experiment.",
-        required = False
-    )
-    parser.add_argument(
         "--cottrellPlots",
         action="store_true",
         help="Plots of Cottrell training data for inspection (no regression).",
         required = False
     )
     parser.add_argument(
-        "--lhd",
+        "--trainLinear",
         action="store_true",
-        help="Run LHD experimental regression.",
+        help="Train regression on linear (.h5 format) data.",
+        required = False
+    )
+    parser.add_argument(
+        "--trainEpoch",
+        action="store_true",
+        help="Train regression on EPOCH (.nc format) data.",
+        required = False
+    )
+    parser.add_argument(
+        "--testLhd",
+        action="store_true",
+        help="Test regression on LHD (.dat format) data.",
+        required = False
+    )
+    parser.add_argument(
+        "--testJet",
+        action="store_true",
+        help="Test regression on JET (.csv format) data.",
         required = False
     )
     parser.add_argument(
@@ -1953,16 +1993,9 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
-        "--cottrellFilepath",
+        "--testFilepath",
         action="store",
-        help="Filepath of Cottrell 93 data to regress against.",
-        required = False,
-        type=Path
-    )
-    parser.add_argument(
-        "--lhdFilepath",
-        action="store",
-        help="Filepath of Reman 21 LHD data to regress against.",
+        help="Filepath of experimental/test data to regress against.",
         required = False,
         type=Path
     )
@@ -2126,8 +2159,8 @@ if __name__ == "__main__":
             doPlot = False,
             nThreads = args.nThreads)
 
-    if args.cottrell:
-        regress_cottrell_v2(
+    if args.trainEpoch and args.testJet:
+        regress_trainEpoch_testCottrell(
             dataDirectory = args.dataDir, 
             inputSpectraNames = [
                 "Magnetic_Field_Bz/power/frequencyPowerSpectrum",
@@ -2204,14 +2237,14 @@ if __name__ == "__main__":
                 "aeon.TSFreshRegressor",
                 "aeon.FreshPRINCERegressor"
             ], 
-            cottrellDatapath = args.cottrellFilepath,
+            cottrellDatapath = args.testFilepath,
             resultsFilepath=args.resultsFilepath,
             includeFreqs=args.includeFreqs,
             nThreads = args.nThreads,
             lowFrequencyCleaningMethod=args.lowFrequencyCleaningMethod[0])
 
-    if args.lhd:
-        regress_lhd(
+    if args.trainLinear:
+        regress_trainLinear(
             dataDirectory = args.dataDir, 
             outputFields = [
                 "B0", 
@@ -2221,7 +2254,8 @@ if __name__ == "__main__":
                 "background_temp"
             ], 
             algorithms = args.algorithms,
-            lhdDatapath = args.lhdFilepath,
+            testDatapath = args.testFilepath,
+            testName = "lhd" if args.testLhd else ("jet" if args.testJet else None),
             resultsFilepath=args.resultsFilepath,
             nRepeats=args.nRepeats,
             nThreads = args.nThreads,
