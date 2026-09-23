@@ -802,14 +802,14 @@ def regress_trainLinear(
     targetFields = {k : v for k, v in zip(outputFields, inputParams)}
 
     # Ensure fields match correct values
-    print(f"B0 min: {targetFields["B0"].min()}")
-    print(f"B0 max: {targetFields["B0"].max()}")
-    print(f"log(density) min: {targetFields["log(density)"].min()}")
-    print(f"log(density) max: {targetFields["log(density)"].max()}")
-    print(f"log(fi_conc) min: {targetFields["log(fi_conc)"].min()}")
-    print(f"log(fi_conc) max: {targetFields["log(fi_conc)"].max()}")
-    print(f"pitch min: {targetFields["pitch"].min()}")
-    print(f"pitch max: {targetFields["pitch"].max()}")
+    print(f"B0 min: {targetFields['B0'].min()}")
+    print(f"B0 max: {targetFields['B0'].max()}")
+    print(f"log(density) min: {targetFields['log(density)'].min()}")
+    print(f"log(density) max: {targetFields['log(density)'].max()}")
+    print(f"log(fi_conc) min: {targetFields['log(fi_conc)'].min()}")
+    print(f"log(fi_conc) max: {targetFields['log(fi_conc)'].max()}")
+    print(f"pitch min: {targetFields['pitch'].min()}")
+    print(f"pitch max: {targetFields['pitch'].max()}")
     # print(f"temp min: {targetFields["background_temp"].min()}")
     # print(f"temp max: {targetFields["background_temp"].max()}")
 
