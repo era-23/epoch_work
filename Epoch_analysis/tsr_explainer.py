@@ -6,6 +6,7 @@ import argparse
 from pathlib import Path
 
 from tsCaptum.explainers import Feature_Ablation
+from tsCaptum.explainers import Shapley_Value_Sampling as SHAP
 from tsCaptum.visualization import plot_saliency_map_uni
 
 # 0 = All logs (default)
@@ -174,6 +175,8 @@ def regress_epoch_vs_cottrell(
 
     for output_field, output_values in outputs.items():
 
+        print(f"Training model for {output_field}...")
+
         if output_field not in outputFields:
             continue
 
@@ -219,14 +222,22 @@ def regress_epoch_vs_cottrell(
             # print("Predicting Cottrell parameters based on model....")
             prediction = tsr.predict(test_x)
 
+            ##### Feature Ablation
             myFA = Feature_Ablation(tsr)
-            exp = myFA.explain(samples=test_x, n_segments=10, normalise=False)
+            exp = myFA.explain(samples=test_x, n_segments=50, normalise=False)
             print( "saliency map shape equal to input shape:", exp.shape, test_x[0].shape,
                 "\n attributions for first 20 time points:\n", exp[0,:,:20])
 
             idx = 0
-            plot_saliency_map_uni(test_x[idx,:,:], exp[idx,:,:], title = f'FeatureAblation-Instance {idx} - Target {true_y_norm[idx]}')
+            ml_utils.plot_saliency_map_uni(test_x[idx,:,:], exp[idx,:,:], title = f'FeatureAblation-Instance {idx} - Target {output_field} {true_y_norm[idx]:.3f}')
 
+            ##### SHAP
+            mySHAP = SHAP(tsr)
+            exp = mySHAP.explain(samples=test_x, n_segments=50, normalise=False)
+            print( "saliency map shape equal to input shape:", exp.shape, test_x[0].shape,
+                "\n attributions for first 20 time points:\n", exp[0,:,:20])
+
+            ml_utils.plot_saliency_map_uni(test_x[idx,:,:], exp[idx,:,:], title = f'SHAP-Instance {idx} - Target {output_field} {true_y_norm[idx]:.3f}')
 
 if __name__ == "__main__":
     

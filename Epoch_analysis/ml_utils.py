@@ -32,7 +32,7 @@ from dataclasses_json import dataclass_json
 from inference.plotting import matrix_plot
 from numpy.typing import ArrayLike
 from SALib import ProblemSpec
-from scipy.interpolate import griddata
+from scipy.interpolate import griddata, interp1d
 from scipy.signal import find_peaks
 from scipy.stats import norm
 from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
@@ -1073,3 +1073,31 @@ def mean_squared_error(predictions : ArrayLike, true_values : ArrayLike) -> tupl
 def root_mean_squared_error(predictions : ArrayLike, true_values : ArrayLike) -> tuple:
     mses, var, stdErr = mean_squared_error(predictions, true_values)
     return np.sqrt(mses), var, stdErr
+
+def plot_saliency_map_uni(sample, attribution, title = 'Saliency map'):
+
+	def transform(X):
+		ma,mi = np.max(X), np.min(X)
+		X = (X - mi)/(ma-mi)
+		return X*100
+
+	weight = transform(abs(attribution))
+	ts = np.squeeze(sample)
+
+	max_length1, max_length2 = ts.shape[0],10000 #
+	x1 = np.linspace(0,max_length1,num = max_length1)
+	x2 = np.linspace(0,max_length1,num = max_length2)
+	y1 = ts
+
+	f = interp1d(x1, y1) # interpolate time series
+	fcas = interp1d(x1, weight) # interpolate weight color
+	weight = fcas(x2) # convert vector of original weight vector to new weight vector
+
+	plt.figure(figsize=(6, 2))
+	scatter = plt.scatter(x2,f(x2), c = weight, cmap = 'Greens', marker='.', s= 1,vmin=0,vmax = 100)
+
+	#cbar_ax = plt.add_axes([0.925, 0.2, 0.03, 0.5])  # [left, bottom, width, height]
+	plt.colorbar(scatter)#, cax=cbar_ax)
+
+	plt.title(title)
+	plt.show()
