@@ -794,8 +794,8 @@ def regress_trainLinear(
     inputFreqs = np.array(inputData[0]["spectra"].F)
     if len(inputData) > 1:
         assert np.allclose(inputData[0]["spectra"].F.data, inputData[1]["spectra"].F.data)
-        inputParams = np.concat((np.array(inputData[0]["parameters"].X.data), np.array(inputData[1]["parameters"].X.data)), axis=1)
-        inputSpectra = np.concat((np.array(inputData[0]["spectra"].Y.data), np.array(inputData[1]["spectra"].Y.data)), axis=1).T
+        inputParams = np.concat((np.array(inputData[0]["parameters"].X.data, dtype=np.float64), np.array(inputData[1]["parameters"].X.data, dtype=np.float64)), axis=1)
+        inputSpectra = np.concat((np.array(inputData[0]["spectra"].Y.data, dtype=np.float64), np.array(inputData[1]["spectra"].Y.data, dtype=np.float64)), axis=1).T
     else:
         inputParams = np.array(inputData[0]["parameters"].X.data)
         inputSpectra = np.array(inputData[0]["spectra"].Y.data).T
