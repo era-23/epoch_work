@@ -1004,9 +1004,9 @@ def regress_trainLinear(
                 all_results.append(results_dict)
 
     if not os.path.exists(resultsFilepath):
-        if not resultsFilepath.name.endswith(".csv"):
+        if not resultsFilepath.name.endswith(".csv") and not resultsFilepath.exists():
             os.makedirs(resultsFilepath)
-        else:
+        elif not resultsFilepath.parent.exists():
             os.makedirs(resultsFilepath.parent)
     resultsFilepath = resultsFilepath if str(resultsFilepath).endswith(".csv") else resultsFilepath / "lhd_regression_results.csv"
     with open(resultsFilepath, "w") as csvfile:
