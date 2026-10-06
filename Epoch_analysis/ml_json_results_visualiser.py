@@ -114,7 +114,6 @@ def plotScatter(resultsDict : dict, metric : str = "cvR2"):
 def plotBar(
         resultsDict : dict, 
         metrics : list = None, 
-        fieldNames : dict = None,
         errors : str = "rmseSE", 
         dropAlgorithms : list = [],
         noTitle : bool = False
@@ -129,7 +128,15 @@ def plotBar(
     results = [r for r in results if r["algorithm"] not in dropAlgorithms]
     
     # x-labels: outputs
-    xLabels = resultsDict["outputFields"]
+    outputs = resultsDict["outputFields"]
+    # Order fields
+    ordered_fields = []
+    for f in epoch_utils.COMBINED_FIELD_ORDER:
+        if f in outputs:
+            ordered_fields.append(f)
+    for f in outputs:
+        if f not in epoch_utils.COMBINED_FIELD_ORDER:
+            ordered_fields.append(f)
 
     # bar values in output order, grouped by algorithm
     algorithms = [a for a in resultsDict["algorithms"] if a not in dropAlgorithms]
@@ -140,7 +147,7 @@ def plotBar(
         barAlts= {algorithm : [] for algorithm in algorithms}
     barVals = {algorithm : [] for algorithm in algorithms}
     barErrs = {algorithm : [] for algorithm in algorithms}
-    for field in xLabels:
+    for field in ordered_fields:
         fieldResults = [r for r in results if r["output"] == field]
         for res in fieldResults:
             barVals[res["algorithm"]].append(np.round(res[f"{metric}_mean"], 3))
@@ -153,7 +160,7 @@ def plotBar(
             if alt_metric:
                 barAlts[res["algorithm"]].append(np.round(res[f'{alt_metric}_mean'], 3))
     
-    x = np.arange(len(xLabels))
+    x = np.arange(len(ordered_fields))
     
     width = 1.0/(len(algorithms) + 1)  # the width of the bars
     multiplier = 0
@@ -199,7 +206,7 @@ def plotBar(
     if not noTitle and resultsDict["cvStrategy"] == "RepeatedKFolds":
         ax.set_title(f'{resultsDict["cvFolds"]}-fold CV results ({resultsDict["cvRepeats"]} repeats)')
     ax.set_xlabel('Output')
-    xLabels = [fieldNames[lab] for lab in xLabels]
+    xLabels = [epoch_utils.fieldNameToSymbol(f) for f in ordered_fields]
     ax.set_xticks(x + (0.5 * (len(algorithms) -1) * width), xLabels)
     ax.legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, 1.15 if len(algorithms) < 8 else 1.2))
     ax.set_ylim(top= 1.15 if metric == "cvR2" else np.round(np.max([v for v in barVals.values()]) + 0.39, 1))
@@ -283,14 +290,13 @@ def plot_individual_spectra_results(folder):
 def plotResults(
         resultsFile : Path, 
         metrics : list = None,
-        fieldNames : dict = None,
         errors : str = "rmseSE", 
         dropAlgorithms : list = [],
         noTitle : bool = False
     ):
     with open(resultsFile, "r") as f:
         parser = json.load(f)
-        plotBar(parser, metrics, fieldNames, errors, dropAlgorithms, noTitle)
+        plotBar(parser, metrics, errors, dropAlgorithms, noTitle)
         # plotScatter(parser, metric)
 
 def latexTable(resultsFile : Path, experimentName : str):
@@ -426,12 +432,6 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
-        "--jamesNames",
-        action="store_true",
-        help="Use field name conventions from James' linear code.",
-        required = False
-    )
-    parser.add_argument(
         "--noTitle",
         action="store_true",
         help="Do not include title on plots.",
@@ -488,22 +488,7 @@ if __name__ == "__main__":
         if args.folder is not None:
             plotAeResultsByPcaComponents(args.folder, args.filePattern)
         dropAlgorithms = [] if args.dropAlgorithms is None else args.dropAlgorithms
-        if args.jamesNames:
-            field_names = {
-                "B0" : r"$B_0$", 
-                "log(density)" : r"$n_e$", 
-                "log(alpha_conc)" : r"$n_{FI}/n_e$",
-                "pitch" : r"$\lambda$", 
-                "background_temp" : r"$T_{e,i}$"
-            }
-        else:
-            field_names = {
-                "B0strength" : r"$B_0$", 
-                "backgroundDensity" : r"$n_e$", 
-                "pitch" : r"$\lambda$", 
-                "beamFraction" : r"$n_\alpha/n_e$"
-            }
-        plotResults(args.file, args.metric, field_names, args.errors if args.errors is not None else "rmseSE", dropAlgorithms, args.noTitle)
+        plotResults(args.file, args.metric, args.errors if args.errors is not None else "rmseSE", dropAlgorithms, args.noTitle)
     if args.latex:
         latexTable(args.file, args.experimentName)
     if args.accuracyByFrequency:

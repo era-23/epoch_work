@@ -282,10 +282,11 @@ fieldNameToText_dict = {
     "B0" : r"$B_0$ [T]", 
     "B0angle" : "B0 angle", 
     "backgroundDensity" : r"density [$10^{20}m^{-3}$]", 
-    "log(density)" : r"$\lg{n_e}$", 
+    "log(density)" : r"$\mathrm{log}_{10}(n_e [m^{-3}])$", 
     "beamFraction" : "alpha concentration",
-    "log(fi_conc)" : r"$\lg{n_\alpha/n_e}$",
-    "pitch" : "pitch",
+    "log(fi_conc)" : r"$\mathrm{log}_{10}(n_{FI}/n_e)$",
+    "log(alpha_conc)" : r"$\mathrm{log}_{10}(n_{FI}/n_e)$",
+    "pitch" : r"$\lambda$",
     "background_temp" : r"$T_e$"
 }
 
@@ -295,7 +296,8 @@ fieldNameToSymbolWithUnit_dict = {
     "backgroundDensity" : r"$\mathrm{log}_{10}(n_e [m^{-3}])$", 
     "log(density)" : r"$\mathrm{log}_{10}(n_e [m^{-3}])$", 
     "beamFraction" : r"$\mathrm{log}_{10}(n_\alpha/n_e)$",
-    "log(fi_conc)" : r"$\mathrm{log}_{10}(n_\alpha/n_e)$",
+    "log(fi_conc)" : r"$\mathrm{log}_{10}(n_{FI}/n_e)$",
+    "log(alpha_conc)" : r"$\mathrm{log}_{10}(n_{FI}/n_e)$",
     "pitch" : r"$\lambda$",
     "background_temp" : r"$T_e$ [eV]"
 }
@@ -304,9 +306,10 @@ fieldNameToSymbol_dict = {
     "B0strength" : r"$B_0$", 
     "B0" : r"$B_0$", 
     "backgroundDensity" : r"$n_e$",
-    "log(density)" : r"$\lg{n_e}$", 
+    "log(density)" : r"$\mathrm{log}_{10}(n_e)$", 
     "beamFraction" : r"$n_\alpha/n_e$",
-    "log(fi_conc)" : r"$\lg{n_\alpha/n_e}$",
+    "log(fi_conc)" : r"$\mathrm{log}_{10}(n_{FI}/n_e)$",
+    "log(alpha_conc)" : r"$\mathrm{log}_{10}(n_{FI}/n_e)$",
     "pitch" : r"$\lambda$",
     "background_temp" : r"$T_e$"
 }
@@ -363,7 +366,7 @@ algorithmNameShort_dict = {
 
 EPOCH_FIELD_ORDER = ["B0strength", "pitch", "backgroundDensity", "beamFraction"]
 LINEAR_FIELD_ORDER = ["B0", "pitch", "log(density)", "log(fi_conc)", "background_temp"]
-COMBINED_FIELD_ORDER = ["B0strength", "B0", "pitch", "backgroundDensity", "log(density)", "beamFraction", "log(fi_conc)", "background_temp"]
+COMBINED_FIELD_ORDER = ["B0strength", "B0", "pitch", "backgroundDensity", "log(density)", "beamFraction", "log(fi_conc)", "log(alpha_conc)", "background_temp"]
 
 def fieldNameToText(name : str) -> str:
     if name in fieldNameToText_dict:

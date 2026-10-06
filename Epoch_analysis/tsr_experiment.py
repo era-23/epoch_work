@@ -2196,7 +2196,7 @@ if __name__ == "__main__":
                 # "aeon.TSFreshRegressor",
                 # "aeon.FreshPRINCERegressor"
             # ], 
-            cottrellDatapath = args.cottrellFilepath,
+            cottrellDatapath = args.testFilepath,
             resultsFilepath=args.resultsFilepath,
             includeFreqs=args.includeFreqs,
             nRepeats=args.nRepeats,

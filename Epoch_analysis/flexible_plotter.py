@@ -527,6 +527,20 @@ def plot_lhd_regression(csvResultsPath : Path, ground_truth_spectra_name : str =
     # exclude_algos = ["aeon.DummyRegressor", "aeon.KNeighborsTimeSeriesRegressor", "aeon.RDSTRegressor", "aeon.MultiRocketRegressor", "aeon.MultiRocketHydraRegressor"]
     exclude_algos = ["aeon.DummyRegressor"]
 
+    # Order fields
+    ordered_fields = []
+    for f in epoch_utils.COMBINED_FIELD_ORDER:
+        if f in outputFields:
+            ordered_fields.append(f)
+    for f in outputFields:
+        if f not in epoch_utils.COMBINED_FIELD_ORDER:
+            ordered_fields.append(f)
+
+    assert len(ordered_fields) == len(outputFields)
+    assert set(ordered_fields) == set(outputFields)
+
+    outputFields = np.array(ordered_fields)
+
     # # ECML
     # colours = {
     #     "aeon.Catch22Regressor" : "tab:blue",
@@ -543,22 +557,25 @@ def plot_lhd_regression(csvResultsPath : Path, ground_truth_spectra_name : str =
     # }
     colours = {}
 
-    NUM_COLOURS = len(results["algorithm"].unique()) - len(np.intersect1d(results["algorithm"].unique(), exclude_algos))
-    print(list(colormaps))
-    cm = plt.get_cmap('tab20')
+    num_algorithms = len(set(results["algorithm"].unique()) - set(exclude_algos))
+    if len(colours) == 0 and num_algorithms > 10:
+        cmap = colormaps['tab20']
+        colors = [cmap(i) for i in np.linspace(0, 1, 20)]  # 5 steps across the colormap
+
+        rcParams['axes.prop_cycle'] = cycler(color=colors)
+
+    axis_positions = np.linspace(-1.2, 1.2, num_algorithms)
     axis_positions = [1.0, 0.75, 0.5, 0.25, 0.0, -0.25, -0.5, -0.75, -1.0, 1.0, 0.75, 0.5, 0.25, 0.0, -0.25, -0.5, -0.75, -1.0]
     fig, axs = plt.subplots(len(outputFields), 1, figsize=(12,10))
     for i in range(len(outputFields)):
         plot_position_counter = 0
         field = outputFields[i]
         field_results = results[results["field"] == field]
-        axs[i].set_prop_cycle('color', [cm(1.*i/NUM_COLOURS) for i in range(NUM_COLOURS)])
         axs[i].set_ylim((-2.0, 2.0))
         axs[i].set_yticks(ticks=[0.0], labels=[epoch_utils.fieldNameToSymbolWithUnit(field)])
         for index, result in field_results.iterrows():
             if result["algorithm"] not in exclude_algos:
-                colour = colours.get(result["algorithm"], None)
-                axs[i].errorbar(result["mean_denormed_prediction"], axis_positions[plot_position_counter], xerr=result["denormed_std"], label = result["algorithm"], ms = 12, marker="D", color = colour, elinewidth=2.0, capsize=8.0, capthick=2.0)
+                axs[i].errorbar(result["mean_denormed_prediction"], axis_positions[plot_position_counter], xerr=result["denormed_std"], label = result["algorithm"], ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
                 plot_position_counter += 1
         
         axs[i].axvline(x = result["true_value_before_log"], color = "black", linestyle=":", lw = 2.0, label=f"LHD #{lhd_number}")
@@ -570,9 +587,9 @@ def plot_lhd_regression(csvResultsPath : Path, ground_truth_spectra_name : str =
     fig.supxlabel("Prediction", fontsize = 24)
     fig.supylabel("Target Field", fontsize = 24)
     axs[0].set_xlim(1.4, 1.6)
-    axs[1].set_xlim(18.5, 19.75)
-    axs[2].set_xlim(-5.0, -3.0)
-    axs[3].set_xlim(0.0, 0.5)
+    axs[1].set_xlim(0.0, 0.5)
+    axs[2].set_xlim(18.5, 19.75)
+    axs[3].set_xlim(-5.0, -3.0)
     axs[4].set_xlim(10.0, 400.0)
     #axs[2].set_xscale("log")
     #axs[2].xaxis.set_major_formatter(ticker.FormatStrFormatter("%.1f"))
@@ -614,7 +631,7 @@ def plot_cottrell_regression(
     # exclude_algos = ["aeon.KNeighborsTimeSeriesRegressor", "aeon.TimeSeriesForestRegressor", "aeon.RandomIntervalSpectralEnsembleRegressor", "aeon.RocketRegressor"]
     # exclude_algos = ["aeon.KNeighborsTimeSeriesRegressor", "aeon.TimeSeriesForestRegressor", "aeon.RandomIntervalRegressor", "aeon.QUANTRegressor"]
     # exclude_algos = [ "aeon.KNeighborsTimeSeriesRegressor", "aeon.RandomIntervalSpectralEnsembleRegressor", "aeon.QUANTRegressor", "aeon.RandomIntervalRegressor"]
-    exclude_algos = ["aeon.DummyRegressor"]
+    exclude_algos = ["aeon.DummyRegressor", "aeon.KNeighborsTimeSeriesRegressor"]
     # exclude_algos = ["aeon.DummyRegressor", "aeon.KNeighborsTimeSeriesRegressor", "aeon.RocketRegressor", "aeon.QUANTRegressor", "aeon.TSFreshRegressor", "aeon.RandomIntervalSpectralEnsembleRegressor", "aeon.MultiRocketRegressor"]
 
     # Order fields
