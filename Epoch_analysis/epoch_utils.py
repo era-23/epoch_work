@@ -278,28 +278,37 @@ fieldNameToText_dict = {
     "Electric_Field_Ey" : r"$E_y$",
     "/Electric_Field_Ey" : r"$E_y$",
 
-    # "B0strength" : r"$B_0$", 
     "B0strength" : r"$B_0$ [T]", 
+    "B0" : r"$B_0$ [T]", 
     "B0angle" : "B0 angle", 
-    # "backgroundDensity" : "density", 
     "backgroundDensity" : r"density [$10^{20}m^{-3}$]", 
-    # "backgroundDensity" : r"density [$m^{-3}$]", 
+    "log(density)" : r"$\lg{n_e}$", 
     "beamFraction" : "alpha concentration",
-    "pitch" : "pitch"
+    "log(fi_conc)" : r"$\lg{n_\alpha/n_e}$",
+    "pitch" : "pitch",
+    "background_temp" : r"$T_e$"
 }
 
 fieldNameToSymbolWithUnit_dict = {
     "B0strength" : r"$B_0$ [T]", 
-    "backgroundDensity" : r"$n_e$ [$10^{20}m^{-3}$]", 
-    "beamFraction" : r"$n_\alpha/n_e$",
+    "B0" : r"$B_0$ [T]",
+    "backgroundDensity" : r"$\mathrm{log}_{10}(n_e [m^{-3}])$", 
+    "log(density)" : r"$\mathrm{log}_{10}(n_e [m^{-3}])$", 
+    "beamFraction" : r"$\mathrm{log}_{10}(n_\alpha/n_e)$",
+    "log(fi_conc)" : r"$\mathrm{log}_{10}(n_\alpha/n_e)$",
     "pitch" : r"$\lambda$",
+    "background_temp" : r"$T_e$ [eV]"
 }
 
 fieldNameToSymbol_dict = {
     "B0strength" : r"$B_0$", 
-    "backgroundDensity" : r"$n_e$", 
+    "B0" : r"$B_0$", 
+    "backgroundDensity" : r"$n_e$",
+    "log(density)" : r"$\lg{n_e}$", 
     "beamFraction" : r"$n_\alpha/n_e$",
+    "log(fi_conc)" : r"$\lg{n_\alpha/n_e}$",
     "pitch" : r"$\lambda$",
+    "background_temp" : r"$T_e$"
 }
 
 fieldNameToUnit_dict = {
@@ -351,6 +360,10 @@ algorithmNameShort_dict = {
     "aeon.KNeighborsTimeSeriesRegressor" : "KNNRegressor",
     # "aeon.MultiRockey" : "aeon.RISERegressor",
 }
+
+EPOCH_FIELD_ORDER = ["B0strength", "pitch", "backgroundDensity", "beamFraction"]
+LINEAR_FIELD_ORDER = ["B0", "pitch", "log(density)", "log(fi_conc)", "background_temp"]
+COMBINED_FIELD_ORDER = ["B0strength", "B0", "pitch", "backgroundDensity", "log(density)", "beamFraction", "log(fi_conc)", "background_temp"]
 
 def fieldNameToText(name : str) -> str:
     if name in fieldNameToText_dict:

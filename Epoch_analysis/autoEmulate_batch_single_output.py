@@ -92,7 +92,7 @@ def plot_results(
 
     ax.set_xlabel('Output field')
     ax.set_ylabel(metric)
-    xLabels = [f"{f.split('__')[0]}__{ml_utils.catch22_short_names[f.split('__')[1]]}" for f in outputFields]
+    xLabels = [f"{f.split('__')[0]}__{ml_utils.CATCH22_SHORT_NAMES[f.split('__')[1]]}" for f in outputFields]
     ax.set_xticks(x + (0.5 * (len(models) -1) * width), xLabels, rotation=90)
     ax.legend(loc='lower left')
     ax.set_ylim((0.5, 1))

@@ -4,7 +4,7 @@ import glob
 import os
 from pathlib import Path
 import epydeck
-from matplotlib import ticker, colormaps
+from matplotlib import ticker, colormaps, cycler, rcParams
 import matplotlib.pyplot as plt
 from matplotlib.ticker import ScalarFormatter
 from sdf_xarray import SDFPreprocess
@@ -585,7 +585,10 @@ def plot_lhd_regression(csvResultsPath : Path, ground_truth_spectra_name : str =
         ax.grid(axis="x", which="both")
     plt.show()
 
-def plot_cottrell_regression(csvResultsPath : Path):
+def plot_cottrell_regression(
+        csvResultsPath : Path, 
+        data_type : str = "epoch" # "epoch" or "linear"
+    ):
 
     # Schema
     # results_dict = {
@@ -611,42 +614,22 @@ def plot_cottrell_regression(csvResultsPath : Path):
     # exclude_algos = ["aeon.KNeighborsTimeSeriesRegressor", "aeon.TimeSeriesForestRegressor", "aeon.RandomIntervalSpectralEnsembleRegressor", "aeon.RocketRegressor"]
     # exclude_algos = ["aeon.KNeighborsTimeSeriesRegressor", "aeon.TimeSeriesForestRegressor", "aeon.RandomIntervalRegressor", "aeon.QUANTRegressor"]
     # exclude_algos = [ "aeon.KNeighborsTimeSeriesRegressor", "aeon.RandomIntervalSpectralEnsembleRegressor", "aeon.QUANTRegressor", "aeon.RandomIntervalRegressor"]
-    exclude_algos = ["aeon.DummyRegressor", "aeon.KNeighborsTimeSeriesRegressor", "aeon.MiniRocketRegressor"]
+    exclude_algos = ["aeon.DummyRegressor"]
     # exclude_algos = ["aeon.DummyRegressor", "aeon.KNeighborsTimeSeriesRegressor", "aeon.RocketRegressor", "aeon.QUANTRegressor", "aeon.TSFreshRegressor", "aeon.RandomIntervalSpectralEnsembleRegressor", "aeon.MultiRocketRegressor"]
 
-    # fig, axs = plt.subplots(len(outputFields), 1, figsize=(12,10))
-    # for i in range(len(outputFields)):
-    #     field = outputFields[i]
-    #     field_results = results[results["field"] == field]
+    # Order fields
+    ordered_fields = []
+    for f in epoch_utils.COMBINED_FIELD_ORDER:
+        if f in outputFields:
+            ordered_fields.append(f)
+    for f in outputFields:
+        if f not in epoch_utils.COMBINED_FIELD_ORDER:
+            ordered_fields.append(f)
 
-    #     for index, result in field_results.iterrows():
-    #         if result["algorithm"] not in exclude_algos:
-    #             axs[i].errorbar(result["mean_denormed_prediction"], epoch_utils.fieldNameToSymbolWithUnit(field), xerr=result["denormed_std"], label = result["algorithm"], ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
-        
-    #     if field == "B0strength":
-    #         axs[i].fill_between(x = [result["true_value_before_log"] - 0.07, result["true_value_before_log"] + 0.07], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
-    #     if field == "pitch":
-    #         axs[i].fill_between(x = [result["true_value_before_log"] - 0.05, result["true_value_before_log"] + 0.04], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
-    #     if field == "beamFraction":
-    #         axs[i].fill_between(x = [result["true_value_before_log"] - 0.0001, result["true_value_before_log"] + 0.0003], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
-    #     else:
-    #         axs[i].axvline(x = result["true_value_before_log"], color = "black", linestyle=":", lw = 2.0, label="Cottrell '93 value")
+    assert len(ordered_fields) == len(outputFields)
+    assert set(ordered_fields) == set(outputFields)
 
-    #     best = field_results[abs(field_results["mean_denormed_error"]) == abs(field_results["mean_denormed_error"]).min()]
-    #     mrh = field_results[field_results["algorithm"] == "aeon.MultiRocketHydraRegressor"]
-    #     print(f"Best algorithm for {field}: {best['algorithm'].values[0]}, Prediction: {best['mean_denormed_prediction'].values[0]}, S.D. {best['denormed_std'].values[0]}, MRH Prediction: {mrh['mean_denormed_prediction'].values[0]}, MRH S.D. {mrh['denormed_std'].values[0]}")
-
-    # axs[0].legend(loc='center', ncols = 2, bbox_to_anchor = (0.3, 2.0))
-    # fig.supylabel("Output field", fontsize = 24)
-    # fig.supxlabel("Prediction", fontsize = 24)
-    # axs[2].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=False))
-    # axs[2].set_xscale("log")
-    # axs[3].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
-    # axs[3].set_xscale("log")
-    # plt.tight_layout()
-    # for ax in axs:
-    #     ax.grid()
-    # plt.show()
+    outputFields = np.array(ordered_fields)
 
     # Original (PPCF)
     # colours = {
@@ -677,8 +660,15 @@ def plot_cottrell_regression(csvResultsPath : Path):
     # }
     colours = {}
 
-    axis_positions = [1.0, 0.75, 0.5, 0.25, 0.0, -0.25, -0.5, -0.75, -1.0, 1.0, 0.75, 0.5, 0.25]
-    fig, axs = plt.subplots(len(outputFields), 1, figsize=(12,10))
+    num_algorithms = len(set(results["algorithm"].unique()) - set(exclude_algos))
+    if len(colours) == 0 and num_algorithms > 10:
+        cmap = colormaps['tab20']
+        colors = [cmap(i) for i in np.linspace(0, 1, 20)]  # 5 steps across the colormap
+
+        rcParams['axes.prop_cycle'] = cycler(color=colors)
+
+    axis_positions = np.linspace(-1.2, 1.2, num_algorithms)
+    fig, axs = plt.subplots(len(outputFields), 1, figsize=(11,9))
     for i in range(len(outputFields)):
         plot_position_counter = 0
         field = outputFields[i]
@@ -688,42 +678,59 @@ def plot_cottrell_regression(csvResultsPath : Path):
         for index, result in field_results.iterrows():
             if result["algorithm"] not in exclude_algos:
                 # colour = colours.get(result["algorithm"], plt.colormaps['tab20'](index))
-                if field == "backgroundDensity":
-                    # axs[i].errorbar(result["mean_denormed_prediction"] / 10**20, axis_positions[plot_position_counter], xerr=result["denormed_std"] / 10**20, label = result["algorithm"], ms = 12, marker="D", color = colour, elinewidth=2.0, capsize=8.0, capthick=2.0)
-                    axs[i].errorbar(result["mean_denormed_prediction"] / 10**20, axis_positions[plot_position_counter], xerr=result["denormed_std"] / 10**20, label = result["algorithm"], ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
+                # if data_type == "epoch" and ("density" in field.lower()):
+                #     # axs[i].errorbar(result["mean_denormed_prediction"] / 10**20, axis_positions[plot_position_counter], xerr=result["denormed_std"] / 10**20, label = result["algorithm"], ms = 12, marker="D", color = colour, elinewidth=2.0, capsize=8.0, capthick=2.0)
+                #     axs[i].errorbar(result["mean_denormed_prediction"] / 1e19, axis_positions[plot_position_counter], xerr = result["denormed_std"] / 1e19, label = result["algorithm"], ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
+                # elif data_type == "epoch" and ("beamFraction" in field):
+                #     axs[i].errorbar(result["mean_denormed_prediction"] / 1e-4, axis_positions[plot_position_counter], xerr = result["denormed_std"] / 1e-4, label = result["algorithm"], ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
+                # else:
+                #     # axs[i].errorbar(result["mean_denormed_prediction"], axis_positions[plot_position_counter], xerr=result["denormed_std"], label = result["algorithm"], ms = 12, marker="D", color = colour, elinewidth=2.0, capsize=8.0, capthick=2.0)
+                #     axs[i].errorbar(result["mean_denormed_prediction"], axis_positions[plot_position_counter], xerr=result["denormed_std"], label = result["algorithm"], ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
+                if data_type == "epoch" and ("density" in field.lower() or "beamFraction" in field):
+                    axs[i].errorbar(np.log10(result["mean_denormed_prediction"]), axis_positions[plot_position_counter], xerr = abs(np.log10(result["mean_denormed_prediction"]) - np.log10(result["denormed_std"])), label = result["algorithm"], ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
                 else:
-                    # axs[i].errorbar(result["mean_denormed_prediction"], axis_positions[plot_position_counter], xerr=result["denormed_std"], label = result["algorithm"], ms = 12, marker="D", color = colour, elinewidth=2.0, capsize=8.0, capthick=2.0)
                     axs[i].errorbar(result["mean_denormed_prediction"], axis_positions[plot_position_counter], xerr=result["denormed_std"], label = result["algorithm"], ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
                 plot_position_counter += 1
         
-        if field == "B0strength":
+        if "B0" in field:
             axs[i].fill_between(x = [result["true_value_before_log"] - 0.07, result["true_value_before_log"] + 0.07], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
-        if field == "beamFraction":
-            axs[i].fill_between(x = [result["true_value_before_log"] - 0.0001, result["true_value_before_log"] + 0.0003], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
-        if field == "pitch":
+            axs[i].axvline(x = result["true_value_before_log"], color = "black", linestyle=":", lw = 2.0, label="JET (Cottrell '93) value")
+        elif "beamFraction" in field or "conc" in field:
+            if data_type == "epoch":
+                axs[i].fill_between(x = [np.log10(result["true_value_before_log"] - 0.0001), np.log10(result["true_value_before_log"] + 0.0003)], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
+                axs[i].axvline(x = np.log10(result["true_value_before_log"]), color = "black", linestyle=":", lw = 2.0, label="JET (Cottrell '93) value")
+            else:
+                axs[i].fill_between(x = [np.log10(10**result["true_value_before_log"] - 0.0001), np.log10(10**result["true_value_before_log"] + 0.0003)], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
+                axs[i].axvline(x = result["true_value_before_log"], color = "black", linestyle=":", lw = 2.0, label="JET (Cottrell '93) value")
+        elif "pitch" in field:
             axs[i].fill_between(x = [result["true_value_before_log"] - 0.05, result["true_value_before_log"] + 0.04], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
-        if field == "backgroundDensity":
-            axs[i].fill_between(x = [(result["true_value_before_log"] / 10**20) - 0.05, (result["true_value_before_log"] / 10**20) + 0.05], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
-            axs[i].axvline(x = result["true_value_before_log"] / 10**20, color = "black", linestyle=":", lw = 2.0, label="Cottrell '93 value")
-        else:
-            axs[i].axvline(x = result["true_value_before_log"], color = "black", linestyle=":", lw = 2.0, label="Cottrell '93 value")
+            axs[i].axvline(x = result["true_value_before_log"], color = "black", linestyle=":", lw = 2.0, label="JET (Cottrell '93) value")
+        elif "density" in str(field).lower():
+            if data_type == "epoch":
+                axs[i].fill_between(x = [np.log10(result["true_value_before_log"]) - 0.05, np.log10(result["true_value_before_log"]) + 0.05], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
+                axs[i].axvline(x = np.log10(result["true_value_before_log"]), color = "black", linestyle=":", lw = 2.0, label="JET (Cottrell '93) value")
+            else:
+                axs[i].fill_between(x = [result["true_value_before_log"] - 0.05, result["true_value_before_log"] + 0.05], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
+                axs[i].axvline(x = result["true_value_before_log"], color = "black", linestyle=":", lw = 2.0, label="JET (Cottrell '93) value")
+
         best = field_results[abs(field_results["mean_denormed_error"]) == abs(field_results["mean_denormed_error"]).min()]
         hyd = field_results[field_results["algorithm"] == "aeon.HydraRegressor"]
         print(f"Best algorithm for {field}: {best['algorithm'].values[0]}, Prediction: {best['mean_denormed_prediction'].values[0]}, S.D. {best['denormed_std'].values[0]}, Hydra Prediction: {hyd['mean_denormed_prediction'].values[0]}, Hydra S.D. {hyd['denormed_std'].values[0]}")
-
+   
     axs[0].legend(loc='center', ncols = 2, bbox_to_anchor = (0.3, 2.0))
     fig.supxlabel("Prediction", fontsize = 24)
     fig.supylabel("Target Field", fontsize = 24)
-    axs[0].set_xlim(1.0, 5.0)
-    axs[1].set_xlim(18.5, 20.0)
-    axs[2].set_xlim(-5.0, -2.0)
-    axs[3].set_xlim(0.0, 1.0)
+    axs[0].set_xlim(1.0, 5.0) # B0
+    axs[1].set_xlim(0.0, 1.0) # pitch
+    axs[2].set_xlim(18.5, 20.0) # log(density)
     # axs[2].set_xscale("log")
-    axs[2].xaxis.set_major_formatter(ticker.FormatStrFormatter("%.1f"))
-    axs[2].xaxis.set_minor_formatter(ticker.FormatStrFormatter("%.1f"))
-    axs[3].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
-    # axs[3].set_xscale("log")
-
+    axs[3].set_xlim(-5, -2) # log(alpha conc)
+    if len(axs) > 4:
+        axs[4].set_xlim(10, 10000) # background temperature
+        axs[4].set_xscale("log")
+    # axs[2].xaxis.set_major_formatter(ticker.FormatStrFormatter("%.1f"))
+    # axs[2].xaxis.set_minor_formatter(ticker.FormatStrFormatter("%.1f"))
+    # axs[3].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
     plt.tight_layout()
     for ax in axs:
         ax.grid(axis="x", which="both")
@@ -924,6 +931,18 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
+        "--epoch",
+        action="store_true",
+        help="Use data handling for EPOCH-style data.",
+        required = False
+    )
+    parser.add_argument(
+        "--linear",
+        action="store_true",
+        help="Use data handling for James' linear data.",
+        required = False
+    )
+    parser.add_argument(
         "--matrix",
         action="store_true",
         help="Matrix plot growth rate and heating investigation.",
@@ -1024,7 +1043,7 @@ if __name__ == "__main__":
     if args.energy:
         energy_plots_for_papers(args.dataFolder, args.outputFolder)
     if args.cottrell:
-        plot_cottrell_regression(args.dataFile)
+        plot_cottrell_regression(args.dataFile, data_type = "linear" if args.linear else "epoch")
     if args.lhd:
         plot_lhd_regression(args.dataFile)
     if args.predictions:

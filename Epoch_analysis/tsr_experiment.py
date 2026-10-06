@@ -773,11 +773,12 @@ def regress_trainLinear(
             "B0", 
             "log(density)", 
             "log(fi_conc)",
-            "pitch", 
+            "pitch",
+            "background_temp"
         ]
         test_files = glob.glob(str(testDatapath))
         test_true_params = pd.DataFrame.from_dict(
-            {"filename": ["cottrell_93_experimental_data.csv"], "B0" : [2.21], "log(density)" : [19.23], "log(fi_conc)" : [-3.82], "pitch" : [0.4]}, orient="columns"
+            {"filename": ["cottrell_93_experimental_data.csv"], "B0" : [2.21], "log(density)" : [19.23], "log(fi_conc)" : [-3.82], "pitch" : [0.4], "background_temp" : [3.0]}, orient="columns"
         )
         csv_sep = ","
 

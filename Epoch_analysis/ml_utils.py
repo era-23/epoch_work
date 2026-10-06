@@ -215,7 +215,7 @@ class SpectralFeatures1D:
     spectrumMean : float = 0.0 # Mean of spectral power
     spectrumVar : float = 0.0 # Variance in spectral power
 
-catch22_short_names = {
+CATCH22_SHORT_NAMES = {
     'DN_HistogramMode_5' : 'mode_5',
     'DN_HistogramMode_10' : 'mode_10',
     'CO_f1ecac' : 'acf_timescale',
