@@ -647,9 +647,9 @@ def regress_trainEpoch_testCottrell(
     # plt.show()
 
     if not os.path.exists(resultsFilepath):
-        if not resultsFilepath.name.endswith(".csv"):
+        if not resultsFilepath.name.endswith(".csv") and not resultsFilepath.exists():
             os.makedirs(resultsFilepath)
-        else:
+        elif not resultsFilepath.parent.exists():
             os.makedirs(resultsFilepath.parent)
     resultsFilepath = resultsFilepath if str(resultsFilepath).endswith(".csv") else resultsFilepath / "cottrell_regression_results.csv"
     with open(resultsFilepath, "w") as csvfile:
@@ -791,6 +791,9 @@ def regress_trainLinear(
         data : xr.DataTree = xr.open_datatree(f)
         inputData.append(data)
         data.close()
+
+    if len(inputData) == 0:
+        raise Exception(f"No input data found at '{training_dir}' (searching for '*.h5')")
 
     inputFreqs = np.array(inputData[0]["spectra"].F)
     if len(inputData) > 1:
