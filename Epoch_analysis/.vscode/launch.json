@@ -1056,9 +1056,11 @@
             "args": [
                 "--unify",
                 "--source",
-                    "/home/era536/Documents/Epoch/Data/2026_analysis/jwsc_linear_data/epoch-jet_data_range_alpha/results/",
+                    "/home/era536/Documents/Epoch/Data/2026_analysis/thesis_data/simulation_linear/lhd_range/",
+                "--destination",
+                    "/home/era536/Documents/Epoch/Data/2026_analysis/thesis_data/simulation_linear/lhd_range/combined_files/",
                 "--file_pattern",
-                    "*.json",
+                    "*.h5",
                 // "--search_text",
                 //     "b0_angle = 92",
                 // "--replace_text",

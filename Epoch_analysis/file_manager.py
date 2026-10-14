@@ -5,6 +5,7 @@ import os
 import shutil
 from pathlib import Path
 
+import h5py
 import pandas as pd
 
 
@@ -95,7 +96,52 @@ def unify_results_csv(file_paths : list[str], output_path: str) -> None:
         f"Successfully merged {len(file_paths)} files into '{output_path}'."
     )
 
-# Example usage
+def unify_h5_directory(input_dir: str, output_file: str) -> None:
+    """Combines all HDF5 files in input_dir into a single unified output_file."""
+    input_path = Path(input_dir)
+    output_path = Path(output_file)
+
+    if not input_path.is_dir():
+        raise ValueError(f"Input directory does not exist: {input_dir}")
+
+    # Find all h5/hdf5 files in the directory
+    h5_files = sorted(list(input_path.glob("*.h5")) + list(input_path.glob("*.hdf5")))
+
+    # Exclude output file if it resides in the same directory
+    h5_files = [f for f in h5_files if f.resolve() != output_path.resolve()]
+
+    if not h5_files:
+        print(f"No HDF5 files found in {input_dir}.")
+        return
+
+    print(f"Found {len(h5_files)} file(s) to combine into '{output_file}'...")
+
+    with h5py.File(output_path, "w") as h5_out:
+        for idx, file_path in enumerate(h5_files):
+            # Group datasets from each file under a unique subgroup key
+            group_name = f"file_{idx}_{file_path.stem}"
+            source_group = h5_out.create_group(group_name)
+            source_group.attrs["original_filename"] = file_path.name
+
+            with h5py.File(file_path, "r") as h5_in:
+                # Recursively copy all datasets and attributes
+                def copy_visitor(name, obj):
+                    if isinstance(obj, h5py.Dataset):
+                        h5_in.copy(name, source_group, name=name)
+                    elif isinstance(obj, h5py.Group) and name not in source_group:
+                        source_group.create_group(name)
+
+                h5_in.visititems(copy_visitor)
+
+                # Copy top-level root attributes (if any exist)
+                for attr_key, attr_val in h5_in.attrs.items():
+                    source_group.attrs[attr_key] = attr_val
+
+            print(f"  [+] Merged: {file_path.name} -> /{group_name}")
+
+    print("Unification complete.")
+
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser("parser")
@@ -151,7 +197,7 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    source_directory = args.source
+    source_directory : Path = args.source
     file_pattern = args.file_pattern
 
     if not source_directory.is_dir():
@@ -167,6 +213,8 @@ if __name__ == "__main__":
             print(f"Unifying CSV results files in {source_directory} matching pattern '{file_pattern}'")
             files_to_merge = list(source_directory.glob(file_pattern))
             unify_results_csv(files_to_merge, str(source_directory / "unified_output.csv"))
+        elif str(file_pattern).endswith("h5"):
+            unify_h5_directory(source_directory.absolute(), str(args.destination / "unified.h5"))
         else:
             print("Unknown filetype in pattern.")
 
