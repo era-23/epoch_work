@@ -585,7 +585,7 @@ def plot_lhd_regression(csvResultsPath : Path, ground_truth_spectra_name : str, 
             axs[i].fill_between(x = [result["true_value_before_log"] - 0.07, result["true_value_before_log"] + 0.07], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), hatch = error_hatch, color = error_color, alpha = error_alpha)
             axs[i].axvline(x = result["true_value_before_log"], color = "black", linestyle=":", lw = 2.0, label=f"LHD #{lhd_number}")
         elif "beamFraction" in field or "conc" in field:
-            axs[i].fill_between(x = [np.log10(10**result["true_value_before_log"] / 10.0), np.log10(10**result["true_value_before_log"] * 10.0)], y1 = 0, y2 = 1, hatch = error_hatch, transform = axs[i].get_xaxis_transform(), color = error_color, alpha = error_alpha)
+            axs[i].fill_between(x = [np.log10(10**result["true_value_before_log"] / 5.0), np.log10(10**result["true_value_before_log"] * 2.0)], y1 = 0, y2 = 1, hatch = error_hatch, transform = axs[i].get_xaxis_transform(), color = error_color, alpha = error_alpha)
             axs[i].axvline(x = result["true_value_before_log"], color = "black", linestyle=":", lw = 2.0, label=f"LHD #{lhd_number}")
         elif "pitch" in field:
             axs[i].fill_between(x = [0.0, result["true_value_before_log"] + 0.25], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), hatch = error_hatch, color = error_color, alpha = error_alpha)
@@ -607,8 +607,8 @@ def plot_lhd_regression(csvResultsPath : Path, ground_truth_spectra_name : str, 
     fig.supylabel("Target Field", fontsize = 24)
     axs[0].set_xlim(1.4, 1.6)
     axs[1].set_xlim(0.0, 0.5)
-    axs[2].set_xlim(18.5, 19.75)
-    axs[3].set_xlim(-5.0, -3.0)
+    axs[2].set_xlim(18.5, 20.0)
+    axs[3].set_xlim(-5.0, -2.0)
     axs[4].set_xlim(10.0, 400.0)
     #axs[2].set_xscale("log")
     #axs[2].xaxis.set_major_formatter(ticker.FormatStrFormatter("%.1f"))

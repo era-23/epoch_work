@@ -1,5 +1,6 @@
 import glob
 from pathlib import Path
+import h5py
 from matplotlib import pyplot as plt
 import numpy as np
 import argparse
@@ -372,8 +373,186 @@ def estimate_B0_from_csv_dat_spectra(csv_dat_directory : Path, known_B0 = 1.581,
     
     # print(f"Max frequency mean: {np.mean(maxCoords)} median: {np.median(maxCoords)} var: {np.var(maxCoords)} sd: {np.std(maxCoords)}")
 
-def estimate_B0_from_h5_spectra(h5_directory : Path, particle : str = "D+"):
-    print("To implement")
+def estimate_B0_from_h5_spectra(h5_directory : Path, particle : str):
+
+    print_plot_all = False
+    
+    plt.rcParams.update({'axes.titlesize': 20.0})
+    plt.rcParams.update({'axes.labelsize': 20.0})
+    plt.rcParams.update({'xtick.labelsize': 20.0})
+    plt.rcParams.update({'ytick.labelsize': 20.0})
+    plt.rcParams.update({'legend.fontsize': 20.0})
+
+    spectrum_paths = glob.glob(str(h5_directory / "*.h5"))
+    originalB0s = []
+    recoveredB0s_rawFirstPeak = []
+    recoveredB0s_rawPeakSeparation = []
+    recoveredB0s_max = []
+    recoveredB0s_firstPeak = []
+    recoveredB0s_fftPeakSeparation = []
+    recoveredB0s_hybrid = []
+
+    inputData = []
+    for f in spectrum_paths:
+        data : xr.DataTree = xr.open_datatree(f)
+        inputData.append(data)
+        data.close()
+
+    if len(inputData) == 0:
+        raise Exception(f"No input data found at '{h5_directory}' (searching for '*.h5')")
+
+    inputFreqs = np.array(inputData[0]["spectra"].F)
+    if len(inputData) > 1:
+        assert np.allclose(inputData[0]["spectra"].F.data, inputData[1]["spectra"].F.data)
+        inputParams = np.concat((np.array(inputData[0]["parameters"].X.data, dtype=np.float64), np.array(inputData[1]["parameters"].X.data, dtype=np.float64)), axis=1)
+        inputSpectra = np.concat((np.array(inputData[0]["spectra"].Y.data, dtype=np.float64), np.array(inputData[1]["spectra"].Y.data, dtype=np.float64)), axis=1).T
+    else:
+        inputParams = np.array(inputData[0]["parameters"].X.data, dtype=np.float64)
+        inputSpectra = np.array(inputData[0]["spectra"].Y.data, dtype=np.float64).T
+
+    max_freq = inputFreqs[-1]
+    print(set(np.diff(inputFreqs)))
+    originalB0s = inputParams[0]
+    mean_B0 = np.mean(originalB0s)
+
+    for s in range(inputSpectra.shape[0]):
+        spectrum = inputSpectra[s]
+        peakFind_data = spectrum
+        p, pd = find_peaks(spectrum, height=float(0.05*peakFind_data.max()), prominence=float(0.05*peakFind_data.max()), distance = 0.03*len(peakFind_data))
+        peak_seps = []
+        for i in range(1, len(p)):
+            peak_seps.append(float(inputFreqs[p[i]] - inputFreqs[p[i-1]]))
+        peak_seps = np.array(peak_seps)
+        if len(peak_seps) > 1:
+            ps_mean = peak_seps.mean()
+            ps_sd = peak_seps.std()
+            mean_mode_peak_sep = peak_seps[(peak_seps >= ps_mean - ps_sd) & (peak_seps <= ps_mean + ps_sd)].mean()
+            recovered_B0_rawPeakSeps = (mean_mode_peak_sep * 1e6 * 2.0 * np.pi * ppp.deuteron.mass) / ppp.deuteron.charge
+        elif len(peak_seps) > 0:
+            recovered_B0_rawPeakSeps = (inputFreqs[p] * 1e6 * 2.0 * np.pi * ppp.deuteron.mass) / ppp.deuteron.charge
+            mean_mode_peak_sep = 0.0
+        else:
+            print("No peaks identified, writing dataset mean")
+            recovered_B0_rawPeakSeps = (mean_B0 * 1e6 * 2.0 * np.pi * ppp.deuteron.mass) / ppp.deuteron.charge
+            mean_mode_peak_sep = 0.0
+        if print_plot_all:
+            print(f"Peak positions (MHz): {inputFreqs[p]}")
+            print(f"Peak seprtions (MHz): {peak_seps}")
+            print(f"Mean(mode) of peak separations: {mean_mode_peak_sep}")
+            print(f"Recovered B0 from Mean(mode) of peak separations: {(mean_mode_peak_sep * 1e6 * 2.0 * np.pi * ppp.deuteron.mass) / ppp.deuteron.charge}")
+            plt.plot(inputFreqs, spectrum, label = "original")
+            plt.scatter(inputFreqs[p], spectrum[p], marker = "+", color = "green", label = "peaks")
+            plt.legend()
+            plt.title(f"Spectrum #{s}")
+            plt.show()
+
+        recovered_B0_rawPeakSeps = (mean_mode_peak_sep * 1e6 * 2.0 * np.pi * ppp.deuteron.mass) / ppp.deuteron.charge
+
+        data = xr.DataArray(data = spectrum, coords = {"frequency" : inputFreqs}, name = "power", dims = "frequency")
+        og_spec : xr.DataArray = xrft.xrft.fft(data, dim="frequency", true_amplitude=False, true_phase=True, window=None)
+        spec : xr.DataArray = np.abs(og_spec)
+        # spec.plot()
+        # plt.show()
+        spec = spec.sel(freq_frequency = slice(0.0, None))
+        spec = spec.where(spec.freq_frequency >= float(0.01*spec.freq_frequency.max().data), other=0.0)
+        if print_plot_all:
+            spec.plot()
+            plt.show()
+
+        # Max freq method
+        maxFreqFreq = float(spec.idxmax().data)
+        maxFreq_MHz = 1.0 / maxFreqFreq # MHz
+        maxFreq_Hz = maxFreq_MHz * 1e6
+        maxFreq_radPs = maxFreq_Hz * 2.0 * np.pi
+        maxPower = spec.max().data
+        # Recover B0
+        recovered_B0_1 = (maxFreq_radPs * ppp.deuteron.mass) / ppp.deuteron.charge
+
+        # Peak finding method
+        p, pd = find_peaks(spec.data, height=float(0.05*spec.max().data), prominence=float(0.05*spec.max().data), distance = 0.01*len(spec))
+        peakFreqFreq = float(spec.freq_frequency[p[0]])
+        peakFreq_MHz = 1.0/peakFreqFreq
+        peakFreq_Hz = peakFreq_MHz * 1e6
+        peakFreq_radPs = peakFreq_Hz * 2.0 * np.pi
+        recovered_B0_2 = (peakFreq_radPs * ppp.deuteron.mass) / ppp.deuteron.charge
+
+        # Peak separation method
+        sepFreqFreq = float(spec.freq_frequency[p[0]])
+        sepFreq_MHz = 1.0 / sepFreqFreq
+        sepFreq_Hz = sepFreq_MHz * 1e6
+        sepFreq_radPs = sepFreq_Hz * 2.0 * np.pi
+        if len(p) > 1:
+            seps = []
+            for i in range(1, len(p)):
+                seps.append(float(spec.freq_frequency[p[i]]) - float(spec.freq_frequency[p[i-1]]))
+            sepFreq_radPs = (1.0 / np.mean(seps)) * 1e6 * 2.0 * np.pi
+        recovered_B0_3 = (sepFreq_radPs * ppp.deuteron.mass) / ppp.deuteron.charge
+
+        known_B0 = originalB0s[s]
+
+        # print(f"Max: {maxPower}, Max index: {spec.argmax().data}, Max coord: {maxFreqFreq}, Max coord in OG units: {maxFreq_MHz}")
+        assert spec.coords["freq_frequency"][-1] == np.max(spec.coords["freq_frequency"])
+        if print_plot_all:
+            plt.scatter(maxFreqFreq, maxPower, color = "red", marker = "x", label = "Max power")
+            plt.scatter(spec.freq_frequency[p].data, spec[p].data, color = "green", marker = "+", label = "Power peaks")
+            spec.plot()
+            plt.legend()
+            plt.title(f"True B0: {known_B0:.3f}, Max B0: {recovered_B0_1.value:.3f}, Peak B0: {recovered_B0_2.value:.3f}, Sep B0: {recovered_B0_3.value:.3f}")
+            plt.show()
+
+            print(f"Spectrum #{s}: Original B0: {known_B0 * u.T}, recovered B0 : {recovered_B0_1}")
+            if abs(recovered_B0_1.value - known_B0) > 1.0:
+                print("-------------------------------------------------------")
+                print(f"Spectrum #{s}: Poor recovery of B0 -- error = {recovered_B0_1.value - known_B0}")
+                # print(f"{simName} parameters: B0 {known_B0}, pitch {data_xr.pitch}, density {data_xr.backgroundDensity}, beam frac {data_xr.beamFraction}.")
+                # print(f"Percentiles: B0 {int(np.rint(((known_B0 - 1.0) / 4.0) * 100.0))}, pitch {int(np.rint(((data_xr.pitch - 0.01) / (0.99-0.01)) * 100.0))}, density {int(np.rint(((np.log10(data_xr.backgroundDensity) - 19) / 1.0) * 100.0))} beam frac {int(np.rint(((np.log10(data_xr.beamFraction) + 2) / -2.0) * 100.0))}")
+                print("-------------------------------------------------------")
+
+        # Record
+        recoveredB0s_rawPeakSeparation.append(recovered_B0_rawPeakSeps.value)
+        recoveredB0s_max.append(recovered_B0_1.value)
+        recoveredB0s_firstPeak.append(recovered_B0_2.value)
+        recoveredB0s_fftPeakSeparation.append(recovered_B0_3.value)
+        recoveredB0s_hybrid.append(np.mean([recovered_B0_3.value, recovered_B0_2.value]))
+
+    plt.figure(figsize=(12,10))
+    plt.scatter(originalB0s, recoveredB0s_max, label = "Recovered by max FFT peak")
+    plt.plot(sorted(originalB0s), sorted(originalB0s), "k--", label = "ideal B0 recovery")
+    plt.legend()
+    plt.title(f"Linear data, JET range -- r^2: {r2_score(originalB0s, recoveredB0s_max)}")
+    plt.show()
+
+    plt.figure(figsize=(12,10))
+    plt.scatter(originalB0s, recoveredB0s_firstPeak, label = "Recovered by first FFT peak")
+    plt.plot(sorted(originalB0s), sorted(originalB0s), "k--", label = "ideal B0 recovery")
+    plt.legend()
+    plt.title(f"Linear data, JET range -- r^2: {r2_score(originalB0s, recoveredB0s_firstPeak)}")
+    plt.show()
+
+    plt.figure(figsize=(12,10))
+    plt.scatter(originalB0s, recoveredB0s_fftPeakSeparation, label = "Recovered by FFT peak separation")
+    plt.plot(sorted(originalB0s), sorted(originalB0s), "k--", label = "ideal B0 recovery")
+    plt.legend()
+    plt.title(f"Linear data, JET range -- r^2: {r2_score(originalB0s, recoveredB0s_fftPeakSeparation)}")
+    plt.show()
+
+    plt.figure(figsize=(12,10))
+    plt.scatter(originalB0s, recoveredB0s_hybrid, label = "Recovered by mean(first FFT peak, peak separation)")
+    plt.plot(sorted(originalB0s), sorted(originalB0s), "k--", label = "ideal B0 recovery")
+    plt.legend()
+    plt.title(f"Linear data, JET range -- r^2: {r2_score(originalB0s, recoveredB0s_hybrid)}")
+    plt.show()
+
+    plt.figure(figsize=(12,10))
+    plt.scatter(originalB0s, recoveredB0s_rawPeakSeparation, label = "Recovered by raw peak separation")
+    plt.plot(sorted(originalB0s), sorted(originalB0s), "k--", label = "ideal B0 recovery")
+    plt.legend()
+    plt.title(f"Linear data, JET range -- r^2: {r2_score(originalB0s, recoveredB0s_rawPeakSeparation)}")
+    plt.show()
+
+    # for k, v in recoveredB0s_max.items():
+    #     print(f"{k} -- Actual B0: {known_B0:.5f} T, Recovered B0: {v:.5f} T, Error = {(v - known_B0):.5f} T ({(100.0 * (v - known_B0) / known_B0):.5f}%)")
+
 
 if __name__ == "__main__":
 
@@ -424,11 +603,20 @@ if __name__ == "__main__":
         type=str,
         nargs="*"
     )
+    parser.add_argument(
+        "--particle",
+        action="store",
+        help="Particle used as fast ion in simulation -- likely to be either alpha ('He-4 2+') or deuterium ('D+').",
+        required = False,
+        type=Path
+    )
     
     args = parser.parse_args()
 
     if args.recoverB0:
         if len(glob.glob(str(args.dir / "*.dat"))) > 0:
             estimate_B0_from_csv_dat_spectra(args.dir)
-        else:
+        elif len(glob.glob(str(args.dir / "*.csv"))) > 0:
             estimate_B0_from_netcdf_spectra(args.dir, args.fields)
+        elif len(glob.glob(str(args.dir / "*.h5"))) > 0:
+            estimate_B0_from_h5_spectra(args.dir, args.particle)
