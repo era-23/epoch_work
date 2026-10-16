@@ -898,9 +898,10 @@ def process_simulation_batch(
                 # ### Process "nonlinear saturated phase" from nonlinear saturation to end
 
                 # Record idx/times
-                for phaseName, phase_idx in transition_indices:
-                    setattr(fieldStats, f"{phaseName}_idx", phase_idx)
-                    setattr(fieldStats, f"{phaseName}_time", time_coords[phase_idx])
+                for phaseName, phase_idx in transition_indices.items():
+                    if phase_idx is not None:
+                        setattr(fieldStats, f"{phaseName}_idx", phase_idx)
+                        setattr(fieldStats, f"{phaseName}_time", time_coords[phase_idx])
 
                 # Process
                 if transition_indices["MCI_start"] is not None:
