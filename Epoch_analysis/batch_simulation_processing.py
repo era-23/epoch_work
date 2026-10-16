@@ -1,5 +1,6 @@
 import argparse
 import os
+import re
 import shutil as sh
 import time
 import warnings
@@ -738,18 +739,38 @@ def process_simulation_batch(
 
     print(f"Using {min(num_workers, len(angle_folders))} processing elements...")
 
+    RUN_FOLDER_PATTERN = re.compile(r"^run_\d{1,2}$")
     run_folders_dict = {}
+    folder_count = 0
     for angle_folder in angle_folders:
         angle_val = angle_folder.name
-        if runNumber is None:
-            sim_folders = list((angle_folder / "run_0_1000000/run_0_10000/run_0_100").glob("run_*"))
-        else:
-            sim_folders = list((angle_folder / "run_0_1000000/run_0_10000/run_0_100").glob(f"run_{runNumber}"))
-        for sf in sim_folders:
-            sim_name = sf.name
-            if sim_name not in run_folders_dict:
-                run_folders_dict[sim_name] = {}
-            run_folders_dict[sim_name][angle_val] = sf
+
+        # os.walk yields (dirpath, dirnames, filenames) top-down
+        for root, dirs, files in os.walk(angle_folder):
+            
+            # Check if the current directory matches the target run folder criteria
+            folder_name = os.path.basename(root)
+            
+            matches_pattern = (
+                RUN_FOLDER_PATTERN.match(folder_name) if runNumber is None 
+                else folder_name == f"run_{runNumber}"
+            )
+
+            if matches_pattern:
+                # Check if current directory contains any .sdf file
+                if any(f.endswith(".sdf") for f in files):
+                    sim_path = Path(root)
+                    
+                    if folder_name not in run_folders_dict:
+                        run_folders_dict[folder_name] = {}
+                    run_folders_dict[folder_name][angle_val] = sim_path
+
+                    folder_count += 1
+
+                    # Performance Boost: Don't search deeper inside a matching run directory
+                    dirs.clear()
+
+    print(f"Found {folder_count} folders with {len(angle_folders)} angles.")
 
     fontsize_config = {
         'axes.titlesize': 26.0 if bigLabels else 18.0,
