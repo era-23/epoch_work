@@ -104,6 +104,7 @@ def power_spectrum(dataFile : Path, field : str, max_freq_MHz : float = 120.5, d
     B0 = float(data.attrs["B0strength"])
     one_gf_hz = data.ionGyrofrequency_radPs / (2.0 * np.pi)
     print(one_gf_hz)
+    one_gf_MHz = (one_gf_hz * u.Hz).to(u.MHz).value
     print((one_gf_hz * u.Hz).to(u.MHz))
     # cottrell_gfs = 187E6 / one_gf_hz
     # print(cottrell_gfs)
@@ -117,17 +118,60 @@ def power_spectrum(dataFile : Path, field : str, max_freq_MHz : float = 120.5, d
     coords_MHz_trunc = coords_MHz[coords_MHz < max_freq_MHz]
     fieldData_trunc = fieldData[:len(coords_MHz_trunc)]
     fieldName = epoch_utils.fieldNameToText(field)
+
+    DARK_GREEN = "#006400"
     
     if doPlot:
-        fig, axs = plt.subplots(figsize=(15, 10))
-        # axs.plot(coords_MHz, fieldData)
-        axs.plot(coords_MHz_trunc[10:], fieldData_trunc[10:])
-        # axs.set_xticks(ticks=np.arange(np.floor(coords_MHz[0]), np.ceil(coords_MHz[-1])+1.0, 1.0), minor=True)
+        fig, axs = plt.subplots(figsize=(12, 10))
+
+        # Plot truncated data
+        axs.plot(coords_MHz_trunc, fieldData_trunc)
+
+        # Define coordinate limits and formatting
         axs.grid(which='both', axis='x')
-        # axs.set_xlabel(r"Frequency [$\Omega_{ci}$]")
-        axs.set_xlabel(r"Frequency [MHz]")
-        axs.set_ylabel(f"Power spectrum of {fieldName} over all k [T^2]")
-        plt.title(f"{dataFile.name} --\nB0:{B0},log(density): {np.log10(float(data.attrs['backgroundDensity']))}, alpha conc: {float(data.attrs["beamFraction"])},\npitch: {float(data.attrs["pitch"])}, background temp: {(2378928 * sc.k * u.J).to(u.eV)}")
+        axs.set_xlabel(r"Frequency [MHz]", fontsize=24)
+        axs.set_ylabel(f"Power spectrum of {fieldName} over all k [T^2]", fontsize=24)
+        axs.set_xlim(0.0, max_freq_MHz)
+
+        ymin, ymax = axs.get_ylim()
+
+        # Vertical lines at integer gyrofrequencies
+        gf_frequencies = np.arange(one_gf_MHz, max_freq_MHz, one_gf_MHz)
+        axs.vlines(x=gf_frequencies, ymin=ymin, ymax=ymax, colors=DARK_GREEN, linestyles="--", alpha=0.5)
+
+        # --- SECONDARY X-AXIS (Top: Gyrofrequencies \Omega_{ci}) ---
+        # Forward and inverse conversion functions between MHz and \Omega_{ci}
+        mhz_to_oci = lambda x: x / one_gf_MHz
+        oci_to_mhz = lambda x: x * one_gf_MHz
+
+        secax = axs.secondary_xaxis('top', functions=(mhz_to_oci, oci_to_mhz))
+        secax.set_xlabel(r"Frequency [$\Omega_{ci}$]", fontsize=24, color=DARK_GREEN)
+
+        # Set top ticks to land explicitly at whole gyrofrequencies
+        max_oci = max_freq_MHz / one_gf_MHz
+        secax.set_xticks(np.arange(1, np.floor(max_oci) + 1, 1))
+
+        secax.spines['top'].set_color(DARK_GREEN)
+        secax.tick_params(axis='x', which='both', colors=DARK_GREEN, labelsize=22)
+
+        # --- INCREASE TICK LABEL SIZES ---
+        # Primary axes tick labels
+        axs.tick_params(axis='both', which='major', labelsize=22)
+        axs.tick_params(axis='both', which='minor', labelsize=20)
+
+        # Secondary axis tick labels
+        secax.tick_params(axis='x', which='major', labelsize=22)
+
+        # Title
+        plt.title(
+            f"{dataFile.name} --\nB0:{B0}, log(density): {np.log10(float(data.attrs['backgroundDensity']))}, "
+            f"alpha conc: {float(data.attrs['beamFraction'])},\npitch: {float(data.attrs['pitch'])}, "
+            f"background temp: {(2378928 * sc.k * u.J).to(u.eV)}",
+            fontsize=14,
+            pad=15
+        )
+
+        plt.tight_layout()
         plt.show()
 
         # fig, axs = plt.subplots(figsize=(15, 10))

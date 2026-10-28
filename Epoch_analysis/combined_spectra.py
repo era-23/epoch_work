@@ -494,12 +494,6 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
-        "--recoverB0",
-        action="store_true",
-        help="Attempt to analytically recover B0 from ICE analysis spectra.",
-        required = False
-    )
-    parser.add_argument(
         "--fields",
         action="store",
         help="Fields on which to calculate iciness.",
@@ -529,7 +523,4 @@ if __name__ == "__main__":
 
     if args.plotIciness:
         plot_iciness(combined_dir, args.fields, args.iceMetrics)
-
-    if args.recoverB0:
-        estimate_B0_from_spectra(combined_dir, args.fields)
 

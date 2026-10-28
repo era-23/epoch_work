@@ -1,4 +1,5 @@
 .venv/
+.uv_venv/
 /Data/*
 .vscode/launch.json
 .virtualenvs/
