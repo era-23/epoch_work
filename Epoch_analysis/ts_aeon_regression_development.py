@@ -1,5 +1,6 @@
 import argparse
 import glob
+import itertools
 import os
 from pathlib import Path
 import warnings
@@ -20,6 +21,7 @@ from aeon.transformations.collection import Normalizer
 
 from sklearn.metrics import root_mean_squared_error, r2_score
 from scipy.stats import linregress
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
 
 import epoch_utils
@@ -45,6 +47,291 @@ warnings.filterwarnings("ignore")
 # plt.rcParams.update({'xtick.labelsize': 28.0})
 # plt.rcParams.update({'ytick.labelsize': 28.0})
 # plt.rcParams.update({'legend.fontsize': 24.0})
+
+# Helper function to evaluate a single cross-validation fold concurrently
+def _process_fold(
+        fold,
+        train,
+        test,
+        algorithm,
+        output_field,
+        inputSpectra,
+        output_values,
+        logFields,
+        aeon_only,
+        model_threads
+    ):
+    fold_time_start = time.process_time_ns()
+
+    train_x = [inputSpectra[t] for t in train]
+    train_y = output_values[train]
+    test_x = [inputSpectra[t] for t in test]
+    test_y = output_values[test]
+
+    # Renormalise for each split
+    train_y, scaler = ml_utils.normalise_data(train_y)
+    test_y, _ = ml_utils.normalise_data(test_y, scaler=scaler)
+
+    # Initialize model instance per thread to prevent race conditions
+    tsr = ml_utils.get_algorithm(algorithm, model_threads)
+
+    # Fit
+    tsr.fit(train_x, train_y)
+
+    # Predict
+    predictions = tsr.predict(test_x)
+    preds_denormed = ml_utils.denormalise_data(predictions, scaler)
+    test_y_denormed = ml_utils.denormalise_data(test_y, scaler)
+
+    if output_field in logFields:
+        preds_denormed = 10.0 ** preds_denormed
+        test_y_denormed = 10.0 ** test_y_denormed
+
+    if aeon_only:
+        score = tsr.score(test_x, test_y, metric='r2')
+        training_r2 = tsr.score(train_x, train_y, metric='r2')
+    else:
+        score = tsr.score(test_x, test_y)
+        training_r2 = tsr.score(train_x, train_y)
+
+    fold_predictions_records = []
+    testLens = [len(predictions), len(test), len(test_y), len(test_y_denormed), len(predictions), len(preds_denormed)]
+    assert len(set(testLens)) == 1
+
+    for i in range(len(predictions)):
+        predRecord = ml_utils.TSRPrediction(
+            algorithm=algorithm,
+            inputChannels=["growth_rates"],
+            outputQuantity=output_field,
+            datapoint_ID=test[i],
+            fold_ID=fold,
+            trueValue_normalised=test_y[i],
+            trueValue_denormalised=test_y_denormed[i][0],
+            trueValue_denormalised_log10=np.log10(test_y_denormed[i][0]),
+            predictedValue_normalised=predictions[i],
+            predictedValue_denormalised=preds_denormed[i][0],
+            predictedValue_denormalised_log10=np.log10(preds_denormed[i][0])
+        )
+        fold_predictions_records.append(predRecord)
+
+    fold_time_end = time.process_time_ns()
+    fold_time_s = (fold_time_end - fold_time_start) / 1e9
+
+    return {
+        "fold": fold,
+        "test_indices": test.tolist(),
+        "test_points": test_y.tolist(),
+        "test_points_denormed": test_y_denormed,
+        "predictions": list(predictions),
+        "predictions_denormed": preds_denormed,
+        "test_r2": score,
+        "train_r2": training_r2,
+        "records": fold_predictions_records,
+        "fold_time": fold_time_s
+    }
+
+def regress_from_hd5_multithread_beta(
+        directory: Path,
+        outputFields: list,
+        logFields: list,
+        algorithms: list,
+        logInputs: bool = False,
+        resultsFilepath: Path = None,
+        doPlot: bool = True,
+        noTitle: bool = False,
+        nThreads: int = 1,
+        numFolds=10,
+        numRepeats=1
+    ):
+
+    # Initialise results objects
+    battery = ml_utils.TSRBattery()
+    allPredictionsRecord = []
+    battery.package = "Aeon"
+
+    data_dir = directory / "data"
+    data_files = glob.glob(str(data_dir / "*.h5")) 
+    battery.directory = str(directory.resolve())
+    battery.algorithms = algorithms
+    battery.normalised = True
+    battery.scaledInputs = False
+
+    outputFields = ["B0", "log(density)", "log(fi_conc)", "pitch", "background_temp"]
+    inputData = []
+    aeon_only = np.all([str.startswith(a, "aeon") for a in algorithms])
+
+    # Input data
+    for f in data_files:
+        data: xr.DataTree = xr.open_datatree(f)
+        inputData.append(data)
+        data.close()
+
+    if len(inputData) > 1:
+        assert np.allclose(inputData[0]["spectra"].F.data, inputData[1]["spectra"].F.data)
+        inputParams = np.concat((np.array(inputData[0]["parameters"].X.data, dtype=np.float64), np.array(inputData[1]["parameters"].X.data, dtype=np.float64)), axis=1)
+        inputSpectra = np.concat((np.array(inputData[0]["spectra"].Y.data, dtype=np.float64), np.array(inputData[1]["spectra"].Y.data, dtype=np.float64)), axis=1).T
+    else:
+        inputParams = np.array(inputData[0]["parameters"].X.data, dtype=np.float64)
+        inputSpectra = np.array(inputData[0]["spectra"].Y.data, dtype=np.float64).T
+
+    targetFields = {k: v for k, v in zip(outputFields, inputParams)}
+
+    if logInputs:
+        for i in range(inputSpectra.shape[0]):
+            log_spec = epoch_utils.zero_negative_safe_log(inputSpectra[i])
+            inputSpectra[i] = log_spec
+
+    if aeon_only:
+        inputSpectra = np.expand_dims(inputSpectra, axis=1)
+
+    # Output data setup
+    battery.outputFields = np.array(outputFields)
+    battery.numOutputs = len(outputFields)
+    battery.logFields = np.array(logFields)
+    battery.original_output_means = dict.fromkeys(targetFields)
+    battery.original_output_stdevs = dict.fromkeys(targetFields)
+
+    battery.equalLengthTimeseries = True
+    battery.numObservations = inputSpectra.shape[0]
+    battery.numInputDimensions = 1
+    battery.numTimepointsIfEqual = inputSpectra.shape[-1]
+    battery.multivariate = battery.numInputDimensions > 1
+
+    battery.cvStrategy = "RepeatedKFolds"
+    battery.cvFolds = numFolds
+    battery.cvRepeats = numRepeats
+    battery.results = []
+
+    # Determine CPU allocation: allocate 1-2 internal threads per model worker
+    model_threads = 1  # 1 thread per model yields highest throughput for large batch worker pools
+    max_workers = max(1, nThreads // model_threads)
+
+    fold_times = []
+
+    for output_field, output_values in targetFields.items():
+        assert len(output_values) == inputSpectra.shape[0]
+        case_indices = np.arange(len(output_values))
+        output_values = np.array(output_values)
+        cv = RepeatedKFold(n_splits=numFolds, n_repeats=numRepeats)
+        tt_split = list(enumerate(cv.split(case_indices)))
+
+        _, scaler = ml_utils.normalise_data(output_values)
+        battery.original_output_means[output_field] = scaler.mean_
+        battery.original_output_stdevs[output_field] = np.sqrt(scaler.var_)
+
+        # Prepare containers for each algorithm's outputs
+        algo_results = {
+            algo: {
+                "test_indices": [], "test_points": [], "test_points_denormed": [],
+                "predictions": [], "predictions_denormed": [],
+                "test_R2s": [], "train_R2s": []
+            }
+            for algo in algorithms
+        }
+
+        # Build a single flat task list combining (algorithm, fold_split)
+        all_tasks = list(itertools.product(algorithms, tt_split))
+        print(f"{output_field} Regression: Launching {len(all_tasks)} total tasks across {max_workers} parallel workers...")
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_task = {
+                executor.submit(
+                    _process_fold,
+                    fold=fold,
+                    train=train,
+                    test=test,
+                    algorithm=algo,
+                    output_field=output_field,
+                    inputSpectra=inputSpectra,
+                    output_values=output_values,
+                    logFields=logFields,
+                    aeon_only=aeon_only,
+                    model_threads=model_threads
+                ): (algo, fold)
+                for algo, (fold, (train, test)) in all_tasks
+            }
+
+            for future in as_completed(future_to_task):
+                algo, fold = future_to_task[future]
+                res = future.result()
+                
+                # Route completed fold output to its corresponding algorithm container
+                algo_res = algo_results[algo]
+                algo_res["test_indices"].extend(res["test_indices"])
+                algo_res["test_points"].extend(res["test_points"])
+                algo_res["test_points_denormed"].extend(res["test_points_denormed"])
+                algo_res["predictions"].extend(res["predictions"])
+                algo_res["predictions_denormed"].extend(res["predictions_denormed"])
+                algo_res["test_R2s"].append(res["test_r2"])
+                algo_res["train_R2s"].append(res["train_r2"])
+                allPredictionsRecord.extend(res["records"])
+
+                fold_times.append(res["fold_time"])
+                print(f"[{algo}] Completed Fold {fold} in {res['fold_time']:.2f}s | Test R2: {res['test_r2']:.4f}")
+
+        # Post-processing and metric aggregation per algorithm
+        for algorithm in algorithms:
+            res = algo_results[algorithm]
+            
+            rmse, rmse_var, rmse_se = ml_utils.root_mean_squared_error(res["predictions"], res["test_points"])
+            r2 = np.mean(res["test_R2s"])
+            r2_sem = sem(res["test_R2s"])
+            r2_var = np.var(res["test_R2s"])
+
+            if math.isnan(r2):
+                r2 = r2_score(res["test_points"], res["predictions"])
+
+            mean_training_r2 = np.mean(res["train_R2s"])
+            train_r2_sem = sem(res["train_R2s"])
+            train_r2_var = np.var(res["train_R2s"])
+            
+            result = ml_utils.TSRResult()
+            result.output = output_field
+            result.algorithm = algorithm
+            result.cvR2_mean = r2
+            result.cvR2_var = r2_var
+            result.cvR2_stderr = r2_sem
+            result.cvRMSE_mean = rmse
+            result.cvRMSE_var = rmse_var
+            result.cvRMSE_stderr = rmse_se
+            result.cvMAE_mean = mean_absolute_error(y_true=res["test_points"], y_pred=res["predictions"], multioutput="uniform_average")
+            mae_all = mean_absolute_error(y_true=res["test_points"], y_pred=res["predictions"], multioutput="raw_values")
+            result.cvMAE_var = np.var(mae_all)
+            result.cvMAE_stderr = sem(mae_all)
+            result.cvMAPE_mean = mean_absolute_percentage_error(y_true=res["test_points"], y_pred=res["predictions"], multioutput="uniform_average")
+            mape_all = mean_absolute_percentage_error(y_true=res["test_points"], y_pred=res["predictions"], multioutput="raw_values")
+            result.cvMAPE_var = np.var(mape_all)
+            result.cvMAPE_stderr = sem(mape_all)
+            result.trainR2_mean = mean_training_r2
+            result.trainR2_stderr = train_r2_sem
+            result.trainR2_var = train_r2_var
+
+            battery.results.append(result)
+
+            if doPlot:
+                plot_predictions(
+                    algorithm_name=algorithm,
+                    field=output_field,
+                    sim_ids=res["test_indices"], 
+                    truth=res["test_points_denormed"],
+                    preds=res["predictions_denormed"],
+                    r2=result.cvR2_mean,
+                    rmse=result.cvRMSE_mean,
+                    saveFolder=resultsFilepath.parent / "predictions" / algorithm, 
+                    doLog=output_field in logFields,
+                    noTitle=noTitle
+                )
+
+    # Write results and all predictions
+    ml_utils.write_ML_result_to_file(battery, resultsFilepath)
+    if len(allPredictionsRecord) > 0:
+        prds_path = resultsFilepath.parent / "predictions"
+        prds_path.mkdir(parents=True, exist_ok=True)
+        with open(prds_path / f"{resultsFilepath.name.replace('.json', '').replace('.', '')}_predictions.csv", "w") as f:
+            w = DataclassWriter(f, allPredictionsRecord, ml_utils.TSRPrediction)
+            w.write()
+
+    print(f"Fold time: Mean: {np.mean(fold_times)}, Min: {np.min(fold_times)}, Max: {np.max(fold_times)}")
 
 def regress_from_hd5(
         directory : Path,
@@ -132,6 +419,8 @@ def regress_from_hd5(
     battery.cvFolds = numFolds
     battery.cvRepeats = numRepeats
     battery.results = []
+
+    fold_times = []
 
     # Dumb hack
     # best_results = {"backgroundDensity" : 0.452861, "beamFraction" : 0.313241, "B0strength" : 0.024969, "pitch" : 0.587287}
@@ -250,6 +539,7 @@ def regress_from_hd5(
                 fold_time = fold_time_end - fold_time_start
                 fold_time_s = fold_time / 1e9
                 print(f"Fold time: {fold_time_s}s.")
+                fold_times.append(fold_time_s)
 
             rmse, rmse_var, rmse_se = ml_utils.root_mean_squared_error(all_predictions, all_test_points)
             r2 = np.mean(all_test_R2s)
@@ -311,6 +601,8 @@ def regress_from_hd5(
         with open(prds_path / f"{resultsFilepath.name.replace('.json', '').replace('.', '')}_predictions.csv", "w") as f:
             w = DataclassWriter(f, allPredictionsRecord, ml_utils.TSRPrediction)
             w.write()
+
+    print(f"Fold time: Mean: {np.mean(fold_times)}, Min: {np.min(fold_times)}, Max: {np.max(fold_times)}")
 
 def demo():
     covid_train, covid_train_y = load_covid_3month(split="train")
@@ -881,6 +1173,12 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
+        "--beta",
+        action="store_true",
+        help="Run beta multithreaded TSER against James' linear data in h5 format.",
+        required = False
+    )
+    parser.add_argument(
         "--resultsFilepath",
         action="store",
         help="Filepath of csv to which to write results.",
@@ -929,17 +1227,32 @@ if __name__ == "__main__":
             noTitle=args.noTitle,
             nThreads =args.nThreads)
     if args.h5data:
-        regress_from_hd5(
-            directory=args.dir,
-            outputFields=args.outputFields,
-            logFields=args.logFields if args.logFields is not None else [],
-            algorithms=args.algorithms,
-            logInputs=args.logInputs,
-            resultsFilepath=args.resultsFilepath,
-            doPlot=args.doPlot,
-            noTitle=args.noTitle,
-            nThreads=args.nThreads,
-            numFolds=args.cvFolds,
-            numRepeats=args.cvRepeats
-        )
+        if args.beta:
+            regress_from_hd5_multithread_beta(
+                directory=args.dir,
+                outputFields=args.outputFields,
+                logFields=args.logFields if args.logFields is not None else [],
+                algorithms=args.algorithms,
+                logInputs=args.logInputs,
+                resultsFilepath=args.resultsFilepath,
+                doPlot=args.doPlot,
+                noTitle=args.noTitle,
+                nThreads=args.nThreads,
+                numFolds=args.cvFolds,
+                numRepeats=args.cvRepeats
+            )
+        else:
+            regress_from_hd5(
+                directory=args.dir,
+                outputFields=args.outputFields,
+                logFields=args.logFields if args.logFields is not None else [],
+                algorithms=args.algorithms,
+                logInputs=args.logInputs,
+                resultsFilepath=args.resultsFilepath,
+                doPlot=args.doPlot,
+                noTitle=args.noTitle,
+                nThreads=args.nThreads,
+                numFolds=args.cvFolds,
+                numRepeats=args.cvRepeats
+            )
     # demo()

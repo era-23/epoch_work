@@ -1,0 +1,44 @@
+python /users/era536/scratch/repos/epoch_work/Epoch_analysis/ts_aeon_regression_development.py --dir /users/era536/scratch/epoch/ml_oct26/jwsc_lhd_deuterium_high_resolution/ --h5data \
+	--inputSpectra Magnetic_Field_Bz/power/frequencyPowerSpectrum --outputFields B0strength pitch backgroundDensity beamFraction \
+	--algorithms aeon.KNeighborsTimeSeriesRegressor --cvStrategy RepeatedKFolds \
+	--cvFolds 10 --cvRepeats 2 --resultsFilepath /users/era536/scratch/epoch/ml_oct26/jwsc_lhd_deuterium_high_resolution/cv_results/aeon_jwsc-lhd-deuterium_knn.json --nThreads $SLURM_CPUS_PER_TASK
+# python /users/era536/scratch/repos/epoch_work/Epoch_analysis/ts_aeon_regression_development.py --dir /users/era536/scratch/epoch/ml_oct26/jwsc_lhd_deuterium_high_resolution/ --h5data \
+#	  --inputSpectra Magnetic_Field_Bz/power/frequencyPowerSpectrum --outputFields B0strength pitch backgroundDensity beamFraction \
+# 	  --algorithms aeon.TimeSeriesForestRegressor --cvStrategy RepeatedKFolds \
+# 	  --cvFolds 10 --cvRepeats 2 --resultsFilepath /users/era536/scratch/epoch/ml_oct26/jwsc_lhd_deuterium_high_resolution/cv_results/aeon_jwsc-lhd-deuterium_tsf.json --nThreads $SLURM_CPUS_PER_TASK
+# python /users/era536/scratch/repos/epoch_work/Epoch_analysis/ts_aeon_regression_development.py --dir /users/era536/scratch/epoch/ml_oct26/jwsc_lhd_deuterium_high_resolution/ --h5data \
+# 	  --inputSpectra Magnetic_Field_Bz/power/frequencyPowerSpectrum --outputFields B0strength pitch backgroundDensity beamFraction \
+# 	  --algorithms aeon.RandomIntervalSpectralEnsembleRegressor --cvStrategy RepeatedKFolds \
+# 	  --cvFolds 10 --cvRepeats 2 --resultsFilepath /users/era536/scratch/epoch/ml_oct26/jwsc_lhd_deuterium_high_resolution/cv_results/aeon_jwsc-lhd-deuterium_rise.json --nThreads $SLURM_CPUS_PER_TASK
+# python /users/era536/scratch/repos/epoch_work/Epoch_analysis/ts_aeon_regression_development.py --dir /users/era536/scratch/epoch/ml_oct26/jwsc_lhd_deuterium_high_resolution/ --h5data \
+# 	  --inputSpectra Magnetic_Field_Bz/power/frequencyPowerSpectrum --outputFields B0strength pitch backgroundDensity beamFraction \
+# 	  --algorithms aeon.FreshPRINCERegressor --cvStrategy RepeatedKFolds \
+# 	  --cvFolds 10 --cvRepeats 2 --resultsFilepath /users/era536/scratch/epoch/ml_oct26/jwsc_lhd_deuterium_high_resolution/cv_results/aeon_jwsc-lhd-deuterium_fp.json --nThreads $SLURM_CPUS_PER_TASK
+# python /users/era536/scratch/repos/epoch_work/Epoch_analysis/ts_aeon_regression_development.py --dir /users/era536/scratch/epoch/ml_oct26/jwsc_lhd_deuterium_high_resolution/ --h5data \
+# 	  --inputSpectra Magnetic_Field_Bz/power/frequencyPowerSpectrum --outputFields B0strength pitch backgroundDensity beamFraction \
+# 	  --algorithms aeon.RDSTRegressor aeon.Catch22Regressor aeon.RandomIntervalRegressor aeon.SummaryRegressor aeon.QUANTRegressor --cvStrategy RepeatedKFolds \
+# 	  --cvFolds 10 --cvRepeats 2 --resultsFilepath /users/era536/scratch/epoch/ml_oct26/jwsc_lhd_deuterium_high_resolution/cv_results/aeon_jwsc-lhd-deuterium_fast.json --nThreads $SLURM_CPUS_PER_TASK
+# python /users/era536/scratch/repos/epoch_work/Epoch_analysis/ts_aeon_regression_development.py --dir /users/era536/scratch/epoch/ml_oct26/jwsc_lhd_deuterium_high_resolution/ --h5data \
+# 	  --inputSpectra Magnetic_Field_Bz/power/frequencyPowerSpectrum --outputFields B0strength pitch backgroundDensity beamFraction \
+# 	  --algorithms RidgeRegressor LassoRegressor --cvStrategy RepeatedKFolds \
+# 	  --cvFolds 10 --cvRepeats 2 --resultsFilepath /users/era536/scratch/epoch/ml_oct26/jwsc_lhd_deuterium_high_resolution/cv_results/aeon_jwsc-lhd-deuterium_nonTSlinear.json --nThreads $SLURM_CPUS_PER_TASK
+# python /users/era536/scratch/repos/epoch_work/Epoch_analysis/ts_aeon_regression_development.py --dir /users/era536/scratch/epoch/ml_oct26/jwsc_lhd_deuterium_high_resolution/ --h5data \
+# 	  --inputSpectra Magnetic_Field_Bz/power/frequencyPowerSpectrum --outputFields B0strength pitch backgroundDensity beamFraction \
+# 	  --algorithms GradientBoostingRegressor RandomForestRegressor --cvStrategy RepeatedKFolds \
+# 	  --cvFolds 10 --cvRepeats 2 --resultsFilepath /users/era536/scratch/epoch/ml_oct26/jwsc_lhd_deuterium_high_resolution/cv_results/aeon_jwsc-lhd-deuterium_nonTStree.json --nThreads $SLURM_CPUS_PER_TASK
+
+
+/users/era536/scratch/epoch/ml_oct26/jwsc_jet_alpha_high_resolution
+/users/era536/scratch/epoch/ml_oct26/jwsc_jet_alpha_high_resolution/experimental_comparison/lhd_data
+/users/era536/scratch/epoch/ml_oct26/jwsc_jet_alpha_high_resolution/experimental_comparison/results/normalise01
+
+
+/users/era536/scratch/repos/epoch_work/Epoch_analysis/ts_aeon_regression_development.py \
+        --dir /users/era536/scratch/epoch/ml_oct26/jwsc_lhd_deuterium_high_resolution/ \
+        --inputSpectra Magnetic_Field_Bz/power/frequencyPowerSpectrum \
+        --outputFields B0strength pitch backgroundDensity beamFraction \
+        --algorithms aeon.DummyRegressor aeon.HydraRegressor aeon.RocketRegressor aeon.MiniRocketRegressor aeon.MultiRocketRegressor \
+        aeon.MultiRocketHydraRegressor --cvStrategy RepeatedKFolds --cvFolds 10 --cvRepeats 3 \
+        --resultsFilepath \
+        /users/era536/scratch/epoch/ml_oct26/jwsc_lhd_deuterium_high_resolution/cv_results/aeon_jwsc_epochJet_main_battery.json \
+        --h5data --nThreads $SLURM_CPUS_PER_TASK

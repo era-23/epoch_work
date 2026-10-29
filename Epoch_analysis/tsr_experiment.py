@@ -1,11 +1,13 @@
 import argparse
+from concurrent.futures import ProcessPoolExecutor, as_completed
 import copy
 import csv
 import glob
-import math
 import os
 import time
 from pathlib import Path
+
+import sklearn
 
 # 0 = All logs (default)
 # 1 = Filter out INFO logs
@@ -35,6 +37,7 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import LeaveOneOut
 from sklearn.preprocessing import MinMaxScaler
+from sklearn.base import clone
 
 from scipy.signal import find_peaks
 from scipy.interpolate import interp1d
@@ -42,6 +45,65 @@ from scipy.interpolate import interp1d
 import epoch_utils
 import ml_utils
 
+def _process_experimental_repeat_process(task_payload: dict):
+    """
+    Executes a single model fit + predict operation inside an isolated process.
+    Guarantees 100% memory and C-state isolation across workers.
+    """
+    task_id = task_payload["task_id"]
+    output_field = task_payload["output_field"]
+    algorithm = task_payload["algorithm"]
+    comp_name = task_payload["comp_name"]
+    comp_spectrum = task_payload["comp_spectrum"]
+    train_x = task_payload["train_x"]
+    train_y = task_payload["train_y"]
+    scaler_y = task_payload["scaler_y"]
+    true_y = task_payload["true_y"]
+    repeat_idx = task_payload["repeat_idx"]
+    model_threads = task_payload["model_threads"]
+
+    fold_time_start = time.process_time_ns()
+
+    # Calculate normalized true target value
+    true_y_norm, _ = ml_utils.normalise_data([true_y], scaler_y)
+
+    # 1. Get base algorithm instance
+    base_tsr = ml_utils.get_algorithm(algorithm, nThreads=model_threads)
+
+    # 2. Deep-clone to guarantee clean estimator state
+    tsr = sklearn.base.clone(base_tsr)
+
+    # 3. Explicitly seed stochastic components (e.g. Random Forests / Summary extractors)
+    seed_val = 42 + repeat_idx
+    if hasattr(tsr, "random_state"):
+        try:
+            tsr.set_params(random_state=seed_val)
+        except Exception:
+            pass
+    elif hasattr(tsr, "seed"):
+        try:
+            tsr.set_params(seed=seed_val)
+        except Exception:
+            pass
+
+    # Fit & Predict on isolated process object
+    tsr.fit(train_x, train_y)
+    prediction = tsr.predict(comp_spectrum)
+    pred_val = float(prediction[0]) if isinstance(prediction, (np.ndarray, list)) else float(prediction)
+
+    fold_time_end = time.process_time_ns()
+    exec_time_s = (fold_time_end - fold_time_start) / 1e9
+
+    return {
+        "output_field": output_field,
+        "algorithm": algorithm,
+        "comp_name": comp_name,
+        "repeat_idx": repeat_idx,
+        "prediction": pred_val,
+        "true_y": true_y,
+        "true_y_norm": true_y_norm[0],
+        "exec_time_s": exec_time_s
+    }
 
 def plot_predictions(
         algorithm_name : str,
@@ -723,6 +785,275 @@ def regress_trainEpoch_testCottrell(
             ax.grid()
         plt.show()
 
+def regress_trainLinear_multithreaded_beta(
+    dataDirectory: Path,
+    testDatapath: Path,
+    testName: str,
+    algorithms: list,
+    resultsFilepath: Path,
+    nThreads: int = 1,
+    nRepeats: int = 1,
+    displayPlots: bool = False,
+    normaliseDB: bool = False,
+    normalise01: bool = False,
+    noise_freq_minimum: float = 3.0e6
+):
+    if displayPlots:
+        SMALL_SIZE = 10
+        MEDIUM_SIZE = 16
+        BIGGER_SIZE = 20
+
+        plt.rc('font', size=SMALL_SIZE)
+        plt.rc('axes', titlesize=BIGGER_SIZE)
+        plt.rc('axes', labelsize=BIGGER_SIZE)
+        plt.rc('xtick', labelsize=MEDIUM_SIZE)
+        plt.rc('ytick', labelsize=MEDIUM_SIZE)
+        plt.rc('legend', fontsize=12)
+        plt.rc('figure', titlesize=BIGGER_SIZE)
+
+    aeon_only = np.all([str.startswith(a, "aeon") for a in algorithms])
+
+    # Get filepaths
+    training_dir = dataDirectory
+    training_files = glob.glob(str(training_dir / "*.h5"))
+
+    # Select configuration by experimental dataset
+    if testName.lower() == "lhd":
+        outputFields = [
+            "B0", 
+            "log(density)",
+            "log(fi_conc)", 
+            "pitch", 
+            "background_temp"
+        ]
+        test_files = glob.glob(str(testDatapath / "*.dat"))
+        test_true_params = pd.read_csv(testDatapath / "lhd_data_parameters.csv")
+        csv_sep = r"\s+"
+    elif testName.lower() == "jet":
+        outputFields = [
+            "B0", 
+            "log(density)", 
+            "log(fi_conc)",
+            "pitch",
+            "background_temp"
+        ]
+        test_files = glob.glob(str(testDatapath))
+        test_true_params = pd.DataFrame.from_dict(
+            {"filename": ["cottrell_93_experimental_data.csv"], "B0": [2.21], "log(density)": [19.23], "log(fi_conc)": [-3.82], "pitch": [0.4], "background_temp": [3.0]},
+            orient="columns"
+        )
+        csv_sep = ","
+
+    # Load simulated H5 training spectra
+    inputData = []
+    for f in training_files:
+        data: xr.DataTree = xr.open_datatree(f)
+        inputData.append(data)
+        data.close()
+
+    if len(inputData) == 0:
+        raise Exception(f"No input data found at '{training_dir}' (searching for '*.h5')")
+
+    inputFreqs = np.array(inputData[0]["spectra"].F)
+    if len(inputData) > 1:
+        assert np.allclose(inputData[0]["spectra"].F.data, inputData[1]["spectra"].F.data)
+        inputParams = np.concat((np.array(inputData[0]["parameters"].X.data, dtype=np.float64), np.array(inputData[1]["parameters"].X.data, dtype=np.float64)), axis=1)
+        inputSpectra = np.concat((np.array(inputData[0]["spectra"].Y.data, dtype=np.float64), np.array(inputData[1]["spectra"].Y.data, dtype=np.float64)), axis=1).T
+    else:
+        inputParams = np.array(inputData[0]["parameters"].X.data, dtype=np.float64)
+        inputSpectra = np.array(inputData[0]["spectra"].Y.data, dtype=np.float64).T
+    targetFields = {k: v for k, v in zip(outputFields, inputParams)}
+
+    if aeon_only:
+        inputSpectra = np.expand_dims(inputSpectra, axis=1)
+
+    # Process Experimental test data files
+    test_x = {}
+    for f in test_files:
+        test_data = pd.read_csv(f, sep=csv_sep, header=0, names=["frequency", "power"])
+        max_lhd_frequency = float((test_data["frequency"].max() * u.MHz).value)
+        max_training_freq = inputFreqs.max()
+        max_common_freq = float(np.min([max_lhd_frequency, max_training_freq]))
+
+        # Truncate
+        test_data_trunc_sort = test_data[(test_data["frequency"] > 0.0) & (test_data["frequency"] < max_common_freq)].sort_values(by="frequency")
+
+        # Binning and max-pooling
+        clean_df = test_data_trunc_sort.drop_duplicates(subset=["frequency"], keep="first").sort_values("frequency")
+        freqs_old = clean_df["frequency"].to_numpy()
+        power_old = clean_df["power"].to_numpy()
+        freqs_new = np.sort(inputFreqs)
+
+        midpoints = (freqs_new[:-1] + freqs_new[1:]) / 2.0
+        bin_edges = np.concatenate([
+            [freqs_new[0] - (midpoints[0] - freqs_new[0])],
+            midpoints,
+            [freqs_new[-1] + (freqs_new[-1] - midpoints[-1])]
+        ])
+
+        power_max_pooled = np.zeros_like(freqs_new)
+        for i in range(len(freqs_new)):
+            bin_min = bin_edges[i]
+            bin_max = bin_edges[i + 1]
+            mask = (freqs_old >= bin_min) & (freqs_old < bin_max)
+            if np.any(mask):
+                power_max_pooled[i] = np.max(power_old[mask])
+            else:
+                power_max_pooled[i] = np.interp(freqs_new[i], freqs_old, power_old, left=0.0, right=0.0)
+
+        test_data_resamp = pd.DataFrame({
+            "frequency": freqs_new,
+            "power": power_max_pooled
+        })
+
+        # Remove low frequency noise
+        test_data_resamp.loc[test_data_resamp["frequency"] < noise_freq_minimum, "power"] = test_data_resamp["power"].min()
+
+        assert np.allclose(freqs_new, test_data_resamp["frequency"])
+        test_x[Path(f).name] = np.expand_dims(np.nan_to_num(test_data_resamp["power"]), axis=0)
+
+    assert len(test_x) > 0
+
+    # Normalization preprocessing
+    if normaliseDB:
+        global_input_min = np.min(np.where(inputSpectra == 0.0, np.inf, inputSpectra), axis=-1, keepdims=True)
+        if testName.lower() == "lhd":
+            global_input_min *= 10**(0.5)
+        train_x = np.nan_to_num(10.0 * np.log10(inputSpectra / global_input_min), posinf=0.0, neginf=0.0)
+    elif normalise01:
+        min_vals = np.min(inputSpectra, axis=-1, keepdims=True)
+        max_vals = np.max(inputSpectra, axis=-1, keepdims=True)
+        val_range = max_vals - min_vals
+        train_x = np.nan_to_num((inputSpectra - min_vals) / val_range, posinf=0.0, neginf=0.0)
+
+        for name, x in test_x.items():
+            min_vals = np.min(x, axis=-1, keepdims=True)
+            max_vals = np.max(x, axis=-1, keepdims=True)
+            val_range = max_vals - min_vals
+            test_x[name][0] = np.nan_to_num((x - min_vals) / val_range, posinf=0.0, neginf=0.0)
+    else:
+        train_x = inputSpectra
+
+    # Set worker processes and ensure 1 model thread per worker process
+    model_threads = 1
+    max_workers = max(1, nThreads // model_threads)
+
+    all_tasks = []
+    scalers_by_field = {}
+    task_id_counter = 0
+
+    for output_field, output_values in targetFields.items():
+        if output_field not in outputFields:
+            continue
+
+        output_values = np.array(output_values)
+        train_y, scaler_y = ml_utils.normalise_data(output_values)
+        scalers_by_field[output_field] = (train_y, scaler_y)
+
+        for algo in algorithms:
+            for comp_name, comp_spectrum in test_x.items():
+                true_y = test_true_params[test_true_params["filename"] == comp_name][output_field].values[0]
+
+                for r in range(nRepeats):
+                    all_tasks.append({
+                        "task_id": task_id_counter,
+                        "output_field": output_field,
+                        "algorithm": algo,
+                        "comp_name": comp_name,
+                        "comp_spectrum": comp_spectrum,
+                        "train_x": train_x,
+                        "train_y": train_y,
+                        "scaler_y": scaler_y,
+                        "true_y": true_y,
+                        "repeat_idx": r,
+                        "model_threads": model_threads
+                    })
+                    task_id_counter += 1
+
+    raw_predictions_group = {}
+
+    print(f"Executing {len(all_tasks)} experimental tasks concurrently across {max_workers} worker processes...")
+
+    # ProcessPoolExecutor guarantees 100% memory and C-state isolation
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        futures = [
+            executor.submit(_process_experimental_repeat_process, task)
+            for task in all_tasks
+        ]
+
+        for future in as_completed(futures):
+            res = future.result()
+            key = (res["output_field"], res["algorithm"], res["comp_name"])
+            
+            if key not in raw_predictions_group:
+                raw_predictions_group[key] = {
+                    "predictions": [],
+                    "true_y": res["true_y"],
+                    "true_y_norm": res["true_y_norm"]
+                }
+            raw_predictions_group[key]["predictions"].append(res["prediction"])
+
+    # Aggregate repeat predictions & format outputs
+    all_results = []
+
+    for (output_field, algorithm, comp_name), data in raw_predictions_group.items():
+        _, scaler_y = scalers_by_field[output_field]
+        predictions = data["predictions"]
+        true_y = data["true_y"]
+        true_y_norm = data["true_y_norm"]
+
+        prediction = float(np.mean(predictions))
+        pred_var = float(np.var(predictions)) if len(predictions) > 1 else 0.0
+        pred_sd = float(np.std(predictions)) if len(predictions) > 1 else 0.0
+        pred_se = float(sem(predictions)) if len(predictions) > 1 else 0.0
+
+        pred_denormed = ml_utils.denormalise_data(np.array([prediction]), scaler_y)
+        pred_se_denormed = ml_utils.denormalise_data(np.array([pred_se]), scaler_y)
+        pred_sd_denormed = ml_utils.denormalise_data(np.array([pred_sd]), scaler_y)
+
+        pred_se_denormed_val = float(pred_se_denormed[0][0] - scaler_y.mean_[0])
+        pred_sd_denormed_val = float(pred_sd_denormed[0][0] - scaler_y.mean_[0])
+        err_norm = float(prediction - true_y_norm)
+        mean_denormed_pred = float(pred_denormed[0][0])
+
+        print(
+            f"[{algorithm} - {output_field} - {comp_name}] Mean prediction: {prediction:.5f} (norm) | "
+            f"Denormed: {mean_denormed_pred:.5f} ± {pred_se_denormed_val:.5f} | Norm Error: {err_norm:.5f}"
+        )
+
+        results_dict = {
+            "algorithm": algorithm,
+            "field": output_field,
+            "true_filename": comp_name,
+            "true_value": true_y,
+            "true_value_before_log": true_y,
+            "true_value_norm": true_y_norm,
+            "mean_norm_prediction": prediction,
+            "mean_norm_error": err_norm,
+            "var": pred_var,
+            "std": pred_sd,
+            "stderr": pred_se,
+            "mean_denormed_prediction": mean_denormed_pred,
+            "mean_denormed_error": mean_denormed_pred - true_y,
+            "denormed_std": pred_sd_denormed_val,
+            "denormed_stderr": pred_se_denormed_val
+        }
+        all_results.append(results_dict)
+
+    # Save output CSV
+    results_path_obj = Path(resultsFilepath)
+    if not results_path_obj.name.endswith(".csv"):
+        results_path_obj = results_path_obj / "lhd_regression_results.csv"
+
+    results_path_obj.parent.mkdir(parents=True, exist_ok=True)
+
+    if len(all_results) > 0:
+        with open(results_path_obj, "w", newline="") as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=all_results[0].keys())
+            writer.writeheader()
+            writer.writerows(all_results)
+        print(f"Results successfully written to: {results_path_obj.resolve()}")
+
 def regress_trainLinear(
         dataDirectory : Path,
         outputFields : list,
@@ -795,7 +1126,7 @@ def regress_trainLinear(
     if len(inputData) == 0:
         raise Exception(f"No input data found at '{training_dir}' (searching for '*.h5')")
 
-    inputFreqs = np.array(inputData[0]["spectra"].F)
+    inputFreqs = np.array(inputData[0]["spectra"].F, dtype=np.float64)
     if len(inputData) > 1:
         assert np.allclose(inputData[0]["spectra"].F.data, inputData[1]["spectra"].F.data)
         inputParams = np.concat((np.array(inputData[0]["parameters"].X.data, dtype=np.float64), np.array(inputData[1]["parameters"].X.data, dtype=np.float64)), axis=1)
@@ -824,7 +1155,7 @@ def regress_trainLinear(
     # Get Experimental LHD data
     test_x = {}
     for f in test_files:
-        test_data = pd.read_csv(f, sep = csv_sep, header=0, names = ["frequency", "power"])
+        test_data = pd.read_csv(f, sep = csv_sep, header=0, names = ["frequency", "power"], dtype=np.float64)
         max_lhd_frequency = float((test_data["frequency"].max() * u.MHz).value)
         max_training_freq = inputFreqs.max()
         max_common_freq = float(np.min([max_lhd_frequency, max_training_freq]))
@@ -842,8 +1173,8 @@ def regress_trainLinear(
 
         # Resample and interpolate
         clean_df = test_data_trunc_sort.drop_duplicates(subset=["frequency"], keep="first").sort_values("frequency")
-        freqs_old = clean_df["frequency"].to_numpy()
-        power_old = clean_df["power"].to_numpy()
+        freqs_old = clean_df["frequency"].to_numpy(dtype=np.float64)
+        power_old = clean_df["power"].to_numpy(dtype=np.float64)
         freqs_new = np.sort(inputFreqs)
 
         # Binning for max-pooling operation
@@ -1979,6 +2310,12 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
+        "--beta",
+        action="store_true",
+        help="Use beta multithreaded regression of linear spectra.",
+        required = False
+    )
+    parser.add_argument(
         "--frequency",
         action="store_true",
         help="Run accuracy vs frequency bandwidth experiment.",
@@ -2248,22 +2585,36 @@ if __name__ == "__main__":
             lowFrequencyCleaningMethod=args.lowFrequencyCleaningMethod[0])
 
     if args.trainLinear:
-        regress_trainLinear(
-            dataDirectory = args.dataDir, 
-            outputFields = [
-                "B0", 
-                "log(density)",
-                "log(fi_conc)", 
-                "pitch", 
-                "background_temp"
-            ], 
-            algorithms = args.algorithms,
-            testDatapath = args.testFilepath,
-            testName = "lhd" if args.testLhd else ("jet" if args.testJet else None),
-            resultsFilepath=args.resultsFilepath,
-            nRepeats=args.nRepeats,
-            nThreads = args.nThreads,
-            normalise01=args.scaleInputs,
-            normaliseDB=args.dB,
-            displayPlots=args.displayPlots,
-        )
+        if args.beta:
+            regress_trainLinear_multithreaded_beta(
+                dataDirectory = args.dataDir, 
+                algorithms = args.algorithms,
+                testDatapath = args.testFilepath,
+                testName = "lhd" if args.testLhd else ("jet" if args.testJet else None),
+                resultsFilepath=args.resultsFilepath,
+                nRepeats=args.nRepeats,
+                nThreads = args.nThreads,
+                normalise01=args.scaleInputs,
+                normaliseDB=args.dB,
+                displayPlots=args.displayPlots,
+            )
+        else:
+            regress_trainLinear(
+                dataDirectory = args.dataDir, 
+                outputFields = [
+                    "B0", 
+                    "log(density)",
+                    "log(fi_conc)", 
+                    "pitch", 
+                    "background_temp"
+                ], 
+                algorithms = args.algorithms,
+                testDatapath = args.testFilepath,
+                testName = "lhd" if args.testLhd else ("jet" if args.testJet else None),
+                resultsFilepath=args.resultsFilepath,
+                nRepeats=args.nRepeats,
+                nThreads = args.nThreads,
+                normalise01=args.scaleInputs,
+                normaliseDB=args.dB,
+                displayPlots=args.displayPlots,
+            )
