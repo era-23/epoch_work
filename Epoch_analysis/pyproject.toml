@@ -7,7 +7,7 @@ authors = [
 ]
 description = "Analysis of 1D EPOCH simualtions for investigation of the MCI."
 dependencies = [
-    "aeon>=1.6.0",
+    "aeon[all-extras]>=1.6.0",
     "anyio==4.7.0",
     "argon2-cffi==23.1.0",
     "argon2-cffi-bindings==21.2.0",
