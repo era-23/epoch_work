@@ -335,7 +335,6 @@ def regress_from_hd5_multithread_beta(
 
 def regress_from_hd5(
         directory : Path,
-        outputFields : list,
         logFields : list,
         algorithms : list,
         logInputs : bool = False,
@@ -1087,7 +1086,7 @@ if __name__ == "__main__":
         "--outputFields",
         action="store",
         help="Fields to use for TSR output.",
-        required = True,
+        required = False,
         type=str,
         nargs="*"
     )
@@ -1244,7 +1243,6 @@ if __name__ == "__main__":
         else:
             regress_from_hd5(
                 directory=args.dir,
-                outputFields=args.outputFields,
                 logFields=args.logFields if args.logFields is not None else [],
                 algorithms=args.algorithms,
                 logInputs=args.logInputs,
