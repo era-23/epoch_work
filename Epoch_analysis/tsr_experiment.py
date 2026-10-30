@@ -934,6 +934,11 @@ def regress_trainLinear_multithreaded_beta(
     else:
         train_x = inputSpectra
 
+    # Ensure correct datatype and contiguous array
+    train_x = np.ascontiguousarray(train_x, dtype=np.float64)
+    for spec_name, spec_vals in test_x:
+        test_x[spec_name] = np.ascontiguousarray(spec_vals, dtype=np.float64)
+
     # Set worker processes and ensure 1 model thread per worker process
     model_threads = 1
     max_workers = max(1, nThreads // model_threads)
@@ -1245,6 +1250,11 @@ def regress_trainLinear(
             test_x[name][0] = np.nan_to_num((x - min_vals) / val_range, posinf=0.0,  neginf=0.0)
     else:
         train_x = inputSpectra
+
+    # Ensure correct datatype and contiguous array
+    train_x = np.ascontiguousarray(train_x, dtype=np.float64)
+    for spec_name, spec_vals in test_x.items():
+        test_x[spec_name] = np.ascontiguousarray(spec_vals, dtype=np.float64)
 
     # for x in train_x:
     #     plt.plot(inputFreqs, x[0], label = "training case")
