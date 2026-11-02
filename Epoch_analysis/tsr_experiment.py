@@ -1,5 +1,5 @@
 import argparse
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 import copy
 import csv
 import glob
@@ -796,7 +796,7 @@ def regress_trainLinear_multithreaded_beta(
     displayPlots: bool = False,
     normaliseDB: bool = False,
     normalise01: bool = False,
-    noise_freq_minimum: float = 3.0e6
+    noise_freq_minimum: float = 5.0
 ):
     if displayPlots:
         SMALL_SIZE = 10
@@ -907,7 +907,8 @@ def regress_trainLinear_multithreaded_beta(
         })
 
         # Remove low frequency noise
-        test_data_resamp.loc[test_data_resamp["frequency"] < noise_freq_minimum, "power"] = test_data_resamp["power"].min()
+        if noise_freq_minimum is not None:
+            test_data_resamp.loc[test_data_resamp["frequency"] < noise_freq_minimum, "power"] = test_data_resamp["power"].min()
 
         assert np.allclose(freqs_new, test_data_resamp["frequency"])
         test_x[Path(f).name] = np.expand_dims(np.nan_to_num(test_data_resamp["power"]), axis=0)
@@ -936,8 +937,13 @@ def regress_trainLinear_multithreaded_beta(
 
     # Ensure correct datatype and contiguous array
     train_x = np.ascontiguousarray(train_x, dtype=np.float64)
-    for spec_name, spec_vals in test_x:
+    for spec_name, spec_vals in test_x.items():
         test_x[spec_name] = np.ascontiguousarray(spec_vals, dtype=np.float64)
+        # for i in range(450,453):
+        #     plt.plot(test_x[spec_name][0])
+        #     plt.plot(train_x[i][0], label = f"training spectrum #{i}")
+        #     plt.legend()
+        #     plt.show()
 
     # Set worker processes and ensure 1 model thread per worker process
     model_threads = 1
