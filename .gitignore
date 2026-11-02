@@ -5,10 +5,14 @@
 .virtualenvs/
 Epoch_analysis/aeon_tsc.log
 Epoch_analysis/newCsv.csv
-code_sandbox/mast_data.py
 .gitignore
-.gitignore
-code_sandbox/.vscode/settings.json
 Epoch_analysis/.python-version
 Epoch_analysis/*.keras
 __pycache__/
+epoch_runner_joel/
+epyrunner/
+Simulation_setup/
+filepaths_oct26/
+useful_commands.txt
+code_sandbox/
+backups/
