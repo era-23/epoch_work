@@ -9,7 +9,8 @@ import xarray as xr
 import xrft
 import epoch_utils as eu
 from scipy.stats import linregress
-from scipy.signal import find_peaks
+from scipy.signal import find_peaks, correlate
+from scipy.optimize import minimize_scalar
 from sklearn.metrics import root_mean_squared_error, r2_score
 import plasmapy.formulary.frequencies as ppf
 import plasmapy.particles as ppp
@@ -436,8 +437,8 @@ def estimate_B0_from_h5_spectra(h5_directory : Path, particle : str):
             recovered_B0_rawPeakSeps = (mean_B0 * 1e6 * 2.0 * np.pi * ppp.deuteron.mass) / ppp.deuteron.charge
             mean_mode_peak_sep = 0.0
         if print_plot_all:
-            print(f"Peak positions (MHz): {inputFreqs[p]}")
-            print(f"Peak seprtions (MHz): {peak_seps}")
+            print(f"Peak positions   (MHz): {inputFreqs[p]}")
+            print(f"Peak separations (MHz): {peak_seps}")
             print(f"Mean(mode) of peak separations: {mean_mode_peak_sep}")
             print(f"Recovered B0 from Mean(mode) of peak separations: {(mean_mode_peak_sep * 1e6 * 2.0 * np.pi * ppp.deuteron.mass) / ppp.deuteron.charge}")
             plt.plot(inputFreqs, spectrum, label = "original")
@@ -454,7 +455,7 @@ def estimate_B0_from_h5_spectra(h5_directory : Path, particle : str):
         # spec.plot()
         # plt.show()
         spec = spec.sel(freq_frequency = slice(0.0, None))
-        spec = spec.where(spec.freq_frequency >= float(0.01*spec.freq_frequency.max().data), other=0.0)
+        spec = spec.where(spec.freq_frequency >= float(0.005*spec.freq_frequency.max().data), other=0.0)
         if print_plot_all:
             spec.plot()
             plt.show()
@@ -518,6 +519,8 @@ def estimate_B0_from_h5_spectra(h5_directory : Path, particle : str):
     plt.figure(figsize=(12,10))
     plt.scatter(originalB0s, recoveredB0s_max, label = "Recovered by max FFT peak")
     plt.plot(sorted(originalB0s), sorted(originalB0s), "k--", label = "ideal B0 recovery")
+    plt.xlabel("Original B0")
+    plt.ylabel("Recovered B0")
     plt.legend()
     plt.title(f"Linear data, JET range -- r^2: {r2_score(originalB0s, recoveredB0s_max)}")
     plt.show()
@@ -525,6 +528,8 @@ def estimate_B0_from_h5_spectra(h5_directory : Path, particle : str):
     plt.figure(figsize=(12,10))
     plt.scatter(originalB0s, recoveredB0s_firstPeak, label = "Recovered by first FFT peak")
     plt.plot(sorted(originalB0s), sorted(originalB0s), "k--", label = "ideal B0 recovery")
+    plt.xlabel("Original B0")
+    plt.ylabel("Recovered B0")
     plt.legend()
     plt.title(f"Linear data, JET range -- r^2: {r2_score(originalB0s, recoveredB0s_firstPeak)}")
     plt.show()
@@ -532,6 +537,8 @@ def estimate_B0_from_h5_spectra(h5_directory : Path, particle : str):
     plt.figure(figsize=(12,10))
     plt.scatter(originalB0s, recoveredB0s_fftPeakSeparation, label = "Recovered by FFT peak separation")
     plt.plot(sorted(originalB0s), sorted(originalB0s), "k--", label = "ideal B0 recovery")
+    plt.xlabel("Original B0")
+    plt.ylabel("Recovered B0")
     plt.legend()
     plt.title(f"Linear data, JET range -- r^2: {r2_score(originalB0s, recoveredB0s_fftPeakSeparation)}")
     plt.show()
@@ -539,6 +546,8 @@ def estimate_B0_from_h5_spectra(h5_directory : Path, particle : str):
     plt.figure(figsize=(12,10))
     plt.scatter(originalB0s, recoveredB0s_hybrid, label = "Recovered by mean(first FFT peak, peak separation)")
     plt.plot(sorted(originalB0s), sorted(originalB0s), "k--", label = "ideal B0 recovery")
+    plt.xlabel("Original B0")
+    plt.ylabel("Recovered B0")
     plt.legend()
     plt.title(f"Linear data, JET range -- r^2: {r2_score(originalB0s, recoveredB0s_hybrid)}")
     plt.show()
@@ -546,6 +555,8 @@ def estimate_B0_from_h5_spectra(h5_directory : Path, particle : str):
     plt.figure(figsize=(12,10))
     plt.scatter(originalB0s, recoveredB0s_rawPeakSeparation, label = "Recovered by raw peak separation")
     plt.plot(sorted(originalB0s), sorted(originalB0s), "k--", label = "ideal B0 recovery")
+    plt.xlabel("Original B0")
+    plt.ylabel("Recovered B0")    
     plt.legend()
     plt.title(f"Linear data, JET range -- r^2: {r2_score(originalB0s, recoveredB0s_rawPeakSeparation)}")
     plt.show()
@@ -553,6 +564,254 @@ def estimate_B0_from_h5_spectra(h5_directory : Path, particle : str):
     # for k, v in recoveredB0s_max.items():
     #     print(f"{k} -- Actual B0: {known_B0:.5f} T, Recovered B0: {v:.5f} T, Error = {(v - known_B0):.5f} T ({(100.0 * (v - known_B0) / known_B0):.5f}%)")
 
+def estimate_B0_robust(
+    h5_directory: Path, 
+    particle : str = "deuteron",
+    b0_search_range: tuple = (0.5, 5.0),
+    num_comb_harmonics: int = 15,
+    plot_methods: bool = False
+) -> dict:
+    """
+    Recovers B0 from ICE spectra using Comb-Template Matching, Autocorrelation,
+    and Median Peak Spacing.
+    
+    Parameters:
+    -----------
+    h5_directory : Path
+        Directory containing .h5 spectra files.
+    particle : str
+    b0_search_range : tuple
+        (min_B0, max_B0) expected in Tesla for template matching bounds.
+    num_comb_harmonics : int
+        Number of harmonics to include in the comb template.
+    plot_results : bool
+        If True, renders diagnostic plots for each spectrum.
+        
+    Returns:
+    --------
+    dict containing lists of original and recovered B0 values per method.
+    """
+
+    # Fetch physical properties from PlasmaPy
+    p_obj = ppp.Particle(particle)
+    particle_mass = p_obj.mass.value  # in kg
+    particle_charge = abs(p_obj.charge.value)  # in Coulombs
+
+    spectrum_paths = glob.glob(str(h5_directory / "*.h5"))
+    if not spectrum_paths:
+        raise FileNotFoundError(f"No '.h5' files found in {h5_directory}")
+
+    # Load datasets
+    inputData = [xr.open_datatree(f) for f in spectrum_paths]
+    
+    inputFreqs = np.array(inputData[0]["spectra"].F)  # Expected in MHz
+    if len(inputData) > 1:
+        inputParams = np.concat(
+            (np.array(inputData[0]["parameters"].X.data, dtype=np.float64), 
+             np.array(inputData[1]["parameters"].X.data, dtype=np.float64)), 
+            axis=1
+        )
+        inputSpectra = np.concat(
+            (np.array(inputData[0]["spectra"].Y.data, dtype=np.float64), 
+             np.array(inputData[1]["parameters"].X.data, dtype=np.float64)), 
+            axis=1
+        ).T
+    else:
+        inputParams = np.array(inputData[0]["parameters"].X.data, dtype=np.float64)
+        inputSpectra = np.array(inputData[0]["spectra"].Y.data, dtype=np.float64).T
+
+    # Close open xarray trees
+    for tree in inputData:
+        tree.close()
+
+    originalB0s = inputParams[0]
+    
+    # Storage for output results
+    recoveredB0s_comb = []
+    recoveredB0s_acf = []
+    recoveredB0s_medianPeak = []
+
+    # Conversion factor: fc [MHz] -> B0 [T]
+    # fc = (q * B0) / (2 * pi * m)  =>  B0 = (fc * 1e6 * 2 * pi * m) / q
+    fc_to_B0 = lambda fc_mhz: (fc_mhz * 1e6 * 2.0 * np.pi * particle_mass) / particle_charge
+    B0_to_fc = lambda B0_T: (particle_charge * B0_T) / (2.0 * np.pi * particle_mass * 1e6)
+
+    df = np.median(np.diff(inputFreqs))  # Sampling step in MHz
+
+    for s in range(inputSpectra.shape[0]):
+        spectrum = inputSpectra[s]
+        # Normalize spectrum baseline and peak amplitude
+        spec_norm = spectrum - np.min(spectrum)
+        if np.max(spec_norm) > 0:
+            spec_norm /= np.max(spec_norm)
+
+        min_fc_mhz = B0_to_fc(b0_search_range[0])
+        max_fc_mhz = B0_to_fc(b0_search_range[1])
+        all_peaks, _ = find_peaks(
+            spec_norm, 
+            height=float(0.1 * spec_norm.max()), 
+            prominence=float(0.3 * spec_norm.max()), 
+            distance=int((min_fc_mhz * 0.9) / df)
+        )
+        if len(all_peaks) > 5:
+            result = np.zeros_like(spec_norm)
+            result[all_peaks] = spec_norm[all_peaks]
+            spec_norm = result
+        
+        # -------------------------------------------------------------
+        # METHOD 1: Comb Template Matching (Global Optimization)
+        # -------------------------------------------------------------
+        def comb_objective(trial_B0):
+            trial_fc = B0_to_fc(trial_B0)
+            harmonics = np.arange(1, num_comb_harmonics + 1) * trial_fc
+            
+            # Create Gaussian comb centered at harmonic positions
+            comb = np.zeros_like(inputFreqs)
+            sigma = 0.05 * trial_fc  # Width of each comb peak (~5% of fundamental)
+            for h_freq in harmonics:
+                if h_freq <= inputFreqs[-1]:
+                    comb += np.exp(-0.5 * ((inputFreqs - h_freq) / sigma) ** 2)
+            
+            # Maximize dot product between comb and normalized spectrum
+            return -np.sum(spec_norm * comb)
+
+        res = minimize_scalar(comb_objective, bounds=b0_search_range, method='bounded')
+        b0_comb = res.x
+        recoveredB0s_comb.append(b0_comb)
+
+        # -------------------------------------------------------------
+        # METHOD 2: Autocorrelation Function (ACF)
+        # -------------------------------------------------------------
+        corr = correlate(spec_norm, spec_norm, mode='full')
+        corr = corr[len(spec_norm)-1:]  # Keep positive lags
+        lags_mhz = np.arange(len(corr)) * df
+
+        # Exclude immediate zero-lag peak region (search above half minimum expected fc)
+        valid_idx = (lags_mhz >= (min_fc_mhz * 0.5)) & (lags_mhz <= (max_fc_mhz * 1.1))
+
+        if np.any(valid_idx):
+            acf_peaks, peak_properties = find_peaks(corr[valid_idx], height = 0.05 * corr.max(), prominence=0.05 * corr.max())
+            if len(acf_peaks) > 0:
+                # first_lag_idx = np.where(valid_idx)[0][acf_peaks[0]]
+                # fc_acf = lags_mhz[first_lag_idx]
+                max_lag_idx = np.where(valid_idx)[0][acf_peaks[np.argmax(peak_properties["peak_heights"])]]
+                fc_acf = lags_mhz[max_lag_idx]
+                b0_acf = fc_to_B0(fc_acf)
+            else:
+                b0_acf = np.nan
+        else:
+            b0_acf = np.nan
+        recoveredB0s_acf.append(b0_acf)
+
+        # -------------------------------------------------------------
+        # METHOD 3: Robust Median Peak Separation
+        # -------------------------------------------------------------
+        all_peaks, _ = find_peaks(
+            spec_norm, 
+            height=float(0.1 * spec_norm.max()), 
+            prominence=float(0.3 * spec_norm.max()), 
+            distance=int((min_fc_mhz * 0.9) / df)
+        )
+        
+        if len(all_peaks) > 1:
+            peak_freqs = inputFreqs[all_peaks]
+            peak_seps = np.diff(peak_freqs)
+            
+            # Using median instead of mean avoids sensitivity to skipped harmonics
+            fc_median = np.median(peak_seps)
+            b0_median = fc_to_B0(fc_median)
+        else:
+            b0_median = np.nan
+        recoveredB0s_medianPeak.append(b0_median)
+
+        # -------------------------------------------------------------
+        # Optional Diagnostic Plotting
+        # -------------------------------------------------------------
+        if plot_methods:
+            fig, ax = plt.subplots(1, 2, figsize=(14, 5))
+            
+            # Spectrum & Comb
+            best_fc = B0_to_fc(b0_comb)
+            ax[0].plot(inputFreqs, spec_norm, label="ICE Spectrum")
+            if len(all_peaks) > 0:
+                ax[0].scatter(inputFreqs[all_peaks], spec_norm[all_peaks], color='red', marker='x', label="Detected Peaks")
+            
+            # Overlay fitted comb markers
+            for h in range(1, num_comb_harmonics + 1):
+                ax[0].axvline(h * best_fc, color='k', linestyle='--', alpha=0.3)
+                
+            ax[0].set_title(f"Spectrum #{s} | Comb B0: {b0_comb:.3f} T (True: {originalB0s[s]:.3f} T)")
+            ax[0].set_xlabel("Frequency (MHz)")
+            ax[0].set_ylabel("Normalized Power")
+            ax[0].set_xlim(0,inputFreqs.max())
+            ax[0].legend()
+
+            # Autocorrelation
+            ax[1].plot(lags_mhz, corr / corr.max())
+            if not np.isnan(b0_acf):
+                best_fc = B0_to_fc(b0_acf)
+                ax[1].axvline(best_fc, color='r', linestyle='--', label=f"1st Lag Peak ({best_fc:.2f} MHz)")
+            ax[1].axvline(B0_to_fc(originalB0s[s]), color='orange', linestyle=':', label=f"True G.F. ({B0_to_fc(originalB0s[s]):.2f} MHz)")
+            ax[1].set_title("Autocorrelation (Lag Space)")
+            ax[1].set_xlabel("Frequency Lag $\Delta f$ (MHz)")
+            ax[1].set_xlim(0, max(lags_mhz) * 0.5)
+            ax[1].legend()
+
+            plt.tight_layout()
+            plt.show()
+
+    # Convert results to arrays
+    recoveredB0s_comb = np.array(recoveredB0s_comb)
+    recoveredB0s_acf = np.array(recoveredB0s_acf)
+    recoveredB0s_medianPeak = np.array(recoveredB0s_medianPeak)
+
+    # Global plot style configuration matching original script
+    plt.rcParams.update({'axes.titlesize': 20.0})
+    plt.rcParams.update({'axes.labelsize': 20.0})
+    plt.rcParams.update({'xtick.labelsize': 20.0})
+    plt.rcParams.update({'ytick.labelsize': 20.0})
+    plt.rcParams.update({'legend.fontsize': 20.0})
+
+    # Plot 1: Comb Template Matching
+    plt.figure(figsize=(12, 10))
+    plt.scatter(originalB0s, recoveredB0s_comb, label="Recovered by Comb Template Fitting")
+    plt.plot(sorted(originalB0s), sorted(originalB0s), "k--", label="ideal B0 recovery")
+    plt.xlabel("Original B0")
+    plt.ylabel("Recovered B0")
+    plt.legend()
+    plt.title(f"Linear data, JET range -- r^2: {r2_score(originalB0s, recoveredB0s_comb):.4f}")
+    plt.show()
+
+    # Plot 2: Autocorrelation (handling NaN dropouts if any)
+    valid_acf = ~np.isnan(recoveredB0s_acf)
+    plt.figure(figsize=(12, 10))
+    plt.scatter(originalB0s[valid_acf], recoveredB0s_acf[valid_acf], label="Recovered by Autocorrelation Peak")
+    plt.plot(sorted(originalB0s), sorted(originalB0s), "k--", label="ideal B0 recovery")
+    plt.xlabel("Original B0")
+    plt.ylabel("Recovered B0")
+    plt.legend()
+    acf_r2 = r2_score(originalB0s[valid_acf], recoveredB0s_acf[valid_acf]) if np.sum(valid_acf) > 1 else 0.0
+    plt.title(f"Linear data, JET range -- r^2: {acf_r2:.4f}")
+    plt.show()
+
+    # Plot 3: Median Peak Separation
+    valid_med = ~np.isnan(recoveredB0s_medianPeak)
+    plt.figure(figsize=(12, 10))
+    plt.scatter(originalB0s[valid_med], recoveredB0s_medianPeak[valid_med], label="Recovered by Median Peak Separation")
+    plt.plot(sorted(originalB0s), sorted(originalB0s), "k--", label="ideal B0 recovery")
+    plt.xlabel("Original B0")
+    plt.ylabel("Recovered B0")
+    plt.legend()
+    med_r2 = r2_score(originalB0s[valid_med], recoveredB0s_medianPeak[valid_med]) if np.sum(valid_med) > 1 else 0.0
+    plt.title(f"Linear data, JET range -- r^2: {med_r2:.4f}")
+    plt.show()
+
+    return {
+        "original_B0": originalB0s,
+        "recovered_B0_comb": recoveredB0s_comb,
+        "recovered_B0_acf": recoveredB0s_acf,
+        "recovered_B0_medianPeak": recoveredB0s_medianPeak
+    }
 
 if __name__ == "__main__":
 
@@ -608,7 +867,7 @@ if __name__ == "__main__":
         action="store",
         help="Particle used as fast ion in simulation -- likely to be either alpha ('He-4 2+') or deuterium ('D+').",
         required = False,
-        type=Path
+        type=str
     )
     
     args = parser.parse_args()
@@ -619,4 +878,5 @@ if __name__ == "__main__":
         elif len(glob.glob(str(args.dir / "*.csv"))) > 0:
             estimate_B0_from_netcdf_spectra(args.dir, args.fields)
         elif len(glob.glob(str(args.dir / "*.h5"))) > 0:
-            estimate_B0_from_h5_spectra(args.dir, args.particle)
+            # estimate_B0_from_h5_spectra(args.dir, args.particle)
+            estimate_B0_robust(args.dir, args.particle)

@@ -15,13 +15,13 @@ import time
 from scipy.stats import sem
 from sklearn.model_selection import RepeatedKFold, LeaveOneOut
 from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error, log_loss
-
+from sklearn.base import clone
 from aeon.datasets import load_cardano_sentiment, load_covid_3month
 from aeon.transformations.collection import Normalizer
 
 from sklearn.metrics import root_mean_squared_error, r2_score
 from scipy.stats import linregress
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 import logging
 
 import epoch_utils
@@ -49,108 +49,134 @@ warnings.filterwarnings("ignore")
 # plt.rcParams.update({'legend.fontsize': 24.0})
 
 # Helper function to evaluate a single cross-validation fold concurrently
-def _process_fold(
-        fold,
-        train,
-        test,
-        algorithm,
-        output_field,
-        inputSpectra,
-        output_values,
-        logFields,
-        aeon_only,
-        model_threads
-    ):
-    fold_time_start = time.process_time_ns()
+def _process_fold(task_payload: dict) -> dict:
+    """
+    Unified worker function executed in an isolated ProcessPoolExecutor process.
+    Compatible with both regress() and regress_from_hd5_multithread_beta().
+    """
+    output_field = task_payload["output_field"]
+    algorithm = task_payload["algorithm"]
+    fold_idx = task_payload["fold_idx"]
+    train_indices = task_payload["train_indices"]
+    test_indices = task_payload["test_indices"]
+    
+    # Extract data arrays and enforce float64 + C-contiguous memory layout
+    train_x = np.ascontiguousarray(task_payload["train_x"], dtype=np.float64)
+    train_y_raw = np.ascontiguousarray(task_payload["train_y_raw"], dtype=np.float64)
+    test_x = np.ascontiguousarray(task_payload["test_x"], dtype=np.float64)
+    test_y_raw = np.ascontiguousarray(task_payload["test_y_raw"], dtype=np.float64)
+    
+    is_log_field = task_payload["is_log_field"]
+    model_threads = task_payload["model_threads"]
+    input_spectra_names = task_payload.get("inputSpectraNames", ["spectra"])
 
-    train_x = [inputSpectra[t] for t in train]
-    train_y = output_values[train]
-    test_x = [inputSpectra[t] for t in test]
-    test_y = output_values[test]
+    # 1. Renormalize target values specifically for this split
+    train_y, scaler = ml_utils.normalise_data(train_y_raw)
+    test_y, _ = ml_utils.normalise_data(test_y_raw, scaler=scaler)
 
-    # Renormalise for each split
-    train_y, scaler = ml_utils.normalise_data(train_y)
-    test_y, _ = ml_utils.normalise_data(test_y, scaler=scaler)
+    # 2. Get base algorithm instance & deep-clone for complete memory isolation
+    base_tsr = ml_utils.get_algorithm(algorithm, nThreads=model_threads)
+    tsr = clone(base_tsr)
 
-    # Initialize model instance per thread to prevent race conditions
-    tsr = ml_utils.get_algorithm(algorithm, model_threads)
+    # 3. Deterministically seed stochastic estimators
+    seed_val = 42 + fold_idx
+    if hasattr(tsr, "random_state"):
+        try:
+            tsr.set_params(random_state=seed_val)
+        except Exception:
+            pass
+    elif hasattr(tsr, "seed"):
+        try:
+            tsr.set_params(seed=seed_val)
+        except Exception:
+            pass
 
-    # Fit
+    # Fit & Track execution time
+    fold_start_wall_s = time.time()
+    fold_start_train_ns = time.process_time_ns()
     tsr.fit(train_x, train_y)
+    fold_end_train_ns = time.process_time_ns()
+    fold_training_time_ns = fold_end_train_ns - fold_start_train_ns
 
-    # Predict
+    # Predict & Track inference time
+    fold_inf_clock_start_ns = time.perf_counter_ns()
+    fold_inf_cpu_start_ns = time.process_time_ns()
     predictions = tsr.predict(test_x)
+    fold_inf_cpu_end_ns = time.process_time_ns()
+    fold_inf_clock_end_ns = time.perf_counter_ns()
+
+    fold_inference_time_cpu_ns = fold_inf_cpu_end_ns - fold_inf_cpu_start_ns
+    fold_inference_time_clock_ns = fold_inf_clock_end_ns - fold_inf_clock_start_ns
+    fold_total_time_s = time.time() - fold_start_wall_s
+
+    # Evaluate R2 scores
+    test_score_r2 = tsr.score(test_x, test_y, metric="r2")
+    train_score_r2 = tsr.score(train_x, train_y, metric="r2")
+
+    # Denormalize predictions and ground truths for output logging
     preds_denormed = ml_utils.denormalise_data(predictions, scaler)
     test_y_denormed = ml_utils.denormalise_data(test_y, scaler)
 
-    if output_field in logFields:
-        preds_denormed = 10.0 ** preds_denormed
-        test_y_denormed = 10.0 ** test_y_denormed
+    if is_log_field:
+        preds_denormed = 10.0**preds_denormed
+        test_y_denormed = 10.0**test_y_denormed
 
-    if aeon_only:
-        score = tsr.score(test_x, test_y, metric='r2')
-        training_r2 = tsr.score(train_x, train_y, metric='r2')
-    else:
-        score = tsr.score(test_x, test_y)
-        training_r2 = tsr.score(train_x, train_y)
-
-    fold_predictions_records = []
-    testLens = [len(predictions), len(test), len(test_y), len(test_y_denormed), len(predictions), len(preds_denormed)]
-    assert len(set(testLens)) == 1
-
+    # Generate prediction records
+    records = []
     for i in range(len(predictions)):
         predRecord = ml_utils.TSRPrediction(
             algorithm=algorithm,
-            inputChannels=["growth_rates"],
+            inputChannels=np.array(input_spectra_names),
             outputQuantity=output_field,
-            datapoint_ID=test[i],
-            fold_ID=fold,
-            trueValue_normalised=test_y[i],
-            trueValue_denormalised=test_y_denormed[i][0],
-            trueValue_denormalised_log10=np.log10(test_y_denormed[i][0]),
-            predictedValue_normalised=predictions[i],
-            predictedValue_denormalised=preds_denormed[i][0],
-            predictedValue_denormalised_log10=np.log10(preds_denormed[i][0])
+            datapoint_ID=int(test_indices[i]),
+            fold_ID=int(fold_idx),
+            trueValue_normalised=float(test_y[i]),
+            trueValue_denormalised=float(test_y_denormed[i][0]),
+            trueValue_denormalised_log10=float(np.log10(test_y_denormed[i][0])),
+            predictedValue_normalised=float(predictions[i]),
+            predictedValue_denormalised=float(preds_denormed[i][0]),
+            predictedValue_denormalised_log10=float(np.log10(preds_denormed[i][0]))
         )
-        fold_predictions_records.append(predRecord)
+        records.append(predRecord)
 
-    fold_time_end = time.process_time_ns()
-    fold_time_s = (fold_time_end - fold_time_start) / 1e9
-
+    # UNIFIED RETURN DICTIONARY SCHEMA
     return {
-        "fold": fold,
-        "test_indices": test.tolist(),
+        "output_field": output_field,
+        "algorithm": algorithm,
+        "fold_idx": fold_idx,
+        "test_indices": test_indices.tolist(),
         "test_points": test_y.tolist(),
-        "test_points_denormed": test_y_denormed,
-        "predictions": list(predictions),
-        "predictions_denormed": preds_denormed,
-        "test_r2": score,
-        "train_r2": training_r2,
-        "records": fold_predictions_records,
-        "fold_time": fold_time_s
+        "test_points_denormed": [float(f[0]) for f in test_y_denormed],
+        "predictions": [float(p) for p in predictions],
+        "predictions_denormed": [float(f[0]) for f in preds_denormed],
+        "test_r2": float(test_score_r2),
+        "train_r2": float(train_score_r2),
+        "fold_time": fold_total_time_s,
+        "fold_training_time_ns": fold_training_time_ns,
+        "fold_inference_time_cpu_ns": fold_inference_time_cpu_ns,
+        "fold_inference_time_clock_ns": fold_inference_time_clock_ns,
+        "records": records
     }
 
 def regress_from_hd5_multithread_beta(
-        directory: Path,
-        outputFields: list,
-        logFields: list,
-        algorithms: list,
-        logInputs: bool = False,
-        resultsFilepath: Path = None,
-        doPlot: bool = True,
-        noTitle: bool = False,
-        nThreads: int = 1,
-        numFolds=10,
-        numRepeats=1
-    ):
-
+    directory: Path,
+    outputFields: list,
+    logFields: list,
+    algorithms: list,
+    logInputs: bool = False,
+    resultsFilepath: Path = None,
+    doPlot: bool = True,
+    noTitle: bool = False,
+    nThreads: int = 1,
+    numFolds: int = 10,
+    numRepeats: int = 1
+):
     # Initialise results objects
     battery = ml_utils.TSRBattery()
     allPredictionsRecord = []
     battery.package = "Aeon"
 
-    data_dir = directory / "data"
-    data_files = glob.glob(str(data_dir / "*.h5")) 
+    data_files = [str(p) for p in directory.glob("*.h5")] + [str(p) for p in (directory / "data").glob("*.h5")]
     battery.directory = str(directory.resolve())
     battery.algorithms = algorithms
     battery.normalised = True
@@ -165,6 +191,9 @@ def regress_from_hd5_multithread_beta(
         data: xr.DataTree = xr.open_datatree(f)
         inputData.append(data)
         data.close()
+
+    if len(inputData) == 0:
+        raise FileNotFoundError(f"No .h5 input files found in {directory} or {directory / 'data'}")
 
     if len(inputData) > 1:
         assert np.allclose(inputData[0]["spectra"].F.data, inputData[1]["spectra"].F.data)
@@ -181,8 +210,12 @@ def regress_from_hd5_multithread_beta(
             log_spec = epoch_utils.zero_negative_safe_log(inputSpectra[i])
             inputSpectra[i] = log_spec
 
-    if aeon_only:
+    # Reshape input spectra to 3D tensor layout (n_cases, n_channels, n_timepoints)
+    if aeon_only and inputSpectra.ndim == 2:
         inputSpectra = np.expand_dims(inputSpectra, axis=1)
+
+    # Force float64 precision and C-contiguous memory alignment
+    inputSpectra = np.ascontiguousarray(inputSpectra, dtype=np.float64)
 
     # Output data setup
     battery.outputFields = np.array(outputFields)
@@ -193,7 +226,7 @@ def regress_from_hd5_multithread_beta(
 
     battery.equalLengthTimeseries = True
     battery.numObservations = inputSpectra.shape[0]
-    battery.numInputDimensions = 1
+    battery.numInputDimensions = inputSpectra.shape[1] if inputSpectra.ndim == 3 else 1
     battery.numTimepointsIfEqual = inputSpectra.shape[-1]
     battery.multivariate = battery.numInputDimensions > 1
 
@@ -202,136 +235,156 @@ def regress_from_hd5_multithread_beta(
     battery.cvRepeats = numRepeats
     battery.results = []
 
-    # Determine CPU allocation: allocate 1-2 internal threads per model worker
-    model_threads = 1  # 1 thread per model yields highest throughput for large batch worker pools
+    model_threads = 1
     max_workers = max(1, nThreads // model_threads)
 
-    fold_times = []
+    # Construct complete task payload pool across ALL fields, algorithms, and CV splits
+    all_tasks = []
+    cv_splits_by_field = {}
 
     for output_field, output_values in targetFields.items():
         assert len(output_values) == inputSpectra.shape[0]
         case_indices = np.arange(len(output_values))
-        output_values = np.array(output_values)
+        output_values = np.ascontiguousarray(output_values, dtype=np.float64)
+
         cv = RepeatedKFold(n_splits=numFolds, n_repeats=numRepeats)
         tt_split = list(enumerate(cv.split(case_indices)))
+
+        if output_field in logFields:
+            output_values = np.log10(output_values)
 
         _, scaler = ml_utils.normalise_data(output_values)
         battery.original_output_means[output_field] = scaler.mean_
         battery.original_output_stdevs[output_field] = np.sqrt(scaler.var_)
 
-        # Prepare containers for each algorithm's outputs
-        algo_results = {
-            algo: {
-                "test_indices": [], "test_points": [], "test_points_denormed": [],
-                "predictions": [], "predictions_denormed": [],
-                "test_R2s": [], "train_R2s": []
-            }
-            for algo in algorithms
-        }
+        cv_splits_by_field[output_field] = (output_values, tt_split)
 
-        # Build a single flat task list combining (algorithm, fold_split)
-        all_tasks = list(itertools.product(algorithms, tt_split))
-        print(f"{output_field} Regression: Launching {len(all_tasks)} total tasks across {max_workers} parallel workers...")
+        for algo in algorithms:
+            for fold, (train_idx, test_idx) in tt_split:
+                all_tasks.append({
+                    "output_field": output_field,
+                    "inputSpectraNames": ["growth_rate"],
+                    "algorithm": algo,
+                    "fold_idx": fold,
+                    "train_indices": train_idx,
+                    "test_indices": test_idx,
+                    "train_x": inputSpectra[train_idx].copy(),
+                    "train_y_raw": output_values[train_idx].copy(),
+                    "test_x": inputSpectra[test_idx].copy(),
+                    "test_y_raw": output_values[test_idx].copy(),
+                    "is_log_field": output_field in logFields,
+                    "model_threads": model_threads
+                })
 
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_task = {
-                executor.submit(
-                    _process_fold,
-                    fold=fold,
-                    train=train,
-                    test=test,
-                    algorithm=algo,
-                    output_field=output_field,
-                    inputSpectra=inputSpectra,
-                    output_values=output_values,
-                    logFields=logFields,
-                    aeon_only=aeon_only,
-                    model_threads=model_threads
-                ): (algo, fold)
-                for algo, (fold, (train, test)) in all_tasks
-            }
+    print(f"HDF5 Regression: Executing {len(all_tasks)} total tasks across {max_workers} worker processes...")
 
-            for future in as_completed(future_to_task):
-                algo, fold = future_to_task[future]
-                res = future.result()
-                
-                # Route completed fold output to its corresponding algorithm container
-                algo_res = algo_results[algo]
-                algo_res["test_indices"].extend(res["test_indices"])
-                algo_res["test_points"].extend(res["test_points"])
-                algo_res["test_points_denormed"].extend(res["test_points_denormed"])
-                algo_res["predictions"].extend(res["predictions"])
-                algo_res["predictions_denormed"].extend(res["predictions_denormed"])
-                algo_res["test_R2s"].append(res["test_r2"])
-                algo_res["train_R2s"].append(res["train_r2"])
-                allPredictionsRecord.extend(res["records"])
+    # Standardized accumulator structure
+    grouped_results = {}
+    allPredictionsRecord = []
+    fold_times = []
 
-                fold_times.append(res["fold_time"])
-                print(f"[{algo}] Completed Fold {fold} in {res['fold_time']:.2f}s | Test R2: {res['test_r2']:.4f}")
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(_process_fold, task) for task in all_tasks]
 
-        # Post-processing and metric aggregation per algorithm
-        for algorithm in algorithms:
-            res = algo_results[algorithm]
-            
-            rmse, rmse_var, rmse_se = ml_utils.root_mean_squared_error(res["predictions"], res["test_points"])
-            r2 = np.mean(res["test_R2s"])
-            r2_sem = sem(res["test_R2s"])
-            r2_var = np.var(res["test_R2s"])
+        for future in as_completed(futures):
+            res = future.result()
+            key = (res["output_field"], res["algorithm"])
 
-            if math.isnan(r2):
-                r2 = r2_score(res["test_points"], res["predictions"])
+            if key not in grouped_results:
+                grouped_results[key] = {
+                    "test_indices": [],
+                    "test_points": [],
+                    "test_points_denormed": [],
+                    "predictions": [],
+                    "predictions_denormed": [],
+                    "test_R2s": [],
+                    "train_R2s": [],
+                    "fold_training_times_ns": [],
+                    "fold_inference_times_cpu_ns": [],
+                    "fold_inference_times_clock_ns": []
+                }
 
-            mean_training_r2 = np.mean(res["train_R2s"])
-            train_r2_sem = sem(res["train_R2s"])
-            train_r2_var = np.var(res["train_R2s"])
-            
-            result = ml_utils.TSRResult()
-            result.output = output_field
-            result.algorithm = algorithm
-            result.cvR2_mean = r2
-            result.cvR2_var = r2_var
-            result.cvR2_stderr = r2_sem
-            result.cvRMSE_mean = rmse
-            result.cvRMSE_var = rmse_var
-            result.cvRMSE_stderr = rmse_se
-            result.cvMAE_mean = mean_absolute_error(y_true=res["test_points"], y_pred=res["predictions"], multioutput="uniform_average")
-            mae_all = mean_absolute_error(y_true=res["test_points"], y_pred=res["predictions"], multioutput="raw_values")
-            result.cvMAE_var = np.var(mae_all)
-            result.cvMAE_stderr = sem(mae_all)
-            result.cvMAPE_mean = mean_absolute_percentage_error(y_true=res["test_points"], y_pred=res["predictions"], multioutput="uniform_average")
-            mape_all = mean_absolute_percentage_error(y_true=res["test_points"], y_pred=res["predictions"], multioutput="raw_values")
-            result.cvMAPE_var = np.var(mape_all)
-            result.cvMAPE_stderr = sem(mape_all)
-            result.trainR2_mean = mean_training_r2
-            result.trainR2_stderr = train_r2_sem
-            result.trainR2_var = train_r2_var
+            group = grouped_results[key]
+            group["test_indices"].extend(res["test_indices"])
+            group["test_points"].extend(res["test_points"])
+            group["test_points_denormed"].extend(res["test_points_denormed"])
+            group["predictions"].extend(res["predictions"])
+            group["predictions_denormed"].extend(res["predictions_denormed"])
+            group["test_R2s"].append(res["test_r2"])
+            group["train_R2s"].append(res["train_r2"])
 
-            battery.results.append(result)
+            group["fold_training_times_ns"].append(res["fold_training_time_ns"])
+            group["fold_inference_times_cpu_ns"].append(res["fold_inference_time_cpu_ns"])
+            group["fold_inference_times_clock_ns"].append(res["fold_inference_time_clock_ns"])
 
-            if doPlot:
-                plot_predictions(
-                    algorithm_name=algorithm,
-                    field=output_field,
-                    sim_ids=res["test_indices"], 
-                    truth=res["test_points_denormed"],
-                    preds=res["predictions_denormed"],
-                    r2=result.cvR2_mean,
-                    rmse=result.cvRMSE_mean,
-                    saveFolder=resultsFilepath.parent / "predictions" / algorithm, 
-                    doLog=output_field in logFields,
-                    noTitle=noTitle
-                )
+            allPredictionsRecord.extend(res["records"])
+            fold_times.append(res["fold_time"])
+            print(f"[{res['algorithm']} - {res['output_field']}] Fold {res['fold_idx']} complete ({res['fold_time']:.2f}s) | Test R2: {res['test_r2']:.4f}")
 
-    # Write results and all predictions
-    ml_utils.write_ML_result_to_file(battery, resultsFilepath)
-    if len(allPredictionsRecord) > 0:
-        prds_path = resultsFilepath.parent / "predictions"
-        prds_path.mkdir(parents=True, exist_ok=True)
-        with open(prds_path / f"{resultsFilepath.name.replace('.json', '').replace('.', '')}_predictions.csv", "w") as f:
-            w = DataclassWriter(f, allPredictionsRecord, ml_utils.TSRPrediction)
-            w.write()
+    # Post-processing and metric aggregation per field/algorithm combination
+    for (output_field, algorithm), res in grouped_results.items():
+        rmse, rmse_var, rmse_se = ml_utils.root_mean_squared_error(res["predictions"], res["test_points"])
+        r2 = np.mean(res["test_R2s"])
+        r2_sem = sem(res["test_R2s"]) if len(res["test_R2s"]) > 1 else 0.0
+        r2_var = np.var(res["test_R2s"]) if len(res["test_R2s"]) > 1 else 0.0
 
-    print(f"Fold time: Mean: {np.mean(fold_times)}, Min: {np.min(fold_times)}, Max: {np.max(fold_times)}")
+        if math.isnan(r2):
+            r2 = r2_score(res["test_points"], res["predictions"])
+
+        mean_training_r2 = np.mean(res["train_R2s"])
+        train_r2_sem = sem(res["train_R2s"]) if len(res["train_R2s"]) > 1 else 0.0
+        train_r2_var = np.var(res["train_R2s"]) if len(res["train_R2s"]) > 1 else 0.0
+
+        result = ml_utils.TSRResult()
+        result.output = output_field
+        result.algorithm = algorithm
+        result.cvR2_mean = r2
+        result.cvR2_var = r2_var
+        result.cvR2_stderr = r2_sem
+        result.cvRMSE_mean = rmse
+        result.cvRMSE_var = rmse_var
+        result.cvRMSE_stderr = rmse_se
+        result.cvMAE_mean = mean_absolute_error(y_true=res["test_points"], y_pred=res["predictions"], multioutput="uniform_average")
+        mae_all = mean_absolute_error(y_true=res["test_points"], y_pred=res["predictions"], multioutput="raw_values")
+        result.cvMAE_var = np.var(mae_all)
+        result.cvMAE_stderr = sem(mae_all) if len(mae_all) > 1 else 0.0
+        result.cvMAPE_mean = mean_absolute_percentage_error(y_true=res["test_points"], y_pred=res["predictions"], multioutput="uniform_average")
+        mape_all = mean_absolute_percentage_error(y_true=res["test_points"], y_pred=res["predictions"], multioutput="raw_values")
+        result.cvMAPE_var = np.var(mape_all)
+        result.cvMAPE_stderr = sem(mape_all) if len(mape_all) > 1 else 0.0
+        result.trainR2_mean = mean_training_r2
+        result.trainR2_stderr = train_r2_sem
+        result.trainR2_var = train_r2_var
+
+        battery.results.append(result)
+
+        if doPlot and resultsFilepath:
+            plot_predictions(
+                algorithm_name=algorithm,
+                field=output_field,
+                sim_ids=res["test_indices"],
+                truth=res["test_points_denormed"],
+                preds=res["predictions_denormed"],
+                r2=result.cvR2_mean,
+                rmse=result.cvRMSE_mean,
+                saveFolder=resultsFilepath.parent / "predictions" / algorithm,
+                doLog=output_field in logFields,
+                noTitle=noTitle
+            )
+
+    # Write results JSON and predictions CSV
+    if resultsFilepath:
+        ml_utils.write_ML_result_to_file(battery, resultsFilepath)
+        if len(allPredictionsRecord) > 0:
+            prds_path = resultsFilepath.parent / "predictions"
+            prds_path.mkdir(parents=True, exist_ok=True)
+            csv_out = prds_path / f"{resultsFilepath.name.replace('.json', '').replace('.', '')}_predictions.csv"
+            with open(csv_out, "w", newline="") as f:
+                w = DataclassWriter(f, allPredictionsRecord, ml_utils.TSRPrediction)
+                w.write()
+
+    if fold_times:
+        print(f"Fold execution summary across processes: Mean: {np.mean(fold_times):.2f}s, Min: {np.min(fold_times):.2f}s, Max: {np.max(fold_times):.2f}s")
 
 def regress_from_hd5(
         directory : Path,
@@ -724,7 +777,7 @@ def plot_predictions(
     plt.legend(by_label.values(), by_label.keys())
     plt.savefig(saveFolder / f"{algorithm_name}_{field}_prediction_error.png", bbox_inches="tight")
     
-def regress(
+def regress_cv(
         directory : Path,
         inputSpectraNames : list,
         outputFields : list,
@@ -1064,6 +1117,322 @@ def regress(
             w = DataclassWriter(f, allPredictionsRecord, ml_utils.TSRPrediction)
             w.write()
 
+def regress_cv_multithreaded_beta(
+    directory: Path,
+    inputSpectraNames: list,
+    outputFields: list,
+    logFields: list,
+    algorithms: list,
+    cvFolds: int,
+    cvRepeats: int,
+    cvStrategy: str = "RepeatedKFolds",
+    scaleInputs: bool = False,
+    logInputs: bool = False,
+    doIce: bool = False,
+    includeFreqs: bool = False,
+    iceMetricsToUse: list = None,
+    resultsFilepath: Path = None,
+    doPlot: bool = True,
+    noTitle: bool = False,
+    nThreads: int = 1
+):
+    logging.basicConfig(filename="aeon_tsc.log", level=logging.INFO)
+
+    battery = ml_utils.TSRBattery()
+    allPredictionsRecord = []
+    battery.package = "Aeon"
+
+    data_dir = directory if directory.name == "data" else directory / "data"
+    data_files = glob.glob(str(data_dir / "*.nc"))
+    battery.directory = str(directory.resolve())
+    battery.algorithms = algorithms
+    battery.normalised = True
+    battery.scaledInputs = scaleInputs
+
+    # Input data
+    inputs = {name: [] for name in inputSpectraNames}
+    inputs = ml_utils.read_data(data_files, inputs, with_names=True, with_coords=True, with_iciness=doIce, denorm_coords=True)
+    battery.inputSpectra = np.array(inputSpectraNames)
+
+    if doIce:
+        iceMetrics = dict()
+        if iceMetricsToUse:
+            for m in iceMetricsToUse:
+                for n in inputs:
+                    if m in n:
+                        iceMetrics[n] = inputs[n]
+        else:
+            for n in inputs.keys():
+                if "ICEmetric" in n:
+                    iceMetrics[n] = inputs[n]
+
+    # Output data
+    outputs = {outputField: [] for outputField in outputFields}
+    outputs = ml_utils.read_data(data_files, outputs, with_names=False, with_coords=False)
+    battery.outputFields = np.array(outputFields)
+    battery.numOutputs = len(outputs.keys())
+
+    if "B0angle" in outputs:
+        transf = np.array(outputs["B0angle"])
+        outputs["B0angle"] = np.abs(transf - 90.0)
+
+    spec_lengths = [len(s) for field in inputSpectraNames for s in inputs[field]]
+    min_l = np.min(spec_lengths)
+    max_common_coord = np.max([c[-1] for c in [inputs[f"{inputSpectrumName}_denorm_coords"] for inputSpectrumName in inputSpectraNames]])
+
+    scaler_train = MinMaxScaler(feature_range=(0, 1))
+    inputData = []
+    for field in inputSpectraNames:
+        specs = inputs[field]
+        coords = inputs[f"{field}_denorm_coords"]
+        for i in range(len(specs)):
+            if len(specs[i]) > min_l:
+                truncd_series, truncd_coords = ml_utils.truncate_series(specs[i], inputs[f"{field}_denorm_coords"][i], max_common_coord)
+                resamp_series, resamp_coords = ml_utils.resample_series(truncd_series, truncd_coords, min_l, f"{field.split('/')[0]}_run_{inputs['sim_ids'][i]}", directory / "spectra_homogenisation/")
+                specs[i] = resamp_series
+                coords[i] = resamp_coords
+        spec_data = specs if not scaleInputs else [scaler_train.fit_transform(s.reshape(-1, 1)).flatten() for s in specs]
+        if logInputs:
+            for i in range(len(spec_data)):
+                trace = spec_data[i]
+                spec_data[i] = [np.log10(trace[1]) if trace[1] != 0.0 else 0.0] + np.log10(trace[1:]).tolist()
+        inputData.append(spec_data)
+    if includeFreqs:
+        inputData.append(coords)
+
+    # Reshape into 3D numpy array of shape (n_cases, n_channels, n_timepoints)
+    inputSpectra = np.swapaxes(np.array(inputData), 0, 1)
+    # Enforce float64 and C-contiguous layout for Numba/aeon compatibility
+    inputSpectra = np.ascontiguousarray(inputSpectra, dtype=np.float64)
+
+    logFields = np.intersect1d(outputFields, logFields)
+    battery.logFields = np.array(logFields)
+    battery.original_output_means = dict.fromkeys(outputFields)
+    battery.original_output_stdevs = dict.fromkeys(outputFields)
+
+    battery.equalLengthTimeseries = True
+    battery.numObservations = inputSpectra.shape[0]
+    battery.numInputDimensions = inputSpectra.shape[1]
+    battery.numTimepointsIfEqual = inputSpectra.shape[2]
+    battery.multivariate = battery.numInputDimensions > 1
+
+    battery.cvStrategy = cvStrategy
+    battery.cvFolds = cvFolds
+    battery.cvRepeats = cvRepeats
+    battery.results = []
+
+    model_threads = 1
+    max_workers = max(1, nThreads // model_threads)
+
+    # Construct task payloads
+    all_tasks = []
+    cv_splits_by_field = {}
+
+    for output_field, output_values in outputs.items():
+        assert len(output_values) == inputSpectra.shape[0]
+        case_indices = np.arange(len(output_values))
+        output_values = np.ascontiguousarray(output_values, dtype=np.float64)
+
+        if cvStrategy == "RepeatedKFolds":
+            cv = RepeatedKFold(n_splits=cvFolds, n_repeats=cvRepeats)
+        elif cvStrategy == "LeaveOneOut":
+            cv = LeaveOneOut()
+        else:
+            cv = RepeatedKFold(n_splits=cvFolds, n_repeats=cvRepeats)
+
+        tt_split = list(enumerate(cv.split(case_indices)))
+
+        if output_field in logFields:
+            output_values = np.log10(output_values)
+
+        _, scaler = ml_utils.normalise_data(output_values)
+        battery.original_output_means[output_field] = scaler.mean_
+        battery.original_output_stdevs[output_field] = np.sqrt(scaler.var_)
+
+        cv_splits_by_field[output_field] = (output_values, tt_split)
+
+        for algo in algorithms:
+            for fold, (train_idx, test_idx) in tt_split:
+                all_tasks.append({
+                    "output_field": output_field,
+                    "algorithm": algo,
+                    "fold_idx": fold,
+                    "train_indices": train_idx,
+                    "test_indices": test_idx,
+                    "train_x": inputSpectra[train_idx].copy(),
+                    "train_y_raw": output_values[train_idx].copy(),
+                    "test_x": inputSpectra[test_idx].copy(),
+                    "test_y_raw": output_values[test_idx].copy(),
+                    "is_log_field": output_field in logFields,
+                    "inputSpectraNames": inputSpectraNames,
+                    "model_threads": model_threads
+                })
+
+    print(f"Executing {len(all_tasks)} CV fold tasks concurrently across {max_workers} worker processes...")
+
+    clock_time_start = time.time()
+    cv_time_start = time.process_time_ns()
+
+    # Standardized accumulator structure
+    grouped_results = {}
+    allPredictionsRecord = []
+    fold_times = []
+
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(_process_fold, task) for task in all_tasks]
+
+        for future in as_completed(futures):
+            res = future.result()
+            key = (res["output_field"], res["algorithm"])
+
+            if key not in grouped_results:
+                grouped_results[key] = {
+                    "test_indices": [],
+                    "test_points": [],
+                    "test_points_denormed": [],
+                    "predictions": [],
+                    "predictions_denormed": [],
+                    "test_R2s": [],
+                    "train_R2s": [],
+                    "fold_training_times_ns": [],
+                    "fold_inference_times_cpu_ns": [],
+                    "fold_inference_times_clock_ns": []
+                }
+
+            group = grouped_results[key]
+            group["test_indices"].extend(res["test_indices"])
+            group["test_points"].extend(res["test_points"])
+            group["test_points_denormed"].extend(res["test_points_denormed"])
+            group["predictions"].extend(res["predictions"])
+            group["predictions_denormed"].extend(res["predictions_denormed"])
+            group["test_R2s"].append(res["test_r2"])
+            group["train_R2s"].append(res["train_r2"])
+
+            group["fold_training_times_ns"].append(res["fold_training_time_ns"])
+            group["fold_inference_times_cpu_ns"].append(res["fold_inference_time_cpu_ns"])
+            group["fold_inference_times_clock_ns"].append(res["fold_inference_time_clock_ns"])
+
+            allPredictionsRecord.extend(res["records"])
+            fold_times.append(res["fold_time"])
+
+    # Aggregate metric results across all outputs and algorithms
+    trainingTimeTotal_ns = 0
+    fold_training_times_ns = []
+    fold_inference_times_cpu_ns = []
+    fold_inference_times_clock_ns = []
+
+    for (output_field, algorithm), group in grouped_results.items():
+        all_test_points = group["test_points_norm"]
+        all_predictions = group["predictions_norm"]
+        all_test_points_denormed = group["test_points_denormed"]
+        all_predictions_denormed = group["predictions_denormed"]
+        all_test_indices = group["test_indices"]
+        all_test_R2s = group["test_r2s"]
+        all_train_R2s = group["train_r2s"]
+
+        allPredictionsRecord.extend(group["prediction_records"])
+        fold_training_times_ns.extend(group["fold_training_times_ns"])
+        fold_inference_times_cpu_ns.extend(group["fold_inference_times_cpu_ns"])
+        fold_inference_times_clock_ns.extend(group["fold_inference_times_clock_ns"])
+        trainingTimeTotal_ns += sum(group["fold_training_times_ns"])
+
+        result = ml_utils.TSRResult()
+        result.output = output_field
+        result.algorithm = algorithm
+
+        rmse, rmse_var, rmse_se = ml_utils.root_mean_squared_error(all_predictions, all_test_points)
+        r2 = np.mean(all_test_R2s)
+        r2_sem = sem(all_test_R2s) if len(all_test_R2s) > 1 else 0.0
+        r2_var = np.var(all_test_R2s) if len(all_test_R2s) > 1 else 0.0
+
+        if math.isnan(r2):
+            r2 = r2_score(all_test_points, all_predictions)
+
+        mean_training_r2 = np.mean(all_train_R2s)
+        train_r2_sem = sem(all_train_R2s) if len(all_train_R2s) > 1 else 0.0
+        train_r2_var = np.var(all_train_R2s) if len(all_train_R2s) > 1 else 0.0
+
+        summary_str = f"{output_field} -- {algorithm}: Mean test r2 = {r2:.5f}+-{r2_sem:.5f}, mean test RMSE = {rmse:.5f}+-{rmse_se:.5f}, mean train r2 = {mean_training_r2:.5f}+-{train_r2_sem:.5f}"
+        print("--------------------------------------------------------------------------------------------------------------------------")
+        print(summary_str)
+        logger.info(summary_str)
+        print("--------------------------------------------------------------------------------------------------------------------------")
+
+        result.cvR2_mean = r2
+        result.cvR2_var = r2_var
+        result.cvR2_stderr = r2_sem
+        result.cvRMSE_mean = rmse
+        result.cvRMSE_var = rmse_var
+        result.cvRMSE_stderr = rmse_se
+        result.cvMAE_mean = mean_absolute_error(y_true=all_test_points, y_pred=all_predictions, multioutput="uniform_average")
+        mae_all = mean_absolute_error(y_true=all_test_points, y_pred=all_predictions, multioutput="raw_values")
+        result.cvMAE_var = np.var(mae_all)
+        result.cvMAE_stderr = sem(mae_all) if len(mae_all) > 1 else 0.0
+        result.cvMAPE_mean = mean_absolute_percentage_error(y_true=all_test_points, y_pred=all_predictions, multioutput="uniform_average")
+        mape_all = mean_absolute_percentage_error(y_true=all_test_points, y_pred=all_predictions, multioutput="raw_values")
+        result.cvMAPE_var = np.var(mape_all)
+        result.cvMAPE_stderr = sem(mape_all) if len(mape_all) > 1 else 0.0
+        result.trainR2_mean = mean_training_r2
+        result.trainR2_stderr = train_r2_sem
+        result.trainR2_var = train_r2_var
+
+        battery.results.append(result)
+
+        if doIce and iceMetricsToUse:
+            correlate_predictions_with_iciness(
+                algorithm_name=algorithm,
+                field=output_field,
+                truth=all_test_points,
+                preds=all_predictions,
+                iceMetrics=iceMetrics,
+                r2=result.cvR2_mean,
+                rmse=result.cvRMSE_mean,
+                saveFolder=resultsFilepath.parent / "iciness" / algorithm,
+            )
+        if doPlot:
+            plot_predictions(
+                algorithm_name=algorithm,
+                field=output_field,
+                sim_ids=all_test_indices,
+                truth=all_test_points_denormed,
+                preds=all_predictions_denormed,
+                r2=result.cvR2_mean,
+                rmse=result.cvRMSE_mean,
+                saveFolder=resultsFilepath.parent / "predictions" / algorithm,
+                doLog=output_field in logFields,
+                noTitle=noTitle
+            )
+
+    clock_time_end = time.time()
+    cv_time_end = time.process_time_ns()
+    cvTimeTotal_ns = cv_time_end - cv_time_start
+    clock_time = clock_time_end - clock_time_start
+    print(f"Clock time: {clock_time / 60.0:.2f} min. Process time: {cvTimeTotal_ns / 6E10:.2f} min.")
+
+    battery.cvTimeTotal_CPUhours = float(cvTimeTotal_ns) / 3.6E12
+    battery.inferenceTimeMinPerFold_CPUns = int(np.rint(np.min(fold_inference_times_cpu_ns)))
+    battery.inferenceTimeMinPerFold_CPUms = float(battery.inferenceTimeMinPerFold_CPUns) / 1E6
+    battery.inferenceTimeMinPerFold_ClockNs = int(np.rint(np.min(fold_inference_times_clock_ns)))
+    battery.inferenceTimeMinPerFold_ClockMs = float(battery.inferenceTimeMinPerFold_ClockNs) / 1E6
+    battery.inferenceTimeMeanPerFold_CPUns = int(np.rint(np.mean(fold_inference_times_cpu_ns)))
+    battery.inferenceTimeMeanPerFold_CPUms = float(battery.inferenceTimeMeanPerFold_CPUns) / 1E6
+    battery.inferenceTimeMeanPerFold_ClockNs = int(np.rint(np.mean(fold_inference_times_clock_ns)))
+    battery.inferenceTimeMeanPerFold_ClockMs = float(battery.inferenceTimeMeanPerFold_ClockNs) / 1E6
+    battery.trainingTimeMinPerFold_CPUhours = np.min(fold_training_times_ns) / 3.6E12
+    battery.trainingTimeMeanPerFold_CPUhours = np.mean(fold_training_times_ns) / 3.6E12
+    battery.trainingTimeTotal_CPUns = trainingTimeTotal_ns
+    battery.trainingTimeTotal_CPUhours = float(trainingTimeTotal_ns) / 3.6E12
+
+    # Write output predictions CSV and results JSON
+    ml_utils.write_ML_result_to_file(battery, resultsFilepath)
+    if len(allPredictionsRecord) > 0:
+        prds_path = resultsFilepath.parent / "predictions"
+        prds_path.mkdir(parents=True, exist_ok=True)
+        out_csv_path = prds_path / f"{resultsFilepath.name.replace('.json', '').replace('.', '')}_predictions.csv"
+        with open(out_csv_path, "w", newline="") as f:
+            w = DataclassWriter(f, allPredictionsRecord, ml_utils.TSRPrediction)
+            w.write()
+
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser("parser")
@@ -1207,24 +1576,45 @@ if __name__ == "__main__":
         print("WARNING: Prediction plots will only make sense with a LeaveOneOut cross-validation strategy.")
 
     if not args.h5data:
-        regress(
-            args.dir, 
-            args.inputSpectra, 
-            args.outputFields, 
-            args.logFields, 
-            args.algorithms, 
-            args.cvFolds, 
-            args.cvRepeats, 
-            args.cvStrategy,
-            scaleInputs=args.scaleInputs,
-            logInputs=args.logInputs,
-            doIce=args.doIce,
-            includeFreqs=args.includeFreqs,
-            iceMetricsToUse=args.iceMetrics,
-            resultsFilepath=args.resultsFilepath,
-            doPlot=args.doPlot,
-            noTitle=args.noTitle,
-            nThreads =args.nThreads)
+        if args.beta:
+            regress_cv_multithreaded_beta(
+                args.dir, 
+                args.inputSpectra, 
+                args.outputFields, 
+                args.logFields, 
+                args.algorithms, 
+                args.cvFolds, 
+                args.cvRepeats, 
+                args.cvStrategy,
+                scaleInputs=args.scaleInputs,
+                logInputs=args.logInputs,
+                doIce=args.doIce,
+                includeFreqs=args.includeFreqs,
+                iceMetricsToUse=args.iceMetrics,
+                resultsFilepath=args.resultsFilepath,
+                doPlot=args.doPlot,
+                noTitle=args.noTitle,
+                nThreads =args.nThreads
+            )
+        else:
+            regress_cv(
+                args.dir, 
+                args.inputSpectra, 
+                args.outputFields, 
+                args.logFields, 
+                args.algorithms, 
+                args.cvFolds, 
+                args.cvRepeats, 
+                args.cvStrategy,
+                scaleInputs=args.scaleInputs,
+                logInputs=args.logInputs,
+                doIce=args.doIce,
+                includeFreqs=args.includeFreqs,
+                iceMetricsToUse=args.iceMetrics,
+                resultsFilepath=args.resultsFilepath,
+                doPlot=args.doPlot,
+                noTitle=args.noTitle,
+                nThreads =args.nThreads)
     if args.h5data:
         if args.beta:
             regress_from_hd5_multithread_beta(
