@@ -97,6 +97,7 @@ class GPResults:
 @dataclass
 class TSRBattery:
     directory : str = None
+    inputDataPath : str = None
     package : str = None
     inputSpectra : ArrayLike = None
     outputFields : ArrayLike = None
@@ -108,7 +109,9 @@ class TSRBattery:
     numOutputs : int = 0
     numInputDimensions : int = 0
     numTimepointsIfEqual : int = 0
+    maxCommonCoord : float = 0.0
     equalLengthTimeseries = True
+    equalCoords = False
     multivariate : bool = False
     original_output_means : dict = None
     original_output_stdevs : dict = None

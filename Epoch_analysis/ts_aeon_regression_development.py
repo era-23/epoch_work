@@ -124,20 +124,19 @@ def _process_fold(task_payload: dict) -> dict:
     # Generate prediction records
     records = []
     for i in range(len(predictions)):
-        predRecord = ml_utils.TSRPrediction(
-            algorithm=algorithm,
-            inputChannels=np.array(input_spectra_names),
-            outputQuantity=output_field,
-            datapoint_ID=int(test_indices[i]),
-            fold_ID=int(fold_idx),
-            trueValue_normalised=float(test_y[i]),
-            trueValue_denormalised=float(test_y_denormed[i][0]),
-            trueValue_denormalised_log10=float(np.log10(test_y_denormed[i][0])),
-            predictedValue_normalised=float(predictions[i]),
-            predictedValue_denormalised=float(preds_denormed[i][0]),
-            predictedValue_denormalised_log10=float(np.log10(preds_denormed[i][0]))
-        )
-        records.append(predRecord)
+        records.append({
+            "algorithm": str(algorithm),
+            "inputChannels": [str(c) for c in input_spectra_names],
+            "outputQuantity": str(output_field),
+            "datapoint_ID": int(test_indices[i]),
+            "fold_ID": int(fold_idx),
+            "trueValue_normalised": float(test_y[i]),
+            "trueValue_denormalised": float(test_y_denormed[i][0]),
+            "trueValue_denormalised_log10": float(np.log10(test_y_denormed[i][0])),
+            "predictedValue_normalised": float(predictions[i]),
+            "predictedValue_denormalised": float(preds_denormed[i][0]),
+            "predictedValue_denormalised_log10": float(np.log10(preds_denormed[i][0]))
+        })
 
     # UNIFIED RETURN DICTIONARY SCHEMA
     return {
@@ -297,8 +296,8 @@ def regress_from_hd5_multithread_beta(
                     "test_points_denormed": [],
                     "predictions": [],
                     "predictions_denormed": [],
-                    "test_R2s": [],
-                    "train_R2s": [],
+                    "test_r2": [],
+                    "train_r2": [],
                     "fold_training_times_ns": [],
                     "fold_inference_times_cpu_ns": [],
                     "fold_inference_times_clock_ns": []
@@ -310,30 +309,43 @@ def regress_from_hd5_multithread_beta(
             group["test_points_denormed"].extend(res["test_points_denormed"])
             group["predictions"].extend(res["predictions"])
             group["predictions_denormed"].extend(res["predictions_denormed"])
-            group["test_R2s"].append(res["test_r2"])
-            group["train_R2s"].append(res["train_r2"])
+            group["test_r2"].append(res["test_r2"])
+            group["train_r2"].append(res["train_r2"])
 
             group["fold_training_times_ns"].append(res["fold_training_time_ns"])
             group["fold_inference_times_cpu_ns"].append(res["fold_inference_time_cpu_ns"])
             group["fold_inference_times_clock_ns"].append(res["fold_inference_time_clock_ns"])
-
-            allPredictionsRecord.extend(res["records"])
+            for r in res["records"]:
+                predRecord = ml_utils.TSRPrediction(
+                    algorithm=r["algorithm"],
+                    inputChannels=np.array(r["inputChannels"]),
+                    outputQuantity=r["outputQuantity"],
+                    datapoint_ID=r["datapoint_ID"],
+                    fold_ID=r["fold_ID"],
+                    trueValue_normalised=r["trueValue_normalised"],
+                    trueValue_denormalised=r["trueValue_denormalised"],
+                    trueValue_denormalised_log10=r["trueValue_denormalised_log10"],
+                    predictedValue_normalised=r["predictedValue_normalised"],
+                    predictedValue_denormalised=r["predictedValue_denormalised"],
+                    predictedValue_denormalised_log10=r["predictedValue_denormalised_log10"]
+                )
+                allPredictionsRecord.append(predRecord)
             fold_times.append(res["fold_time"])
             print(f"[{res['algorithm']} - {res['output_field']}] Fold {res['fold_idx']} complete ({res['fold_time']:.2f}s) | Test R2: {res['test_r2']:.4f}")
 
     # Post-processing and metric aggregation per field/algorithm combination
     for (output_field, algorithm), res in grouped_results.items():
         rmse, rmse_var, rmse_se = ml_utils.root_mean_squared_error(res["predictions"], res["test_points"])
-        r2 = np.mean(res["test_R2s"])
-        r2_sem = sem(res["test_R2s"]) if len(res["test_R2s"]) > 1 else 0.0
-        r2_var = np.var(res["test_R2s"]) if len(res["test_R2s"]) > 1 else 0.0
+        r2 = np.mean(res["test_r2"])
+        r2_sem = sem(res["test_r2"]) if len(res["test_r2"]) > 1 else 0.0
+        r2_var = np.var(res["test_r2"]) if len(res["test_r2"]) > 1 else 0.0
 
         if math.isnan(r2):
             r2 = r2_score(res["test_points"], res["predictions"])
 
-        mean_training_r2 = np.mean(res["train_R2s"])
-        train_r2_sem = sem(res["train_R2s"]) if len(res["train_R2s"]) > 1 else 0.0
-        train_r2_var = np.var(res["train_R2s"]) if len(res["train_R2s"]) > 1 else 0.0
+        mean_training_r2 = np.mean(res["train_r2"])
+        train_r2_sem = sem(res["train_r2"]) if len(res["train_r2"]) > 1 else 0.0
+        train_r2_var = np.var(res["train_r2"]) if len(res["train_r2"]) > 1 else 0.0
 
         result = ml_utils.TSRResult()
         result.output = output_field
@@ -809,6 +821,7 @@ def regress_cv(
         data_dir = directory
     data_files = glob.glob(str(data_dir / "*.nc")) 
     battery.directory = str(directory.resolve())
+    battery.inputDataPath = str(data_dir.resolve())
     battery.algorithms = algorithms
     battery.normalised = True
     battery.scaledInputs = scaleInputs
@@ -846,6 +859,8 @@ def regress_cv(
     min_l = np.min(spec_lengths)
     print(f"Max spec length: {np.max(spec_lengths)} min spec length: {min_l}")
     max_common_coord = np.max([c[-1] for c in [inputs[f"{inputSpectrumName}_denorm_coords"] for inputSpectrumName in inputSpectraNames]])
+
+    battery.maxCommonCoord = float(max_common_coord)
     
     scaler_train = MinMaxScaler(feature_range=(0, 1))
     inputData = []
@@ -1145,6 +1160,7 @@ def regress_cv_multithreaded_beta(
     data_dir = directory if directory.name == "data" else directory / "data"
     data_files = glob.glob(str(data_dir / "*.nc"))
     battery.directory = str(directory.resolve())
+    battery.inputDataPath = str(data_dir.resolve())
     battery.algorithms = algorithms
     battery.normalised = True
     battery.scaledInputs = scaleInputs
@@ -1179,6 +1195,9 @@ def regress_cv_multithreaded_beta(
     spec_lengths = [len(s) for field in inputSpectraNames for s in inputs[field]]
     min_l = np.min(spec_lengths)
     max_common_coord = np.max([c[-1] for c in [inputs[f"{inputSpectrumName}_denorm_coords"] for inputSpectrumName in inputSpectraNames]])
+
+    battery.maxCommonCoord = max_common_coord
+    battery.equalCoords = np.array_equal(inputs[f"{inputSpectraNames[0]}_denorm_coords"][0], inputs[f"{inputSpectraNames[0]}_denorm_coords"][-1])
 
     scaler_train = MinMaxScaler(feature_range=(0, 1))
     inputData = []
@@ -1292,8 +1311,8 @@ def regress_cv_multithreaded_beta(
                     "test_points_denormed": [],
                     "predictions": [],
                     "predictions_denormed": [],
-                    "test_R2s": [],
-                    "train_R2s": [],
+                    "test_r2": [],
+                    "train_r2": [],
                     "fold_training_times_ns": [],
                     "fold_inference_times_cpu_ns": [],
                     "fold_inference_times_clock_ns": []
@@ -1305,14 +1324,28 @@ def regress_cv_multithreaded_beta(
             group["test_points_denormed"].extend(res["test_points_denormed"])
             group["predictions"].extend(res["predictions"])
             group["predictions_denormed"].extend(res["predictions_denormed"])
-            group["test_R2s"].append(res["test_r2"])
-            group["train_R2s"].append(res["train_r2"])
+            group["test_r2"].append(res["test_r2"])
+            group["train_r2"].append(res["train_r2"])
 
             group["fold_training_times_ns"].append(res["fold_training_time_ns"])
             group["fold_inference_times_cpu_ns"].append(res["fold_inference_time_cpu_ns"])
             group["fold_inference_times_clock_ns"].append(res["fold_inference_time_clock_ns"])
 
-            allPredictionsRecord.extend(res["records"])
+            for r in res["records"]:
+                predRecord = ml_utils.TSRPrediction(
+                    algorithm=r["algorithm"],
+                    inputChannels=np.array(r["inputChannels"]),
+                    outputQuantity=r["outputQuantity"],
+                    datapoint_ID=r["datapoint_ID"],
+                    fold_ID=r["fold_ID"],
+                    trueValue_normalised=r["trueValue_normalised"],
+                    trueValue_denormalised=r["trueValue_denormalised"],
+                    trueValue_denormalised_log10=r["trueValue_denormalised_log10"],
+                    predictedValue_normalised=r["predictedValue_normalised"],
+                    predictedValue_denormalised=r["predictedValue_denormalised"],
+                    predictedValue_denormalised_log10=r["predictedValue_denormalised_log10"]
+                )
+                allPredictionsRecord.append(predRecord)
             fold_times.append(res["fold_time"])
 
     # Aggregate metric results across all outputs and algorithms
@@ -1322,15 +1355,14 @@ def regress_cv_multithreaded_beta(
     fold_inference_times_clock_ns = []
 
     for (output_field, algorithm), group in grouped_results.items():
-        all_test_points = group["test_points_norm"]
-        all_predictions = group["predictions_norm"]
+        all_test_points = group["test_points"]
+        all_predictions = group["predictions"]
         all_test_points_denormed = group["test_points_denormed"]
         all_predictions_denormed = group["predictions_denormed"]
         all_test_indices = group["test_indices"]
-        all_test_R2s = group["test_r2s"]
-        all_train_R2s = group["train_r2s"]
+        all_test_R2s = group["test_r2"]
+        all_train_R2s = group["train_r2"]
 
-        allPredictionsRecord.extend(group["prediction_records"])
         fold_training_times_ns.extend(group["fold_training_times_ns"])
         fold_inference_times_cpu_ns.extend(group["fold_inference_times_cpu_ns"])
         fold_inference_times_clock_ns.extend(group["fold_inference_times_clock_ns"])
