@@ -567,9 +567,9 @@ def estimate_B0_from_h5_spectra(h5_directory : Path, particle : str):
 def estimate_B0_robust(
     h5_directory: Path, 
     particle : str = "deuteron",
-    b0_search_range: tuple = (0.5, 5.0),
+    b0_search_range: tuple = (0.5, 3.0),
     num_comb_harmonics: int = 15,
-    plot_methods: bool = False
+    plot_methods: bool = True
 ) -> dict:
     """
     Recovers B0 from ICE spectra using Comb-Template Matching, Autocorrelation,
@@ -653,10 +653,10 @@ def estimate_B0_robust(
             prominence=float(0.3 * spec_norm.max()), 
             distance=int((min_fc_mhz * 0.9) / df)
         )
-        if len(all_peaks) > 5:
-            result = np.zeros_like(spec_norm)
-            result[all_peaks] = spec_norm[all_peaks]
-            spec_norm = result
+        # if len(all_peaks) > 5:
+        #     result = np.zeros_like(spec_norm)
+        #     result[all_peaks] = spec_norm[all_peaks]
+        #     spec_norm = result
         
         # -------------------------------------------------------------
         # METHOD 1: Comb Template Matching (Global Optimization)
@@ -720,6 +720,8 @@ def estimate_B0_robust(
             # Using median instead of mean avoids sensitivity to skipped harmonics
             fc_median = np.median(peak_seps)
             b0_median = fc_to_B0(fc_median)
+            if b0_median > 5.0:
+                b0_median = np.nan
         else:
             b0_median = np.nan
         recoveredB0s_medianPeak.append(b0_median)
@@ -738,20 +740,25 @@ def estimate_B0_robust(
             
             # Overlay fitted comb markers
             for h in range(1, num_comb_harmonics + 1):
-                ax[0].axvline(h * best_fc, color='k', linestyle='--', alpha=0.3)
+                ax[0].axvline(h * best_fc, color='k', linestyle='--', alpha=0.3, label = "comb harmonics")
+                ax[0].axvline(h * B0_to_fc(originalB0s[s]), color='purple', linestyle=':', alpha=0.8, label = "true harmonics")
                 
             ax[0].set_title(f"Spectrum #{s} | Comb B0: {b0_comb:.3f} T (True: {originalB0s[s]:.3f} T)")
             ax[0].set_xlabel("Frequency (MHz)")
             ax[0].set_ylabel("Normalized Power")
             ax[0].set_xlim(0,inputFreqs.max())
-            ax[0].legend()
+            # Get all handles and labels from the axes
+            handles, labels = ax[0].get_legend_handles_labels()
+            # Filter out duplicates while preserving order
+            by_label = dict(zip(labels, handles))
+            ax[0].legend(by_label.values(), by_label.keys())
 
             # Autocorrelation
             ax[1].plot(lags_mhz, corr / corr.max())
             if not np.isnan(b0_acf):
                 best_fc = B0_to_fc(b0_acf)
                 ax[1].axvline(best_fc, color='r', linestyle='--', label=f"1st Lag Peak ({best_fc:.2f} MHz)")
-            ax[1].axvline(B0_to_fc(originalB0s[s]), color='orange', linestyle=':', label=f"True G.F. ({B0_to_fc(originalB0s[s]):.2f} MHz)")
+            ax[1].axvline(B0_to_fc(originalB0s[s]), color='purple', alpha=0.8, linestyle=':', label=f"True G.F. ({B0_to_fc(originalB0s[s]):.2f} MHz)")
             ax[1].set_title("Autocorrelation (Lag Space)")
             ax[1].set_xlabel("Frequency Lag $\Delta f$ (MHz)")
             ax[1].set_xlim(0, max(lags_mhz) * 0.5)
@@ -759,6 +766,8 @@ def estimate_B0_robust(
 
             plt.tight_layout()
             plt.show()
+
+    total_cases = len(originalB0s)
 
     # Convert results to arrays
     recoveredB0s_comb = np.array(recoveredB0s_comb)
@@ -779,11 +788,12 @@ def estimate_B0_robust(
     plt.xlabel("Original B0")
     plt.ylabel("Recovered B0")
     plt.legend()
-    plt.title(f"Linear data, JET range -- r^2: {r2_score(originalB0s, recoveredB0s_comb):.4f}")
+    plt.title(f"Linear data, LHD range -- r^2: {r2_score(originalB0s, recoveredB0s_comb):.4f}")
     plt.show()
 
     # Plot 2: Autocorrelation (handling NaN dropouts if any)
     valid_acf = ~np.isnan(recoveredB0s_acf)
+    pct_recovered = (np.count_nonzero(valid_acf) / total_cases) * 100.0
     plt.figure(figsize=(12, 10))
     plt.scatter(originalB0s[valid_acf], recoveredB0s_acf[valid_acf], label="Recovered by Autocorrelation Peak")
     plt.plot(sorted(originalB0s), sorted(originalB0s), "k--", label="ideal B0 recovery")
@@ -791,11 +801,12 @@ def estimate_B0_robust(
     plt.ylabel("Recovered B0")
     plt.legend()
     acf_r2 = r2_score(originalB0s[valid_acf], recoveredB0s_acf[valid_acf]) if np.sum(valid_acf) > 1 else 0.0
-    plt.title(f"Linear data, JET range -- r^2: {acf_r2:.4f}")
+    plt.title(f"Linear data, LHD range -- r^2: {acf_r2:.4f} ({pct_recovered:.2f}% recovered)")
     plt.show()
 
     # Plot 3: Median Peak Separation
     valid_med = ~np.isnan(recoveredB0s_medianPeak)
+    pct_recovered = (np.count_nonzero(valid_med) / total_cases) * 100.0
     plt.figure(figsize=(12, 10))
     plt.scatter(originalB0s[valid_med], recoveredB0s_medianPeak[valid_med], label="Recovered by Median Peak Separation")
     plt.plot(sorted(originalB0s), sorted(originalB0s), "k--", label="ideal B0 recovery")
@@ -803,7 +814,7 @@ def estimate_B0_robust(
     plt.ylabel("Recovered B0")
     plt.legend()
     med_r2 = r2_score(originalB0s[valid_med], recoveredB0s_medianPeak[valid_med]) if np.sum(valid_med) > 1 else 0.0
-    plt.title(f"Linear data, JET range -- r^2: {med_r2:.4f}")
+    plt.title(f"Linear data, LHD range -- r^2: {med_r2:.4f} ({pct_recovered:.2f}% recovered)")
     plt.show()
 
     return {
