@@ -152,7 +152,10 @@ if __name__ == "__main__":
 
     for job_config in job_list:
         out_file = job_config.get("filename", f"{job_config.get('job_name', 'job')}.sh")
-        content = generate_slurm_viking(job_config)
+        if args.cluster == "viking":
+            content = generate_slurm_viking(job_config)
+        if args.cluster == "cirrus":
+            content = generate_slurm_cirrus(job_config)
         
         with open(out_file, "w") as f:
             f.write(content)

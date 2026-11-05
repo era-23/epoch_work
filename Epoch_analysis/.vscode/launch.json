@@ -1186,7 +1186,9 @@
             "justMyCode": false,
             "args": [
                 "--config",
-                    "config_files/slurm_jobs.json"
+                    "config_files/slurm_jobs_cirrus.json",
+                "--cluster",
+                    "cirrus"
             ]
         }
     ]
