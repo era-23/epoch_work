@@ -31,6 +31,8 @@ import xarray as xr
 
 from dataclass_csv import DataclassWriter
 
+from threadpoolctl import threadpool_limits
+
 # 0 = All logs (default)
 # 1 = Filter out INFO logs
 # 2 = Filter out INFO and WARNING logs
@@ -95,7 +97,8 @@ def _process_fold(task_payload: dict) -> dict:
     # Fit & Track execution time
     fold_start_wall_s = time.time()
     fold_start_train_ns = time.process_time_ns()
-    tsr.fit(train_x, train_y)
+    with threadpool_limits(limits=4, user_api='openmp'):
+        tsr.fit(train_x, train_y)
     fold_end_train_ns = time.process_time_ns()
     fold_training_time_ns = fold_end_train_ns - fold_start_train_ns
 
@@ -1237,12 +1240,16 @@ def regress_cv_multithreaded_beta(
             specs = 10.0 * np.log10(specs / global_min)
             print(f"Spectral power ranges from {np.min(specs)}dB to {np.max(specs)}dB")
             # for i in range(len(specs)):
-            #     plt.plot(coords[i], specs[i], label = "truncated")
+            #     plt.plot(coords[i], specs[i], label = "dB'd")
             #     plt.legend()
             #     plt.show()
             spec_data = specs   
         elif scaleInputs:
             spec_data = [scaler_train.fit_transform(s.reshape(-1, 1)).flatten() for s in specs]
+            # for i in range(len(specs)):
+            #     plt.plot(coords[i], spec_data[i], label = "scaled")
+            #     plt.legend()
+            #     plt.show()
         else:
             spec_data = specs
         

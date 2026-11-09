@@ -66,6 +66,16 @@ export MPLCONFIGDIR="/epccfs/e281/e281/era536/.cache/matplotlib"
 export XDG_CACHE_HOME="/epccfs/e281/e281/era536/.cache"
 export MPLBACKEND="Agg"
 
+# Thread safety
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export OPENBLAS_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export MKL_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export VECLIB_MAXIMUM_THREADS=$SLURM_CPUS_PER_TASK
+export NUMEXPR_NUM_THREADS=$SLURM_CPUS_PER_TASK
+
+# Prevents OpenMP from over-allocating threads on idle cores
+export OMP_DYNAMIC=FALSE
+
 # Ensure the cache directories exist before starting Python
 mkdir -p "$MPLCONFIGDIR" "$XDG_CACHE_HOME"
 
