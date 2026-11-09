@@ -1,4 +1,5 @@
 import argparse
+import copy
 import glob
 import itertools
 import os
@@ -1142,6 +1143,7 @@ def regress_cv_multithreaded_beta(
     cvRepeats: int,
     cvStrategy: str = "RepeatedKFolds",
     scaleInputs: bool = False,
+    convert_inputs_to_dB : bool = False,
     logInputs: bool = False,
     doIce: bool = False,
     includeFreqs: bool = False,
@@ -1202,7 +1204,7 @@ def regress_cv_multithreaded_beta(
     scaler_train = MinMaxScaler(feature_range=(0, 1))
     inputData = []
     for field in inputSpectraNames:
-        specs = inputs[field]
+        specs = copy.deepcopy(inputs[field])
         coords = inputs[f"{field}_denorm_coords"]
         for i in range(len(specs)):
             if len(specs[i]) > min_l:
@@ -1215,6 +1217,12 @@ def regress_cv_multithreaded_beta(
             for i in range(len(spec_data)):
                 trace = spec_data[i]
                 spec_data[i] = [np.log10(trace[1]) if trace[1] != 0.0 else 0.0] + np.log10(trace[1:]).tolist()
+    
+        if convert_inputs_to_dB:
+            global_min = np.min([np.min(s) for s in specs])
+            print(f"Global minimum : {global_min}")
+            specs = 10.0 * np.log10(specs / global_min)
+        
         inputData.append(spec_data)
     if includeFreqs:
         inputData.append(coords)
@@ -1537,6 +1545,12 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
+        "--dB",
+        action="store_true",
+        help="Scale inputs to dB relative to global floor. Same as used in experimental comparison.",
+        required = False
+    )
+    parser.add_argument(
         "--logInputs",
         action="store_true",
         help="Take logarithms of input spectra.",
@@ -1619,6 +1633,7 @@ if __name__ == "__main__":
                 args.cvRepeats, 
                 args.cvStrategy,
                 scaleInputs=args.scaleInputs,
+                convert_inputs_to_dB = args.dB,
                 logInputs=args.logInputs,
                 doIce=args.doIce,
                 includeFreqs=args.includeFreqs,

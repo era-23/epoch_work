@@ -31,7 +31,7 @@ def generate_slurm_cirrus(config):
     if not os.path.exists(log_dir):
         os.makedirs(log_dir, exist_ok=True)
     
-    log_path = os.path.join(log_dir, f"{job_name}_%j.log")
+    log_path = os.path.join(log_dir, f"%x_%j.log")
 
     # Optional Memory flag (only add if explicitly specified)
     mem_line = f"#SBATCH --mem={mem}\n" if mem else ""
@@ -61,8 +61,22 @@ def generate_slurm_cirrus(config):
 # Define long argument list as a Bash array
 {args_block}
 
+# Redirect Matplotlib and Fontconfig caches away from unmounted /home to shared /epccfs
+export MPLCONFIGDIR="/epccfs/e281/e281/era536/.cache/matplotlib"
+export XDG_CACHE_HOME="/epccfs/e281/e281/era536/.cache"
+export MPLBACKEND="Agg"
+
+# Ensure the cache directories exist before starting Python
+mkdir -p "$MPLCONFIGDIR" "$XDG_CACHE_HOME"
+
+# Reset environment modules to clean baseline
 module restore
-source .venv/bin/activate
+
+# Abort on error
+set -e
+
+# Source the venv directly on shared storage
+source "/epccfs/e281/e281/era536/repos/epoch_work/Epoch_analysis/.venv/bin/activate"
 
 python {script} "${{ARGS[@]}}"
 
