@@ -1144,9 +1144,9 @@ def regress_cv_multithreaded_beta(
     cvStrategy: str = "RepeatedKFolds",
     scaleInputs: bool = False,
     convert_inputs_to_dB : bool = False,
-    logInputs: bool = False,
     doIce: bool = False,
     includeFreqs: bool = False,
+    truncate_to_frequency_mHz : float = None,
     iceMetricsToUse: list = None,
     resultsFilepath: Path = None,
     doPlot: bool = True,
@@ -1203,25 +1203,48 @@ def regress_cv_multithreaded_beta(
 
     scaler_train = MinMaxScaler(feature_range=(0, 1))
     inputData = []
+    
     for field in inputSpectraNames:
+        
         specs = copy.deepcopy(inputs[field])
         coords = inputs[f"{field}_denorm_coords"]
+        
         for i in range(len(specs)):
+
+            gyro_coords = inputs[f"{field}_coords"][i]
+            assert np.max(gyro_coords) < 81.0
+            hz_coords = inputs[f"{field}_denorm_coords"][i]
+            assert np.max(hz_coords) > np.max(gyro_coords)
+            mhz_coords = hz_coords / 1e6
+
+            if truncate_to_frequency_mHz is not None:
+                if mhz_coords[-1] > truncate_to_frequency_mHz:
+                    truncd_series, truncd_coords = ml_utils.truncate_series(specs[i], mhz_coords, truncate_to_frequency_mHz)
+                    resamp_series, resamp_coords = ml_utils.resample_series(truncd_series, truncd_coords, min_l + 1)
+                    # specs[i] = np.log10(resamp_series, out=np.zeros_like(resamp_series), where = (resamp_series!=0.0))[1:]
+                    specs[i] = resamp_series[1:]
+                    coords[i] = np.linspace(truncd_coords[0], truncd_coords[-1], len(specs[i]))
+
             if len(specs[i]) > min_l:
                 truncd_series, truncd_coords = ml_utils.truncate_series(specs[i], inputs[f"{field}_denorm_coords"][i], max_common_coord)
                 resamp_series, resamp_coords = ml_utils.resample_series(truncd_series, truncd_coords, min_l, f"{field.split('/')[0]}_run_{inputs['sim_ids'][i]}", directory / "spectra_homogenisation/")
                 specs[i] = resamp_series
                 coords[i] = resamp_coords
-        spec_data = specs if not scaleInputs else [scaler_train.fit_transform(s.reshape(-1, 1)).flatten() for s in specs]
-        if logInputs:
-            for i in range(len(spec_data)):
-                trace = spec_data[i]
-                spec_data[i] = [np.log10(trace[1]) if trace[1] != 0.0 else 0.0] + np.log10(trace[1:]).tolist()
     
         if convert_inputs_to_dB:
             global_min = np.min([np.min(s) for s in specs])
             print(f"Global minimum : {global_min}")
             specs = 10.0 * np.log10(specs / global_min)
+            print(f"Spectral power ranges from {np.min(specs)}dB to {np.max(specs)}dB")
+            # for i in range(len(specs)):
+            #     plt.plot(coords[i], specs[i], label = "truncated")
+            #     plt.legend()
+            #     plt.show()
+            spec_data = specs   
+        elif scaleInputs:
+            spec_data = [scaler_train.fit_transform(s.reshape(-1, 1)).flatten() for s in specs]
+        else:
+            spec_data = specs
         
         inputData.append(spec_data)
     if includeFreqs:
@@ -1581,6 +1604,14 @@ if __name__ == "__main__":
         required = False
     )
     parser.add_argument(
+        "--truncateToMHz",
+        action="store",
+        help="Truncate spectra to this frequency in MHz.",
+        required = False,
+        type=float,
+        default=None
+    )
+    parser.add_argument(
         "--h5data",
         action="store_true",
         help="Run TSER against James' linear data in h5 format.",
@@ -1634,7 +1665,7 @@ if __name__ == "__main__":
                 args.cvStrategy,
                 scaleInputs=args.scaleInputs,
                 convert_inputs_to_dB = args.dB,
-                logInputs=args.logInputs,
+                truncate_to_frequency_mHz = args.truncateToMHz,
                 doIce=args.doIce,
                 includeFreqs=args.includeFreqs,
                 iceMetricsToUse=args.iceMetrics,
