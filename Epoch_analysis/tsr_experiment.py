@@ -632,11 +632,13 @@ def regress_trainEpoch_multithreaded_beta(
     # ##### DEBUG PLOT
 
     # ##### DEBUG PLOT
-    # for spec in inputData[0]:
-    #     plt.plot(test_frequencies / 1e6, test_x[0], label = "truncated test signal (dB)")
-    #     plt.plot(resamp_coords[1:] / 1e6, spec, label = "training signal (dB)")
-    #     plt.legend()
-    #     plt.show()
+    # for i in range(len(inputData[0])):
+    #     if i == 107:
+    #         plt.plot(test_frequencies / 1e6, test_x[0], label = "truncated test signal (dB)")
+    #         plt.plot(resamp_coords[1:] / 1e6, inputData[0][i], label = "training signal (dB)")
+    #         plt.title(inputs["sim_ids"][i])
+    #         plt.legend()
+    #         plt.show()
     # ##### DEBUG PLOT
 
     assert inputs["sim_ids"] == outputs["sim_ids"]

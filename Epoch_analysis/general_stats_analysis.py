@@ -5,6 +5,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 import argparse
 import netCDF4 as nc
+from scipy import signal
 import xarray as xr
 import xrft
 import epoch_utils as eu
@@ -17,10 +18,45 @@ import plasmapy.particles as ppp
 import astropy.units as u
 
 import warnings
+
+import ml_utils
 warnings.simplefilter(action='ignore', category=FutureWarning)
 import pandas
 
-def estimate_B0_from_netcdf_spectra(netcdf_directory : Path, fields : list, particle : str = "He-4 2+"):
+def find_subgroup_with_var(filepath, target_var, explicit_group=None):
+    if explicit_group is not None:
+        group_name = explicit_group.lstrip("/")
+        return xr.open_dataset(filepath, group=group_name)
+
+    # Inspect groups using netCDF4
+    with nc.Dataset(filepath, 'r') as root:
+        # Check root first
+        if target_var in root.variables:
+            return xr.open_dataset(filepath)
+
+        # Walk all subgroups
+        def walk_groups(g, current_path=""):
+            for name, subgroup in g.groups.items():
+                path = f"{current_path}/{name}"
+                if target_var in subgroup.variables:
+                    return path
+                found = walk_groups(subgroup, path)
+                if found:
+                    return found
+            return None
+
+        found_path = walk_groups(root)
+        if found_path is not None:
+            return xr.open_dataset(filepath, group=found_path.lstrip("/"))
+
+    raise KeyError(f"Variable '{target_var}' not found in root or any subgroup of {filepath}")
+
+def estimate_B0_from_netcdf_spectra(
+        netcdf_directory : Path, 
+        fields : list, 
+        particle : str = "He-4 2+", 
+        max_frequency_mHz : float = None,
+    ):
 
     plt.rcParams.update({'axes.titlesize': 20.0})
     plt.rcParams.update({'axes.labelsize': 20.0})
@@ -28,7 +64,7 @@ def estimate_B0_from_netcdf_spectra(netcdf_directory : Path, fields : list, part
     plt.rcParams.update({'ytick.labelsize': 20.0})
     plt.rcParams.update({'legend.fontsize': 20.0})
 
-    combined_statsFiles = glob.glob(str(netcdf_directory / "data" / "*_combined_stats.nc"))
+    combined_statsFiles = glob.glob(str(netcdf_directory / "*.nc"))
     originalB0s = {f : [] for f in fields}
     recoveredB0s_max = {f : [] for f in fields}
     recoveredB0s_firstPeak = {f : [] for f in fields}
@@ -47,46 +83,91 @@ def estimate_B0_from_netcdf_spectra(netcdf_directory : Path, fields : list, part
             # print(f"File: {filename}, Field: {field}")
             data : xr.DataArray = data_xr[field]
 
+            # print(data["frequency"])
+
             # Convert to SI (on original spectrum)
             known_B0 = float(data_xr.B0strength)
             originalB0s[field].append(known_B0)
-            gyrofrequency_in_SI = ppf.gyrofrequency(known_B0 * u.T, particle = particle)
+            
             # print(f"Gyrofrequency in SI: {gyrofrequency_in_SI}")
-            si_coords = data.coords["frequency"] * gyrofrequency_in_SI
-            # print(f"Frequency coords in SI: {si_coords}")
-            data = data.assign_coords({"frequency" : si_coords})
+            if data.coords["frequency"].max() < 100.0: # Not already in SI
+                gyrofrequency_in_SI = ppf.gyrofrequency(known_B0 * u.T, particle = particle)
+                si_coords = data.coords["frequency"] * (gyrofrequency_in_SI / (2.0 * np.pi))
+                # print(f"Frequency coords in SI: {si_coords}")
+                data = data.assign_coords({"frequency" : si_coords})
+
             # data.plot()
+            # plt.title(Path(simFile).name)
+            # plt.show()
+
+            if max_frequency_mHz:
+                data = data[data["frequency"] <= (max_frequency_mHz * 1e6)]
+                data_np = data.to_numpy()
+                if np.argmin(data_np) == 0: 
+                    stationary_point = int(next(i for i,(v0,v1) in enumerate(zip(data_np[:-1], data_np[1:])) if v0>v1))
+                elif np.argmax(data_np) == 0: # Else if the first point is a maximum
+                    stationary_point = int(next(i for i,(v0,v1) in enumerate(zip(data_np[:-1], data_np[1:])) if v0<v1))
+                else:
+                    continue
+                after_sp = data_np[stationary_point:]
+                before_sp = np.linspace(np.mean(data_np), data_np[stationary_point], stationary_point)
+                new_data = np.concatenate((before_sp, after_sp), axis = 0)
+
+                global_min = 2.2308287782833357e-12
+                new_data = 10.0 * np.log10(new_data / global_min)
+                data = xr.DataArray(new_data, coords = {"frequency" : data["frequency"]})
+                
+                # data.plot()
+                # plt.title(Path(simFile).name)
+                # plt.show()
+                # data = xr.DataArray(resamp_series[1:])
+                # data = data.assign_coords({"frequency" : np.linspace(resamp_coords[0], resamp_coords[-1], data.shape[0])})
+
+            # data.plot()
+            # plt.title(Path(simFile).name)
             # plt.show()
             
             og_spec : xr.DataArray = xrft.xrft.fft(data, true_amplitude=False, true_phase=True, window=None)
             spec : xr.DataArray = np.abs(og_spec)
             # print(spec.coords["freq_frequency"])
             spec = spec.sel(freq_frequency = slice(0.0, None))
-            spec = spec.where(spec.freq_frequency >= float(0.11*spec.freq_frequency.max().data), other=0.0)
+            # spec = spec.isel(freq_frequency = slice(10, None))
+            # spec.plot()
+            # plt.show()
+            spec = spec.where(spec.freq_frequency >= float(0.1*spec.freq_frequency.max().data), other=0.0)
             # spec = spec.isel(freq_frequency = slice(int(0.13*len(spec.coords["freq_frequency"])), None))
+
+            # spec.plot()
+            # plt.show()
             
             # Max freq method
             maxFreqFreq = float(spec.idxmax().data)
             maxFreq = 1.0 / maxFreqFreq
             maxPower = spec.max().data
             # Recover B0
-            recovered_B0 = (maxFreq * ppp.alpha.mass) / ppp.alpha.charge
+            recovered_B0 = maxFreq * 2.0 * np.pi * (ppp.alpha.mass / ppp.alpha.charge)
 
             # Peak finding method
-            p, pd = find_peaks(spec.data, height=float(0.1*spec.max().data), prominence=float(0.1*spec.max().data), distance = 0.1*len(spec))
-            peakFreqFreq = float(spec.freq_frequency[p[0]])
-            peakFreq = 1.0/peakFreqFreq
-            recovered_B0_2 = (peakFreq * ppp.alpha.mass) / ppp.alpha.charge
+            height_proportion = 0.9
+            prominence_proportion = 0.9
+            p, pd = find_peaks(spec.data, height=float(height_proportion*spec.max().data), prominence=float(prominence_proportion*spec.max().data), distance = np.max([1.0, 0.1*len(spec)]))
+            if len(p) > 0:
+                peakFreqFreq = float(spec.freq_frequency[p[0]])
+                peakFreq = 1.0/peakFreqFreq
+                recovered_B0_2 = peakFreq * 2.0 * np.pi * (ppp.alpha.mass / ppp.alpha.charge)
 
-            # Peak separation method
-            sepFreqFreq = float(spec.freq_frequency[p[0]])
-            sepFreq = 1.0 / sepFreqFreq
-            if len(p) > 1:
-                seps = []
-                for i in range(1, len(p)):
-                    seps.append(float(spec.freq_frequency[p[i]]) - float(spec.freq_frequency[p[i-1]]))
-                sepFreq = 1.0 / np.mean(seps)
-            recovered_B0_3 = (sepFreq * ppp.alpha.mass) / ppp.alpha.charge
+                # Peak separation method
+                sepFreqFreq = float(spec.freq_frequency[p[0]])
+                sepFreq = 1.0 / sepFreqFreq
+                if len(p) > 1:
+                    seps = []
+                    for i in range(1, len(p)):
+                        seps.append(float(spec.freq_frequency[p[i]]) - float(spec.freq_frequency[p[i-1]]))
+                    sepFreq = 1.0 / np.mean(seps)
+                recovered_B0_3 = sepFreq * 2.0 * np.pi * (ppp.alpha.mass / ppp.alpha.charge)
+            else:
+                recovered_B0_2 = recovered_B0
+                recovered_B0_3 = recovered_B0
             
             # # print(f"Max: {maxPower}, Max index: {spec.argmax().data}, Max coord: {maxFreqFreq * 1/gyrofrequency_in_SI.unit} Max coord in OG units: {maxFreq * gyrofrequency_in_SI.unit}")
             # assert spec.coords["freq_frequency"][-1] == np.max(spec.coords["freq_frequency"])
@@ -760,7 +841,7 @@ def estimate_B0_robust(
                 ax[1].axvline(best_fc, color='r', linestyle='--', label=f"1st Lag Peak ({best_fc:.2f} MHz)")
             ax[1].axvline(B0_to_fc(originalB0s[s]), color='purple', alpha=0.8, linestyle=':', label=f"True G.F. ({B0_to_fc(originalB0s[s]):.2f} MHz)")
             ax[1].set_title("Autocorrelation (Lag Space)")
-            ax[1].set_xlabel("Frequency Lag $\Delta f$ (MHz)")
+            ax[1].set_xlabel(r"Frequency Lag $\Delta f$ (MHz)")
             ax[1].set_xlim(0, max(lags_mhz) * 0.5)
             ax[1].legend()
 
@@ -824,6 +905,233 @@ def estimate_B0_robust(
         "recovered_B0_medianPeak": recoveredB0s_medianPeak
     }
 
+def estimate_B0_robust_netcdf(
+    netcdf_directory : Path, 
+    fields : list, 
+    particle : str = "He-4 2+", 
+    max_frequency_mHz : float = None,
+    b0_search_range: tuple = (0.5, 5.0),
+    num_harmonics: int = 15,
+) -> dict:
+
+    plt.rcParams.update({"axes.titlesize": 20.0})
+    plt.rcParams.update({"axes.labelsize": 20.0})
+    plt.rcParams.update({"xtick.labelsize": 20.0})
+    plt.rcParams.update({"ytick.labelsize": 20.0})
+    plt.rcParams.update({"legend.fontsize": 20.0})
+
+    combined_statsFiles = glob.glob(str(netcdf_directory / "*.nc"))
+    originalB0s = {f: [] for f in fields}
+    recoveredB0s_max = {f: [] for f in fields}
+    recoveredB0s_firstPeak = {f: [] for f in fields}
+    recoveredB0s_peakSeparation = {f: [] for f in fields}
+    recoveredB0s_hybrid = {f: [] for f in fields}
+
+    # NEW: Storage for Comb and Autocorrelation methods
+    recoveredB0s_comb = {f: [] for f in fields}
+    recoveredB0s_autocorr = {f: [] for f in fields}
+
+    variedParams = {"pitch": [], "backgroundDensity": [], "beamFraction": []}
+
+    # Extract target particle mass and charge in SI units
+    particle_obj = ppp.Particle(particle)
+    q = particle_obj.charge.value
+    m = particle_obj.mass.value
+
+    for simFile in combined_statsFiles:
+        data_xr = xr.open_datatree(simFile, engine="netcdf4")
+        for key, value in variedParams.items():
+            if key in data_xr.attrs:
+                value.append(data_xr.attrs[key])
+
+        for field in fields:
+            simName = Path(simFile).name
+            data: xr.DataArray = data_xr[field]
+
+            # Convert coordinates to SI (Hz) if needed
+            known_B0 = float(data_xr.B0strength)
+            originalB0s[field].append(known_B0)
+
+            gyrofrequency_in_SI = ppf.gyrofrequency(
+                known_B0 * u.T, particle=particle
+            )
+
+            if data.coords["frequency"].max() < 100.0:  # Not already in SI
+                si_coords = data.coords["frequency"] * gyrofrequency_in_SI
+                data = data.assign_coords({"frequency": si_coords})
+
+            if max_frequency_mHz:
+                data = data[data["frequency"] <= (max_frequency_mHz * 1e6)]
+
+            # Compute FFT Power Spectrum using XRFT
+            og_spec: xr.DataArray = xrft.xrft.fft(
+                data, true_amplitude=False, true_phase=True, window=None
+            )
+            spec: xr.DataArray = np.abs(og_spec)
+            spec = spec.sel(freq_frequency=slice(0.0, None))
+            spec = spec.isel(freq_frequency=slice(10, None))
+
+            # --- 1. Existing Methods (Max, First Peak, Peak Separation) ---
+            maxFreqFreq = float(spec.idxmax().data)
+            maxFreq = 1.0 / maxFreqFreq
+            recovered_B0 = (maxFreq * m) / q
+
+            height_proportion = 0.1
+            prominence_proportion = 0.1
+            p, _ = find_peaks(
+                spec.data,
+                height=float(height_proportion * spec.max().data),
+                prominence=float(prominence_proportion * spec.max().data),
+                distance=np.max([1.0, 0.1 * len(spec)]),
+            )
+
+            if len(p) > 0:
+                peakFreqFreq = float(spec.freq_frequency[p[0]])
+                peakFreq = 1.0 / peakFreqFreq
+                recovered_B0_2 = (peakFreq * m) / q
+
+                sepFreqFreq = float(spec.freq_frequency[p[0]])
+                sepFreq = 1.0 / sepFreqFreq
+                if len(p) > 1:
+                    seps = [
+                        float(spec.freq_frequency[p[i]])
+                        - float(spec.freq_frequency[p[i - 1]])
+                        for i in range(1, len(p))
+                    ]
+                    sepFreq = 1.0 / np.mean(seps)
+                recovered_B0_3 = (sepFreq * m) / q
+            else:
+                recovered_B0_2 = recovered_B0
+                recovered_B0_3 = recovered_B0
+
+            # --- 2. NEW METHOD A: Comb Evaluation ---
+            # Search candidate B0 values and find which fundamental gyrofrequency
+            # matches the largest power sum across its integer harmonics.
+            freq_axis = spec.freq_frequency.data  # Time period axis (1/f)
+            psd_data = spec.data
+
+            # Convert candidate B0 space to fundamental frequencies
+            b0_candidates = np.linspace(
+                b0_search_range[0], b0_search_range[1], 1000
+            )
+            f_ci_candidates = (q * b0_candidates) / (2 * np.pi * m)
+
+            best_comb_score = -1.0
+            recovered_B0_comb = b0_candidates[0]
+
+            for cand_b0, f_ci in zip(b0_candidates, f_ci_candidates):
+                # Calculate harmonic frequencies for this candidate B0
+                harmonics = np.arange(1, num_harmonics + 1) * f_ci
+                harmonic_periods = 1.0 / harmonics
+
+                # Accumulate power near each harmonic period
+                comb_power = 0.0
+                for period in harmonic_periods:
+                    idx = np.argmin(np.abs(freq_axis - period))
+                    comb_power += psd_data[idx]
+
+                if comb_power > best_comb_score:
+                    best_comb_score = comb_power
+                    recovered_B0_comb = cand_b0
+
+            # --- 3. NEW METHOD B: Autocorrelation (Fundamental Period Finder) ---
+            # Compute autocorrelation of the spectrum array to detect repeating harmonic spacing
+            norm_psd = psd_data - np.mean(psd_data)
+            autocorr = signal.fftconvolve(norm_psd, norm_psd[::-1], mode="full")
+            autocorr = autocorr[len(autocorr) // 2 :]  # Keep positive lags
+
+            # Find primary autocorrelation peak after lag 0
+            ac_peaks, _ = find_peaks(
+                autocorr,
+                height=0.05 * np.max(autocorr),
+                distance=max(1, int(0.02 * len(autocorr))),
+            )
+
+            if len(ac_peaks) > 0:
+                lag_idx = ac_peaks[0]
+                period_spacing = abs(freq_axis[lag_idx] - freq_axis[0])
+                if period_spacing > 0:
+                    f_fundamental = 1.0 / period_spacing
+                    recovered_B0_autocorr = (
+                        2 * np.pi * f_fundamental * m
+                    ) / q
+                else:
+                    recovered_B0_autocorr = recovered_B0
+            else:
+                recovered_B0_autocorr = recovered_B0
+
+            # --- Record Results ---
+            recoveredB0s_max[field].append(recovered_B0)
+            recoveredB0s_firstPeak[field].append(recovered_B0_2)
+            recoveredB0s_peakSeparation[field].append(recovered_B0_3)
+            recoveredB0s_hybrid[field].append(
+                np.mean([recovered_B0_3, recovered_B0_2])
+            )
+            recoveredB0s_comb[field].append(recovered_B0_comb)
+            recoveredB0s_autocorr[field].append(recovered_B0_autocorr)
+
+        data_xr.close()
+
+    # --- Print Statistical Summary ---
+    for field in fields:
+        print(f"\n================ {field} Results ================")
+        print(
+            f"Max peak B0 recovery R2:        {r2_score(originalB0s[field], recoveredB0s_max[field]):.3f}"
+        )
+        print(
+            f"First peak B0 recovery R2:      {r2_score(originalB0s[field], recoveredB0s_firstPeak[field]):.3f}"
+        )
+        print(
+            f"Peak separation B0 recovery R2: {r2_score(originalB0s[field], recoveredB0s_peakSeparation[field]):.3f}"
+        )
+        print(
+            f"Hybrid B0 recovery R2:          {r2_score(originalB0s[field], recoveredB0s_hybrid[field]):.3f}"
+        )
+        print(
+            f"Comb Method B0 recovery R2:     {r2_score(originalB0s[field], recoveredB0s_comb[field]):.3f}"
+        )
+        print(
+            f"Autocorr Method B0 recovery R2: {r2_score(originalB0s[field], recoveredB0s_autocorr[field]):.3f}"
+        )
+
+    # --- Plot Comparisons ---
+    plt.figure(figsize=(9, 6))
+
+    for field in fields:
+        colour = "red" if "Bz" in field else "green" if "Ex" in field else "blue"
+        mk = "o" if "Bz" in field else "x" if "Ex" in field else "+"
+
+        ogs = originalB0s[field]
+        recs_comb = recoveredB0s_comb[field]
+
+        result = linregress(ogs, recs_comb)
+        plt.scatter(
+            ogs,
+            recs_comb,
+            color=colour,
+            alpha=0.9,
+            marker=mk,
+            s=100,
+            label=f"{field} (Comb Method R²={result.rvalue**2:.2f})",
+        )
+        sortB0 = sorted(ogs)
+
+    plt.plot(
+        sortB0,
+        sortB0,
+        color="black",
+        alpha=0.9,
+        linestyle="dashed",
+        label="Ideal Prediction",
+    )
+    plt.xlabel(r"Original $B_0$ [T]")
+    plt.ylabel(r"Recovered $B_0$ [T]")
+    plt.title(r"$B_0$ Recovery Performance Comparison")
+    plt.grid(True, linestyle="--", alpha=0.5)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
 if __name__ == "__main__":
 
     SMALL_SIZE = 10
@@ -880,6 +1188,14 @@ if __name__ == "__main__":
         required = False,
         type=str
     )
+    parser.add_argument(
+        "--truncateToMHz",
+        action="store",
+        help="Truncate spectra to this frequency in MHz.",
+        required = False,
+        type=float,
+        default=None
+    )
     
     args = parser.parse_args()
 
@@ -891,3 +1207,6 @@ if __name__ == "__main__":
         elif len(glob.glob(str(args.dir / "*.h5"))) > 0:
             # estimate_B0_from_h5_spectra(args.dir, args.particle)
             estimate_B0_robust(args.dir, args.particle)
+        elif len(glob.glob(str(args.dir / "*.nc"))) > 0:
+            estimate_B0_from_netcdf_spectra(args.dir, args.fields, args.particle, args.truncateToMHz)
+            # estimate_B0_robust_netcdf(netcdf_directory = args.dir, fields = args.fields, particle = args.particle)
