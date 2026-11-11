@@ -45,7 +45,7 @@ from scipy.interpolate import interp1d
 import epoch_utils
 import ml_utils
 
-def _process_experimental_repeat_process(task_payload: dict):
+def _process_experimental_repeat(task_payload: dict):
     """
     Executes a single model fit + predict operation inside an isolated process.
     Guarantees 100% memory and C-state isolation across workers.
@@ -104,6 +104,31 @@ def _process_experimental_repeat_process(task_payload: dict):
         "true_y_norm": true_y_norm[0],
         "exec_time_s": exec_time_s
     }
+
+def _process_fold_with_single_test(r, algorithm, train_x, train_y, test_x):
+    """Worker function to fit and predict a single fold repeat in parallel."""
+    # 1. Get base algorithm instance
+    base_tsr = ml_utils.get_algorithm(algorithm, nThreads=1)
+
+    # 2. Deep-clone to guarantee clean estimator state
+    tsr = sklearn.base.clone(base_tsr)
+
+    # 3. Explicitly seed stochastic components (e.g. Random Forests / Summary extractors)
+    seed_val = 42 + r
+    if hasattr(tsr, "random_state"):
+        try:
+            tsr.set_params(random_state=seed_val)
+        except Exception:
+            pass
+    elif hasattr(tsr, "seed"):
+        try:
+            tsr.set_params(seed=seed_val)
+        except Exception:
+            pass
+
+    tsr.fit(train_x, train_y)
+    pred = tsr.predict(test_x)
+    return pred
 
 def plot_predictions(
         algorithm_name : str,
@@ -448,6 +473,356 @@ def cottrell_data_plots(
     #     plt.grid(which = "major", axis = "x")
     #     plt.show()
 
+def regress_trainEpoch_multithreaded_beta(
+        dataDirectory : Path,
+        inputSpectraNames : list,
+        outputFields : list,
+        logFields : list,
+        algorithms : list,
+        testDatapath : Path,
+        resultsFilepath : Path = None,
+        truncate_to_frequency_mHz : float = None,
+        includeFreqs : bool = False,
+        nRepeats : int = 10,
+        nThreads : int = 1,
+        displayPlots : bool = False
+):
+    
+    if displayPlots:
+        SMALL_SIZE = 10
+        MEDIUM_SIZE = 16
+        BIGGER_SIZE = 20
+
+        plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
+        plt.rc('axes', titlesize=BIGGER_SIZE)     # fontsize of the axes title
+        plt.rc('axes', labelsize=BIGGER_SIZE)    # fontsize of the x and y labels
+        plt.rc('xtick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
+        plt.rc('ytick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
+        plt.rc('legend', fontsize=12)    # legend fontsize
+        plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
+
+    # Initialise results objects
+
+    if not ("data" in dataDirectory.name):
+        data_dir = dataDirectory / "data"
+    else:
+        data_dir = dataDirectory
+    data_files = glob.glob(str(data_dir / "*.nc")) 
+
+    # Input data
+    inputs = {name : [] for name in inputSpectraNames}
+    inputs = ml_utils.read_data(data_files, inputs, with_names = True, with_coords = True, with_iciness = False, denorm_coords = True)
+
+    # Output data
+    outputs = {outputField : [] for outputField in outputFields}
+    outputs = ml_utils.read_data(data_files, outputs, with_names = True, with_coords = False)
+
+    if "B0angle" in outputs:
+        transf = np.array(outputs["B0angle"])
+        outputs["B0angle"] = np.abs(transf - 90.0) 
+
+    spec_lengths = []
+    for field in inputSpectraNames:
+        spec_lengths.extend([len(s) for s in inputs[field]])
+    min_l = np.min(spec_lengths)
+    print(f"Max spec length: {np.max(spec_lengths)} min spec length: {min_l}")
+    max_common_coord = np.max([c[-1] for c in [inputs[f"{inputSpectrumName}_coords"] for inputSpectrumName in inputSpectraNames]])
+
+    # Get Cottrell or other netcdf data
+    if testDatapath.suffix == ".csv":
+        cottrell_data = pd.read_csv(testDatapath)
+        test_frequencies = cottrell_data["Frequency (MHz)"]
+        max_frequency = float((test_frequencies.max() * u.MHz).to(u.Hz).value)
+
+        # Fix frequencies
+        sort_indices = np.argsort(test_frequencies)
+        equally_spaced_freqs = np.linspace(test_frequencies.min(), test_frequencies.max(), len(inputs[inputSpectraNames[0]][0]))
+        if truncate_to_frequency_mHz:
+            assert np.max(equally_spaced_freqs) <= truncate_to_frequency_mHz
+        test_x = [np.interp(equally_spaced_freqs, np.sort(test_frequencies), cottrell_data["ICE Intensity (dB)"][sort_indices])]
+        if includeFreqs:
+            cottrell_gyro_freqs = np.linspace(test_frequencies.min() / 17.0, test_frequencies.max() / 17.0, inputSpectra.shape[2])
+            test_x.append(cottrell_gyro_freqs)
+
+    elif testDatapath.suffix == ".nc":
+        test_fieldNames = {name : [] for name in inputSpectraNames}
+        test_data = ml_utils.read_data(glob.glob(str(testDatapath)), test_fieldNames, with_names = True, with_coords = True, with_iciness = False, denorm_coords = True)
+        test_frequencies = test_data[f"{inputSpectraNames[0]}_denorm_coords"][0] # Hz
+        assert np.max(test_frequencies) == test_frequencies[-1]
+
+        # ##### DEBUG PLOT
+        # plt.plot(test_frequencies / 1e6, test_data[inputSpectraNames[0]][0], label = "original test signal")
+        # plt.legend()
+        # plt.show()
+        # ##### DEBUG PLOT
+
+        if truncate_to_frequency_mHz:
+            if np.max(test_frequencies) > truncate_to_frequency_mHz:
+                test_x = []
+                for field_name in inputSpectraNames:
+                    field_data, trunc_frequencies = ml_utils.truncate_series(test_data[field_name][0], test_frequencies, truncate_to_frequency_mHz * 1e6)
+                    resamp_series, resamp_coords = ml_utils.resample_series(field_data, trunc_frequencies, min_l + 1)
+                    trunc_frequencies = np.linspace(resamp_coords[0], resamp_coords[-1], len(resamp_series) - 1)
+                    test_x.append(resamp_series[1:])
+                test_x = np.array(test_x)
+                test_frequencies = trunc_frequencies
+            else:
+                test_x = [test_data[f] for f in inputSpectraNames][0]
+        else:
+            test_x = [test_data[f] for f in inputSpectraNames][0]
+        max_frequency = np.max(test_frequencies)
+        if includeFreqs:
+            raise NotImplementedError("Frequency in test data not implemented for netcdf test files")
+
+    # ##### DEBUG PLOT
+    # plt.plot(test_frequencies / 1e6, test_x[0], label = "truncated test signal")
+    # plt.legend()
+    # plt.show()
+    # ##### DEBUG PLOT
+
+    inputData = []
+    sim_id_to_indexNumber = {}
+    for field in inputSpectraNames:
+        specs = copy.deepcopy(inputs[field])
+        coords = np.zeros_like(specs)
+        
+        for i in range(len(specs)):
+
+            # Record sim ID and index
+            sim_id_to_indexNumber[inputs["sim_ids"][i]] = i
+
+            gyro_coords = inputs[f"{field}_coords"][i]
+            hz_coords = inputs[f"{field}_denorm_coords"][i]
+
+            # If truncation needed
+            if hz_coords[-1] > max_frequency:
+                truncd_series, truncd_coords, truncd_gyro_coords = ml_utils.truncate_series(specs[i], hz_coords, max_frequency, altCoordinates = gyro_coords)
+                resamp_series, resamp_coords = ml_utils.resample_series(truncd_series, truncd_coords, min_l + 1)
+                specs[i] = resamp_series[1:]
+                coords[i] = np.linspace(truncd_gyro_coords[0], truncd_gyro_coords[-1], coords.shape[1])
+
+            spec = specs[i]
+            if np.argmin(specs[i]) == 0: 
+                stationary_point = int(next(i for i,(v0,v1) in enumerate(zip(spec[:-1], spec[1:])) if v0>v1))
+            elif np.argmax(specs[i]) == 0: # Else if the first point is a maximum
+                stationary_point = int(next(i for i,(v0,v1) in enumerate(zip(spec[:-1], spec[1:])) if v0<v1))
+            else:
+                continue
+            after_sp = spec[stationary_point:]
+            before_sp = np.linspace(np.mean(spec), spec[stationary_point], stationary_point)
+            
+            specs[i] = np.concatenate((before_sp, after_sp), axis = 0)
+        
+        global_min = np.min([np.min(s) for s in specs])
+        print(f"Global minimum : {global_min}")
+        specs = 10.0 * np.log10(specs / global_min)
+        
+        inputData.append(specs)
+    if includeFreqs:
+        inputData.append(coords) # Append only the last set of coordinates (they should be the same for all fields)
+
+    if testDatapath.suffix == ".nc":
+        # Scale to dB as with input data
+        test_x[0] = 10.0 * np.log10(test_x[0] / global_min)
+
+    # ##### DEBUG PLOT
+    # plt.plot(test_frequencies / 1e6, test_x[0], label = "truncated test signal (dB)")
+    # plt.legend()
+    # plt.show()
+    # ##### DEBUG PLOT
+
+    # ##### DEBUG PLOT
+    # for spec in inputData[0]:
+    #     plt.plot(test_frequencies / 1e6, test_x[0], label = "truncated test signal (dB)")
+    #     plt.plot(resamp_coords[1:] / 1e6, spec, label = "training signal (dB)")
+    #     plt.legend()
+    #     plt.show()
+    # ##### DEBUG PLOT
+
+    assert inputs["sim_ids"] == outputs["sim_ids"]
+    assert inputs["sim_ids"] == list(sim_id_to_indexNumber.keys())
+
+    # Reshape into 3D numpy array of shape (n_cases, n_channels, n_timepoints)
+    inputData = np.array(inputData)
+    print(f"Spectra in dB range from {np.min(inputData[0])}dB to {np.max(inputData[0])}dB.")
+    inputSpectra = np.swapaxes(inputData, 0, 1)
+    # outputs = np.array(list(outputs.values()))
+
+    logFields = np.intersect1d(outputFields, logFields)
+    
+    # True values (edge JET values )
+    all_true_y = {"B0strength" : 2.21, "backgroundDensity" : 1.7E19, "beamFraction" : 1.5E-4, "pitch" : 0.4}
+
+    train_x = inputSpectra
+
+    test_x = np.array([np.swapaxes(np.array(test_x), 0, 1).T])
+    # test_x[0][0] = scaler_train.fit_transform(test_x[0][0].reshape(-1, 1)).T # Only scale spectra, not frequencies
+    
+    all_abs_normalised_errors = {a : [] for a in algorithms}
+    all_predictions = {a : [] for a in algorithms}
+    all_prediction_sems = {a : [] for a in algorithms}
+    all_prediction_sds = {a : [] for a in algorithms}
+
+    all_results = []
+
+    for output_field, output_values in outputs.items():
+
+        if output_field not in outputFields:
+            continue
+
+        assert len(output_values) == inputSpectra.shape[0]
+        output_values = np.array(output_values)
+        true_y = all_true_y[output_field]
+        
+        if output_field in logFields:
+            output_values = np.log10(output_values)
+            true_y = np.log10(true_y)
+        
+        train_y, scaler_y = ml_utils.normalise_data(output_values)
+        true_y_norm, _ = ml_utils.normalise_data([true_y], scaler_y)
+        print(f"True output value: {all_true_y[output_field]} ({true_y_norm} normalised)")
+
+        # Use nThreads to bound the number of concurrent worker processes
+        max_workers = min(nThreads, nRepeats)
+        
+        for algorithm in algorithms:
+
+            result = ml_utils.TSRResult()
+            result.output = output_field
+            result.algorithm = algorithm
+
+            # Execute repeat folds concurrently
+            predictions = []
+            with ProcessPoolExecutor(max_workers=max_workers) as executor:
+                futures = [
+                    executor.submit(_process_fold_with_single_test, r, algorithm, train_x, train_y, test_x)
+                    for r in range(nRepeats)
+                ]
+                for future in as_completed(futures):
+                    predictions.append(future.result())
+
+            # Statistical aggregation after concurrent collection
+            prediction = np.mean(predictions)
+            pred_var = np.var(predictions)
+            pred_sd = np.std(predictions)
+            pred_se = sem(predictions)
+
+            pred_denormed = ml_utils.denormalise_data(np.array([prediction]), scaler_y)
+            pred_se_denormed = ml_utils.denormalise_data(np.array([pred_se]), scaler_y)
+            pred_sd_denormed = ml_utils.denormalise_data(np.array([pred_sd]), scaler_y)
+
+            if output_field in logFields:
+                pred_denormed = 10.0**pred_denormed
+                pred_se_denormed = 10.0**pred_se_denormed[0] - 10.0**scaler_y.mean_
+                pred_sd_denormed = 10.0**pred_sd_denormed[0] - 10.0**scaler_y.mean_
+            else:
+                pred_se_denormed = pred_se_denormed[0] - scaler_y.mean_
+                pred_sd_denormed = pred_sd_denormed[0] - scaler_y.mean_
+
+            err_norm = prediction - true_y_norm[0]
+            print(f"{algorithm} Mean prediction of {output_field}:  {prediction} (normalised) {pred_sd} (S.D.) {pred_se} (S.E.), {pred_denormed[0]}+-{pred_se_denormed} (original) -- {err_norm} normalised error")
+            
+            all_abs_normalised_errors[algorithm].append(abs(err_norm))
+            all_predictions[algorithm].append(abs(pred_denormed[0]))
+            all_prediction_sems[algorithm].append(pred_se_denormed)
+            all_prediction_sds[algorithm].append(pred_sd_denormed)
+
+            true_y_prelog = true_y if output_field not in logFields else 10.0**true_y
+            results_dict = {
+                "algorithm" : algorithm, 
+                "field" : output_field, 
+                "true_value" : true_y, 
+                "true_value_before_log" : true_y_prelog, 
+                "true_value_norm" : true_y_norm[0],
+                "mean_norm_prediction" : prediction, 
+                "mean_norm_error" : err_norm, 
+                "var" : pred_var, 
+                "std" : pred_sd, 
+                "stderr" : pred_se[0], 
+                "mean_denormed_prediction" : pred_denormed[0][0], 
+                "mean_denormed_error" : pred_denormed[0][0] - true_y_prelog,
+                "denormed_std" : pred_sd_denormed[0], 
+                "denormed_stderr" : pred_se_denormed[0]
+            }
+            all_results.append(results_dict)
+
+    if not os.path.exists(resultsFilepath):
+        if not resultsFilepath.name.endswith(".csv") and not resultsFilepath.exists():
+            os.makedirs(resultsFilepath)
+        elif not resultsFilepath.parent.exists():
+            os.makedirs(resultsFilepath.parent)
+    resultsFilepath = resultsFilepath if str(resultsFilepath).endswith(".csv") else resultsFilepath / "cottrell_regression_results.csv"
+    with open(resultsFilepath, "w") as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=all_results[0].keys())
+        writer.writeheader()
+        writer.writerows(all_results)
+
+    if displayPlots:
+        fig, axs = plt.subplots(len(outputFields), 1, figsize=(12,10))
+        for i in range(len(outputFields)):
+            for algo, results in all_predictions.items():
+                if outputFields[i] == "backgroundDensity":
+                    axs[i].errorbar(all_predictions[algo][i] / 10**20, epoch_utils.fieldNameToText(outputFields[i]), xerr=all_prediction_sds[algo][i] / 10**20, label = algo, ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
+                else:
+                    axs[i].errorbar(all_predictions[algo][i], epoch_utils.fieldNameToText(outputFields[i]), xerr=all_prediction_sds[algo][i], label = algo, ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
+            
+            if outputFields[i] == "B0strength":
+                axs[i].axvline(x = all_true_y["B0strength"], color = "black", linestyle=":", lw = 2.0, label="Experimental value")
+                axs[i].fill_between(x = [all_true_y["B0strength"] - 0.07, all_true_y["B0strength"] + 0.07], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
+            elif outputFields[i] == "pitch":
+                axs[i].fill_between(x = [all_true_y["pitch"] - 0.05, all_true_y["pitch"] + 0.04], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
+            elif outputFields[i] == "backgroundDensity":
+                axs[i].axvline(x = all_true_y["backgroundDensity"] / 10**20, color = "black", linestyle=":", lw = 2.0, label="Experimental value")
+            else:
+                axs[i].axvline(x = all_true_y[outputFields[i]], color = "black", linestyle=":", lw = 2.0, label="Experimental value")
+
+        axs[0].legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, 2.0))
+        fig.supylabel("Output field", fontsize = 20)
+        fig.supxlabel("Prediction", fontsize = 20)
+        axs[2].set_xscale("log")
+        axs[3].set_xscale("log")
+        axs[2].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=False))
+        axs[3].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
+        plt.tight_layout()
+        for ax in axs:
+            ax.grid()
+        plt.show()
+
+        fig, axs = plt.subplots(len(outputFields), 1, figsize=(12,10))
+        for i in range(len(outputFields)):
+            for algo, _ in all_predictions.items():
+                if outputFields[i] == "backgroundDensity":
+                    axs[i].errorbar(all_predictions[algo][i] / 10**20, epoch_utils.fieldNameToText(outputFields[i]), xerr=all_prediction_sds[algo][i] / 10**20, label = algo, ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
+                else:
+                    axs[i].errorbar(all_predictions[algo][i], epoch_utils.fieldNameToText(outputFields[i]), xerr=all_prediction_sds[algo][i], label = algo, ms = 12, marker="D", elinewidth=2.0, capsize=8.0, capthick=2.0)
+
+            if outputFields[i] == "B0strength":
+                axs[i].axvline(x = all_true_y["B0strength"], color = "black", linestyle=":", lw = 2.0, label="Experimental value")
+                axs[i].fill_between(x = [all_true_y["B0strength"] - 0.07, all_true_y["B0strength"] + 0.07], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
+            elif outputFields[i] == "pitch":
+                axs[i].fill_between(x = [all_true_y["pitch"] - 0.05, all_true_y["pitch"] + 0.04], y1 = 0, y2 = 1, transform = axs[i].get_xaxis_transform(), color = "black", alpha = 0.3)
+            elif outputFields[i] == "backgroundDensity":
+                axs[i].axvline(x = all_true_y["backgroundDensity"] / 10**20, color = "black", linestyle=":", lw = 2.0, label="Experimental value")
+            else:
+                axs[i].axvline(x = all_true_y[outputFields[i]], color = "black", linestyle=":", lw = 2.0, label="Experimental value")
+
+        axs[0].legend(loc='center', ncols = 2, bbox_to_anchor = (0.5, 2.0))
+        axs[2].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=False))
+        axs[3].xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
+        fig.supxlabel("Prediction", fontsize = 20)
+        fig.supylabel("Output field", fontsize = 20)
+        axs[2].set_xscale("log")
+        axs[3].set_xscale("log")
+        axs[0].set_xlim(1.0, 5.0)
+        axs[1].set_xlim(0.0, 1.0)
+        # axs[2].set_xlim(1E19, 1E20)
+        axs[2].set_xlim(0.1, 1.0)
+        axs[3].set_xlim(1E-4, 1E-2)
+        plt.tight_layout()
+        for ax in axs:
+            ax.grid()
+        plt.show()
+
 def regress_trainEpoch_testCottrell(
         dataDirectory : Path,
         inputSpectraNames : list,
@@ -462,7 +837,6 @@ def regress_trainEpoch_testCottrell(
         lowFrequencyCleaningMethod : str = "linterpToSP",
         displayPlots : bool = False
 ):
-
     if displayPlots:
         SMALL_SIZE = 10
         MEDIUM_SIZE = 16
@@ -988,7 +1362,7 @@ def regress_trainLinear_multithreaded_beta(
     # ProcessPoolExecutor guarantees 100% memory and C-state isolation
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
         futures = [
-            executor.submit(_process_experimental_repeat_process, task)
+            executor.submit(_process_experimental_repeat, task)
             for task in all_tasks
         ]
 
@@ -2328,7 +2702,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--beta",
         action="store_true",
-        help="Use beta multithreaded regression of linear spectra.",
+        help="Use beta multithreaded regression of linear/EPOCH spectra.",
         required = False
     )
     parser.add_argument(
@@ -2389,6 +2763,14 @@ if __name__ == "__main__":
         action="store_true",
         help="Convert spectra to dB based on global noise floor minimum.",
         required = False
+    )
+    parser.add_argument(
+        "--truncateToMHz",
+        action="store",
+        help="Truncate spectra to this frequency in MHz.",
+        required = False,
+        type=float,
+        default=None
     )
     parser.add_argument(
         "--logInputs",
@@ -2517,49 +2899,75 @@ if __name__ == "__main__":
             nThreads = args.nThreads)
 
     if args.trainEpoch and args.testJet:
-        regress_trainEpoch_testCottrell(
-            dataDirectory = args.dataDir, 
-            inputSpectraNames = [
-                "Magnetic_Field_Bz/power/frequencyPowerSpectrum",
-            ], 
-            outputFields = [
-                "B0strength", 
-                "pitch", 
-                "backgroundDensity", 
-                "beamFraction"
-            ], 
-            logFields = [
-                "backgroundDensity", 
-                "beamFraction"
-            ], 
-            algorithms = 
-                args.algorithms,
-            # [
-                # "aeon.HydraRegressor", 
-                # "aeon.RocketRegressor", 
-                # "aeon.MiniRocketRegressor", 
-                # "aeon.MultiRocketRegressor", 
-                # "aeon.MultiRocketHydraRegressor", 
-                # "aeon.QUANTRegressor", 
-                # "aeon.KNeighborsTimeSeriesRegressor",
-                # "aeon.RDSTRegressor",
-                # "aeon.TimeSeriesForestRegressor",
-                # "aeon.Catch22Regressor",
-                # "aeon.RandomIntervalRegressor",
-                # "aeon.RandomIntervalSpectralEnsembleRegressor",
-                # "aeon.SummaryRegressor",
-                # "aeon.DummyRegressor",
-                # "aeon.TSFreshRegressor",
-                # "aeon.FreshPRINCERegressor"
-            # ], 
-            cottrellDatapath = args.testFilepath,
-            resultsFilepath=args.resultsFilepath,
-            includeFreqs=args.includeFreqs,
-            nRepeats=args.nRepeats,
-            nThreads = args.nThreads,
-            lowFrequencyCleaningMethod=args.lowFrequencyCleaningMethod[0],
-            displayPlots=args.displayPlots,
-        )
+        if args.beta:
+            regress_trainEpoch_multithreaded_beta(
+                dataDirectory = args.dataDir, 
+                inputSpectraNames = [
+                    "Magnetic_Field_Bz/power/frequencyPowerSpectrum",
+                ], 
+                outputFields = [
+                    "B0strength", 
+                    "pitch", 
+                    "backgroundDensity", 
+                    "beamFraction"
+                ], 
+                logFields = [
+                    "backgroundDensity", 
+                    "beamFraction"
+                ], 
+                algorithms = args.algorithms,
+                testDatapath = args.testFilepath,
+                resultsFilepath = args.resultsFilepath,
+                truncate_to_frequency_mHz = args.truncateToMHz,
+                includeFreqs = args.includeFreqs,
+                nRepeats = args.nRepeats,
+                nThreads = args.nThreads,
+                displayPlots = args.displayPlots,
+            )
+        else:
+            regress_trainEpoch_testCottrell(
+                dataDirectory = args.dataDir, 
+                inputSpectraNames = [
+                    "Magnetic_Field_Bz/power/frequencyPowerSpectrum",
+                ], 
+                outputFields = [
+                    "B0strength", 
+                    "pitch", 
+                    "backgroundDensity", 
+                    "beamFraction"
+                ], 
+                logFields = [
+                    "backgroundDensity", 
+                    "beamFraction"
+                ], 
+                algorithms = 
+                    args.algorithms,
+                # [
+                    # "aeon.HydraRegressor", 
+                    # "aeon.RocketRegressor", 
+                    # "aeon.MiniRocketRegressor", 
+                    # "aeon.MultiRocketRegressor", 
+                    # "aeon.MultiRocketHydraRegressor", 
+                    # "aeon.QUANTRegressor", 
+                    # "aeon.KNeighborsTimeSeriesRegressor",
+                    # "aeon.RDSTRegressor",
+                    # "aeon.TimeSeriesForestRegressor",
+                    # "aeon.Catch22Regressor",
+                    # "aeon.RandomIntervalRegressor",
+                    # "aeon.RandomIntervalSpectralEnsembleRegressor",
+                    # "aeon.SummaryRegressor",
+                    # "aeon.DummyRegressor",
+                    # "aeon.TSFreshRegressor",
+                    # "aeon.FreshPRINCERegressor"
+                # ], 
+                cottrellDatapath = args.testFilepath,
+                resultsFilepath=args.resultsFilepath,
+                includeFreqs=args.includeFreqs,
+                nRepeats=args.nRepeats,
+                nThreads = args.nThreads,
+                lowFrequencyCleaningMethod=args.lowFrequencyCleaningMethod[0],
+                displayPlots=args.displayPlots,
+            )
     elif args.cottrellPlots:
         cottrell_data_plots(
             dataDirectory = args.dataDir, 
