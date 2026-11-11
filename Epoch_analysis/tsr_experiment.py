@@ -482,6 +482,7 @@ def regress_trainEpoch_multithreaded_beta(
         testDatapath : Path,
         resultsFilepath : Path = None,
         truncate_to_frequency_mHz : float = None,
+        scale_01 : bool = None,
         includeFreqs : bool = False,
         nRepeats : int = 10,
         nThreads : int = 1,
@@ -527,6 +528,7 @@ def regress_trainEpoch_multithreaded_beta(
     min_l = np.min(spec_lengths)
     print(f"Max spec length: {np.max(spec_lengths)} min spec length: {min_l}")
     max_common_coord = np.max([c[-1] for c in [inputs[f"{inputSpectrumName}_coords"] for inputSpectrumName in inputSpectraNames]])
+    scaler_train = MinMaxScaler(feature_range=(0, 1))
 
     # Get Cottrell or other netcdf data
     if testDatapath.suffix == ".csv":
@@ -612,10 +614,13 @@ def regress_trainEpoch_multithreaded_beta(
             before_sp = np.linspace(np.mean(spec), spec[stationary_point], stationary_point)
             
             specs[i] = np.concatenate((before_sp, after_sp), axis = 0)
-        
-        global_min = np.min([np.min(s) for s in specs])
-        print(f"Global minimum : {global_min}")
-        specs = 10.0 * np.log10(specs / global_min)
+
+        if scale_01:
+            specs = [scaler_train.fit_transform(s.reshape(-1, 1)).flatten() for s in specs]
+        else:
+            global_min = np.min([np.min(s) for s in specs])
+            print(f"Global minimum : {global_min}")
+            specs = 10.0 * np.log10(specs / global_min)
         
         inputData.append(specs)
     if includeFreqs:
@@ -2921,6 +2926,7 @@ if __name__ == "__main__":
                 testDatapath = args.testFilepath,
                 resultsFilepath = args.resultsFilepath,
                 truncate_to_frequency_mHz = args.truncateToMHz,
+                scale_01 = args.scaleInputs,
                 includeFreqs = args.includeFreqs,
                 nRepeats = args.nRepeats,
                 nThreads = args.nThreads,
