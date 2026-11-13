@@ -616,7 +616,7 @@ def regress_trainEpoch_multithreaded_beta(
             specs[i] = np.concatenate((before_sp, after_sp), axis = 0)
 
         if scale_01:
-            specs = [scaler_train.fit_transform(s.reshape(-1, 1)).flatten() for s in specs]
+            specs = [scaler_train.fit_transform(np.log10(s).reshape(-1, 1)).flatten() for s in specs]
         else:
             global_min = np.min([np.min(s) for s in specs])
             print(f"Global minimum : {global_min}")
@@ -626,8 +626,11 @@ def regress_trainEpoch_multithreaded_beta(
     if includeFreqs:
         inputData.append(coords) # Append only the last set of coordinates (they should be the same for all fields)
 
+    if scale_01:
+        test_x[0] = scaler_train.fit_transform(test_x[0].reshape(-1, 1)).flatten()
+    
     if testDatapath.suffix == ".nc":
-        # Scale to dB as with input data
+        # Scale to dB as with input data 
         test_x[0] = 10.0 * np.log10(test_x[0] / global_min)
 
     # ##### DEBUG PLOT
@@ -638,12 +641,15 @@ def regress_trainEpoch_multithreaded_beta(
 
     # ##### DEBUG PLOT
     # for i in range(len(inputData[0])):
-    #     if i == 107:
+    #     if testDatapath.suffix == ".nc":
     #         plt.plot(test_frequencies / 1e6, test_x[0], label = "truncated test signal (dB)")
-    #         plt.plot(resamp_coords[1:] / 1e6, inputData[0][i], label = "training signal (dB)")
-    #         plt.title(inputs["sim_ids"][i])
-    #         plt.legend()
-    #         plt.show()
+    #     else:
+    #         plt.plot(equally_spaced_freqs, test_x[0], label = "truncated test signal (dB)")
+    #     # plt.plot(test_frequencies / 1e6, test_x[0], label = "truncated test signal (dB)")
+    #     plt.plot(resamp_coords[1:] / 1e6, inputData[0][i], label = "training signal (dB)")
+    #     plt.title(inputs["sim_ids"][i])
+    #     plt.legend()
+    #     plt.show()
     # ##### DEBUG PLOT
 
     assert inputs["sim_ids"] == outputs["sim_ids"]
@@ -2973,7 +2979,6 @@ if __name__ == "__main__":
                 includeFreqs=args.includeFreqs,
                 nRepeats=args.nRepeats,
                 nThreads = args.nThreads,
-                lowFrequencyCleaningMethod=args.lowFrequencyCleaningMethod[0],
                 displayPlots=args.displayPlots,
             )
     elif args.cottrellPlots:

@@ -353,7 +353,7 @@ def plotAccuracyByFrequency(resultsFile : Path):
         print(results[["algorithm", "output", "frequencyBandwidth", "cvR2_mean"]].sort_values(by="output"))
 
         cottrell_freq = 187.0
-        cottrell_max_gyros = 48.7
+        cottrell_max_gyros = 24.3
         cottrell_min_gyros = 4.87
 
         plt.figure(figsize=(8,8))
