@@ -299,21 +299,43 @@ def plotResults(
         plotBar(parser, metrics, errors, dropAlgorithms, noTitle)
         # plotScatter(parser, metric)
 
-def latexTable(resultsFile : Path, experimentName : str):
-    with open(resultsFile, "r") as f:
-        parser = json.load(f)
+def latexTable(resultsFile : Path, experimentName : str, dropAlgorithms = []):
 
-        results = parser["results"]
-        results_df = pd.DataFrame(results)
-        fields = parser["outputFields"]
-        algorithms = parser["algorithms"]
-        metrics_displayNames = {
-            "cvR2_mean" : r"$\mathbf{R}^2$", 
-            "cvRMSE_mean" : r"\textbf{RMSE}", 
-            "cvRMSE_var" : r"\textbf{RMSE var}", 
-            "cvRMSE_stderr" : r"\textbf{RMSE S.E.}", 
-            "cvMAE_mean" : r"\textbf{MAE}"
-        }
+    data_type = None # None, cv for cross validation or ec for experimental comparison
+    
+    
+    with open(resultsFile, "r") as f:
+        if resultsFile.suffix == ".json":
+            results_df = json.load(f)
+            results = results_df["results"]
+            results_df = pd.DataFrame(results)
+            fields = results_df["outputFields"]
+            algorithms = results_df["algorithms"]
+            data_type = "cv"
+            parameter_fieldname = "output"
+            metrics_displayNames = {
+                "cvR2_mean" : r"$\mathbf{R}^2$", 
+                "cvRMSE_mean" : r"\textbf{RMSE}", 
+                "cvRMSE_var" : r"\textbf{RMSE var}", 
+                "cvRMSE_stderr" : r"\textbf{RMSE S.E.}", 
+                "cvMAE_mean" : r"\textbf{MAE}"
+            }
+        elif resultsFile.suffix == ".csv":
+            results_df = pd.read_csv(f)
+            fields = set(results_df["field"])
+            algorithms = set(results_df["algorithm"])
+            data_type = "ec"
+            parameter_fieldname = "field"
+            metrics_displayNames = {
+                "mean_denormed_prediction" : r"Mean prediction", 
+                "mean_denormed_error" : r"Mean error", 
+                "denormed_std" : r"S.D.", 
+                "denormed_stderr" : r"S.E."
+            }
+        else:
+            raise NotImplementedError("Unknown filetype, must be .json or .csv.")
+        
+        
         num_metrics = len(metrics_displayNames.keys())
 
         # Metrics on top, algorithms down side
@@ -323,14 +345,15 @@ def latexTable(resultsFile : Path, experimentName : str):
             # Header
             table.add_row([r'\textbf{' + "Algorithm}"] + [v for v in metrics_displayNames.values()])
             for algo in algorithms:
-                result = results_df[(results_df["output"] == field) & (results_df["algorithm"] == algo)]
-                assert len(result) == 1
-                table.add_row([algo] + [float(result[m].iloc[0]) for m in metrics_displayNames.keys()])
+                if algo not in dropAlgorithms:
+                    result = results_df[(results_df[parameter_fieldname] == field) & (results_df["algorithm"] == algo)]
+                    assert len(result) == 1
+                    table.add_row([algo] + [float(result[m].iloc[0]) for m in metrics_displayNames.keys()])
 
             # print(table.draw())
             print("%--------------------------------------------------------------------------------------------")
             print("%Latex:")
-            print(latextable.draw_latex(table, caption="All LOOCV predictions.", label=f"tab:appendix_{field}Preds"))
+            print(latextable.draw_latex(table, caption=f"{field}: All predictions.", label=f"tab:appendix_{field}Preds"))
 
 def plotAccuracyByFrequency(resultsFile : Path):
     with open(resultsFile, "r") as f:
@@ -490,7 +513,8 @@ if __name__ == "__main__":
         dropAlgorithms = [] if args.dropAlgorithms is None else args.dropAlgorithms
         plotResults(args.file, args.metric, args.errors if args.errors is not None else "rmseSE", dropAlgorithms, args.noTitle)
     if args.latex:
-        latexTable(args.file, args.experimentName)
+        dropAlgorithms = [] if args.dropAlgorithms is None else args.dropAlgorithms
+        latexTable(args.file, args.experimentName, args.dropAlgorithms)
     if args.accuracyByFrequency:
         plotAccuracyByFrequency(args.file)
     if args.print:
